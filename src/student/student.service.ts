@@ -1,40 +1,28 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateStudentDTO } from './dto/create-student.dto';
 import { ViewStudentDTO } from './dto/view-student.dto';
+import { StudentEntity } from './model/student.entity';
+import { StudentMapper } from './mapper/student.mapper';
 
 @Injectable()
 export class StudentService {
-  list: ViewStudentDTO[] = []
+  constructor(private mapper: StudentMapper) {}
+
+  private list: StudentEntity[] = [];
 
   getStudents(): ViewStudentDTO[] {
-    return this.list;
+    return this.list.map((student) => this.mapper.toDTO(student));
   }
 
   getStudent(ra: string): ViewStudentDTO {
-    let student = this.list.find(student => student.ra == ra);
-    if (student == undefined) {
-      throw NotFoundException
+    const result = this.list.find((student) => student.ra == ra);
+    if (result == undefined) {
+      throw NotFoundException;
     }
-    return student
+    return this.mapper.toDTO(result);
   }
 
   createStudent(student: CreateStudentDTO) {
-    let viewStudent = new ViewStudentDTO(
-      student.ra,
-      student.curso,
-      student.periodo,
-      student.status,
-      student.name,
-      student.ingresso,
-      student.email,
-      student.cpf,
-      student.rg,
-      "",
-      "",
-      student.dataNascimento,
-      student.dataValidade
-    )
-    
-    this.list.push(viewStudent)
+    this.list.push(this.mapper.toEntity(student));
   }
 }

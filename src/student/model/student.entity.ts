@@ -1,4 +1,4 @@
-export class ViewStudentDTO {
+export class StudentEntity {
   constructor(
     ra: string,
     course: string,
