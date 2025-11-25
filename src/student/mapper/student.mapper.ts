@@ -22,6 +22,7 @@ export class StudentMapper {
       'https://url.da.imagem/',
       student.birthDate,
       student.dueDate,
+      '',
     );
   }
 
@@ -41,5 +42,9 @@ export class StudentMapper {
       student.birthDate,
       student.dueDate,
     );
+  }
+
+  toListDTO(student: StudentEntity[]): ViewStudentDTO[] {
+    return student.map((student) => this.toDTO(student));
   }
 }

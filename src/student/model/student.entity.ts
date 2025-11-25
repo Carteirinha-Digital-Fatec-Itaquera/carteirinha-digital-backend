@@ -13,6 +13,7 @@ export class StudentEntity {
     photo: string,
     birthDate: string,
     dueDate: string,
+    password: string,
   ) {
     this.ra = ra;
     this.course = course;
@@ -27,6 +28,7 @@ export class StudentEntity {
     this.qrcode = qrcode;
     this.birthDate = birthDate;
     this.dueDate = dueDate;
+    this.password = password;
   }
 
   ra: string;
@@ -42,4 +44,5 @@ export class StudentEntity {
   photo: string;
   birthDate: string;
   dueDate: string;
+  password: string;
 }
