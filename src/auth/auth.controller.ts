@@ -16,4 +16,14 @@ export class AuthController {
     );
     return new TokenDTO(token);
   }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('login-secretaria')
+  async signInSecretary(@Body() authDTO: AuthDTO): Promise<TokenDTO> {
+    const token = await this.authService.signInSecretary(
+      authDTO.email,
+      authDTO.password
+    );
+    return new TokenDTO(token);
+  }
 }

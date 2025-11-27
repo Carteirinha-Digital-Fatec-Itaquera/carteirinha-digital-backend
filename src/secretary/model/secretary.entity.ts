@@ -1,4 +1,4 @@
-export class StudentEntity {
+export class SecretaryEntity {
   constructor(
     id: string,
     name: string,

@@ -4,7 +4,7 @@ import { ViewSecretaryDTO } from '../dto/view-secretary.dto';
 import { CreateSecretaryDTO } from '../dto/create-secretary.dto';
 
 @Injectable()
-export class secretaryMapper {
+export class SecretaryMapper {
   constructor() {}
 
   toEntity(secretary: CreateSecretaryDTO): SecretaryEntity {
@@ -12,16 +12,14 @@ export class secretaryMapper {
       secretary.id,
       secretary.name,
       secretary.email,
-      secretary.password
+      ''
     );
   }
 
   toDTO(secretary: SecretaryEntity): ViewSecretaryDTO {
     return new ViewSecretaryDTO(
-      secretary.id,
       secretary.name,
-      secretary.email,
-      secretary.password
+      secretary.email
     );
   }
 

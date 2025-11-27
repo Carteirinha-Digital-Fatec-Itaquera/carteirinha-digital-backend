@@ -1,4 +1,4 @@
-export class ViewStudentDTO {
+export class ViewSecretaryDTO {
   constructor(
     name: string,
     email: string,
