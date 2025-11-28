@@ -1,0 +1,31 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model Student {
+  ra        String @id @unique
+  course    String
+  period    String
+  status    String
+  name      String
+  admission String
+  email     String @unique
+  cpf       String @unique
+  rg        String @unique
+  qrcode    String
+  photo     String
+  birthDate String
+  dueDate   String
+  password  String
+}
