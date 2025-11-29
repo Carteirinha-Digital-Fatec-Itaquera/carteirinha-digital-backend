@@ -22,7 +22,7 @@ export class StudentController {
   }
 
   @Post('criar')
-  createStudent(@Body() student: CreateStudentDTO) {
-    this.service.createStudent(student);
+  async createStudent(@Body() student: CreateStudentDTO) {
+    await this.service.createStudent(student);
   }
 }

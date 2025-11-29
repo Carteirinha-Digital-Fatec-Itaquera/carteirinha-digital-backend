@@ -5,7 +5,7 @@ import { SecretaryMapper } from './mapper/secretary.mapper';
 
 @Module({
   imports: [],
+  controllers: [SecretaryController],
   providers: [SecretaryService, SecretaryMapper],
-  controllers: [SecretaryController]
 })
 export class SecretaryModule {}

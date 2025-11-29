@@ -8,10 +8,10 @@ export class AuthService {
   constructor(
     private readonly studentService: StudentService,
     private readonly secretaryService: SecretaryService,
-    private readonly jwtService: JwtService
+    private readonly jwtService: JwtService,
   ) {}
 
-  signIn(email: string, pass: string): Promise<string> {
+  signInStudent(email: string, pass: string): Promise<string> {
     const student = this.studentService.getStudentByEmail(email);
     if (student.password !== pass) {
       throw new UnauthorizedException();
@@ -30,8 +30,8 @@ export class AuthService {
     }
     const payload = {
       id: secretary.id,
-      email: secretary.email
+      email: secretary.email,
     };
-    return this.jwtService.signAsync(payload)
+    return this.jwtService.signAsync(payload);
   }
 }

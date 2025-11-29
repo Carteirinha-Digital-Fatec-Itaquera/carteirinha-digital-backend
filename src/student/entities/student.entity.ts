@@ -9,11 +9,11 @@ export class StudentEntity {
     email: string,
     cpf: string,
     rg: string,
-    qrcode: string,
-    photo: string,
+    qrcode: string | null,
+    photo: string | null,
     birthDate: string,
     dueDate: string,
-    password: string,
+    password: string | null,
   ) {
     this.ra = ra;
     this.course = course;
@@ -40,9 +40,9 @@ export class StudentEntity {
   email: string;
   cpf: string;
   rg: string;
-  qrcode: string;
-  photo: string;
+  qrcode: string | null;
+  photo: string | null;
   birthDate: string;
   dueDate: string;
-  password: string;
+  password: string | null;
 }

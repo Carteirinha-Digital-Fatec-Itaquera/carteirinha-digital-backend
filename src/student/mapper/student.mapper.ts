@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { StudentEntity } from '../model/student.entity';
+import { StudentEntity } from '../entities/student.entity';
 import { ViewStudentDTO } from '../dto/view-student.dto';
 import { CreateStudentDTO } from '../dto/create-student.dto';
 
@@ -18,11 +18,11 @@ export class StudentMapper {
       student.email,
       student.cpf,
       student.rg,
-      'codigo do QrCode',
-      'https://url.da.imagem/',
+      null,
+      null,
       student.birthDate,
       student.dueDate,
-      '',
+      null,
     );
   }
 
@@ -37,8 +37,8 @@ export class StudentMapper {
       student.email,
       student.cpf,
       student.rg,
-      student.qrcode,
-      student.photo,
+      student.qrcode || '',
+      student.photo || '',
       student.birthDate,
       student.dueDate,
     );

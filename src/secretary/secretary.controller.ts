@@ -6,23 +6,23 @@ import { ViewSecretaryDTO } from './dto/view-secretary.dto';
 
 @Controller('secretaria')
 export class SecretaryController {
-    constructor(
-        private readonly mapper: SecretaryMapper,
-        private readonly service: SecretaryService
-    ) {}
+  constructor(
+    private readonly mapper: SecretaryMapper,
+    private readonly service: SecretaryService,
+  ) {}
 
-    @Get('listar-todos')
-    getSecretary(): ViewSecretaryDTO[] {
-        return this.mapper.toListDTO(this.service.getSecretary());
-    }
+  @Get('listar-todos')
+  getSecretary(): ViewSecretaryDTO[] {
+    return this.mapper.toListDTO(this.service.getSecretary());
+  }
 
-    @Get('encontrar-por-id/:id')
-    getSecretaryById(@Param('id') id: string): ViewSecretaryDTO {
-        return this.mapper.toDTO(this.service.getSecretaryById(id));
-    }
+  @Get('encontrar-por-id/:id')
+  getSecretaryById(@Param('id') id: string): ViewSecretaryDTO {
+    return this.mapper.toDTO(this.service.getSecretaryById(id));
+  }
 
-    @Post('criar')
-    createSecretary(@Body() secretary: CreateSecretaryDTO) {
-        this.service.createSecretary(secretary);
-    }
+  @Post('criar')
+  createSecretary(@Body() secretary: CreateSecretaryDTO) {
+    this.service.createSecretary(secretary);
+  }
 }

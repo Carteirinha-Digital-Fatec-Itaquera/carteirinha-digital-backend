@@ -12,15 +12,12 @@ export class SecretaryMapper {
       secretary.id,
       secretary.name,
       secretary.email,
-      ''
+      '',
     );
   }
 
   toDTO(secretary: SecretaryEntity): ViewSecretaryDTO {
-    return new ViewSecretaryDTO(
-      secretary.name,
-      secretary.email
-    );
+    return new ViewSecretaryDTO(secretary.name, secretary.email);
   }
 
   toListDTO(secretary: SecretaryEntity[]): ViewSecretaryDTO[] {

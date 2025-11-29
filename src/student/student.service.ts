@@ -1,11 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateStudentDTO } from './dto/create-student.dto';
-import { StudentEntity } from './model/student.entity';
+import { StudentEntity } from './entities/student.entity';
 import { StudentMapper } from './mapper/student.mapper';
+import { StudentRepository } from './repository/student.repository';
 
 @Injectable()
 export class StudentService {
-  constructor(private readonly mapper: StudentMapper) {}
+  constructor(
+    private readonly mapper: StudentMapper,
+    private readonly repository: StudentRepository,
+  ) {}
 
   private list: StudentEntity[] = [];
 
@@ -29,7 +33,7 @@ export class StudentService {
     return result;
   }
 
-  createStudent(student: CreateStudentDTO) {
-    this.list.push(this.mapper.toEntity(student));
+  async createStudent(student: CreateStudentDTO) {
+    await this.repository.create(this.mapper.toEntity(student));
   }
 }

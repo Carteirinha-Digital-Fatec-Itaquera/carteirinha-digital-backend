@@ -9,8 +9,8 @@ export class AuthController {
 
   @HttpCode(HttpStatus.OK)
   @Post('login')
-  async signIn(@Body() authDTO: AuthDTO): Promise<TokenDTO> {
-    const token = await this.authService.signIn(
+  async signInStudent(@Body() authDTO: AuthDTO): Promise<TokenDTO> {
+    const token = await this.authService.signInStudent(
       authDTO.email,
       authDTO.password,
     );
@@ -22,7 +22,7 @@ export class AuthController {
   async signInSecretary(@Body() authDTO: AuthDTO): Promise<TokenDTO> {
     const token = await this.authService.signInSecretary(
       authDTO.email,
-      authDTO.password
+      authDTO.password,
     );
     return new TokenDTO(token);
   }
