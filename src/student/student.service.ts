@@ -10,24 +10,21 @@ export class StudentService {
     private readonly mapper: StudentMapper,
     private readonly repository: StudentRepository,
   ) {}
-
-  private list: StudentEntity[] = [];
-
-  getStudents(): StudentEntity[] {
-    return this.list.map((student) => student);
+  async getStudents(): Promise<StudentEntity[]> {
+    return (await this.repository.findAll()).map((student) => student);
   }
 
-  getStudentByRa(ra: string): StudentEntity {
-    const result = this.list.find((student) => student.ra == ra);
-    if (result == undefined) {
+  async getStudentByRa(ra: string): Promise<StudentEntity> {
+    const result = await this.repository.findByRa(ra);
+    if (result == null) {
       throw new NotFoundException('Estudante não encontrado');
     }
     return result;
   }
 
-  getStudentByEmail(email: string): StudentEntity {
-    const result = this.list.find((student) => student.email == email);
-    if (result == undefined) {
+  async getStudentByEmail(ra: string): Promise<StudentEntity> {
+    const result = await this.repository.findByEmail(ra);
+    if (result == null) {
       throw new NotFoundException('Estudante não encontrado');
     }
     return result;

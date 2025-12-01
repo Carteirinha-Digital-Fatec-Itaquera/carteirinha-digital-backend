@@ -12,13 +12,20 @@ export class StudentController {
   ) {}
 
   @Get('listar-todos')
-  getStudents(): ViewStudentDTO[] {
-    return this.mapper.toListDTO(this.service.getStudents());
+  async getStudents(): Promise<ViewStudentDTO[]> {
+    return this.mapper.toListDTO(await this.service.getStudents());
   }
 
   @Get('encontrar-por-ra/:ra')
-  getStudentByRa(@Param('ra') ra: string): ViewStudentDTO {
-    return this.mapper.toDTO(this.service.getStudentByRa(ra));
+  async getStudentByRa(@Param('ra') ra: string): Promise<ViewStudentDTO> {
+    return this.mapper.toDTO(await this.service.getStudentByRa(ra));
+  }
+
+  @Get('encontrar-por-email/:email')
+  async getStudentByEmail(
+    @Param('email') email: string,
+  ): Promise<ViewStudentDTO> {
+    return this.mapper.toDTO(await this.service.getStudentByEmail(email));
   }
 
   @Post('criar')

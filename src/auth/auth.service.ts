@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { SecretaryService } from 'src/secretary/secretary.service';
 import { StudentService } from 'src/student/student.service';
@@ -11,8 +15,11 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {}
 
-  signInStudent(email: string, pass: string): Promise<string> {
-    const student = this.studentService.getStudentByEmail(email);
+  async signInStudent(email: string, pass: string): Promise<string> {
+    const student = await this.studentService.getStudentByEmail(email);
+    if (student == null) {
+      throw new NotFoundException('Estudante não encontrado');
+    }
     if (student.password !== pass) {
       throw new UnauthorizedException();
     }

@@ -7,6 +7,22 @@ import { Injectable } from '@nestjs/common';
 export class PrismaStudentRepository implements StudentRepository {
   constructor(private prisma: PrismaService) {}
 
+  findAll(): Promise<StudentEntity[]> {
+    return this.prisma.student.findMany();
+  }
+
+  findByRa(ra: string): Promise<StudentEntity | null> {
+    return this.prisma.student.findUnique({
+      where: { ra: ra },
+    });
+  }
+
+  findByEmail(email: string): Promise<StudentEntity | null> {
+    return this.prisma.student.findUnique({
+      where: { email: email },
+    });
+  }
+
   async create(student: StudentEntity): Promise<void> {
     await this.prisma.student.create({
       data: {
