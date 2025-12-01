@@ -1,6 +1,6 @@
 import {
+  ConflictException,
   Injectable,
-  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -17,11 +17,15 @@ export class AuthService {
 
   async signInStudent(email: string, pass: string): Promise<string> {
     const student = await this.studentService.getStudentByEmail(email);
+    const messageError = 'O e-mail ou a senha estão errados';
     if (student == null) {
-      throw new NotFoundException('Estudante não encontrado');
+      throw new UnauthorizedException(messageError);
+    }
+    if (student.password == null) {
+      throw new ConflictException('A senha desta conta ainda não foi definida');
     }
     if (student.password !== pass) {
-      throw new UnauthorizedException();
+      throw new UnauthorizedException(messageError);
     }
     const payload = {
       ra: student.ra,

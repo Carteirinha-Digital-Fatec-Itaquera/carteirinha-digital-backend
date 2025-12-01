@@ -11,8 +11,8 @@ export class StudentEntity {
     rg: string,
     qrcode: string | null,
     photo: string | null,
-    birthDate: string,
-    dueDate: string,
+    birthDate: Date,
+    dueDate: Date,
     password: string | null,
   ) {
     this.ra = ra;
@@ -30,7 +30,6 @@ export class StudentEntity {
     this.dueDate = dueDate;
     this.password = password;
   }
-
   ra: string;
   course: string;
   period: string;
@@ -42,7 +41,7 @@ export class StudentEntity {
   rg: string;
   qrcode: string | null;
   photo: string | null;
-  birthDate: string;
-  dueDate: string;
+  birthDate: Date;
+  dueDate: Date;
   password: string | null;
 }

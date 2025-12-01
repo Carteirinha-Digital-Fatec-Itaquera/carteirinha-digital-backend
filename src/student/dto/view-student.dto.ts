@@ -11,8 +11,8 @@ export class ViewStudentDTO {
     rg: string,
     qrcode: string,
     photo: string,
-    birthDate: string,
-    dueDate: string,
+    birthDate: Date,
+    dueDate: Date,
   ) {
     this.ra = ra;
     this.course = course;
@@ -40,6 +40,6 @@ export class ViewStudentDTO {
   rg: string;
   qrcode: string;
   photo: string;
-  birthDate: string;
-  dueDate: string;
+  birthDate: Date;
+  dueDate: Date;
 }

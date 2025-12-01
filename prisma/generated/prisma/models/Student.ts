@@ -36,8 +36,8 @@ export type StudentMinAggregateOutputType = {
   rg: string | null
   qrcode: string | null
   photo: string | null
-  birthDate: string | null
-  dueDate: string | null
+  birthDate: Date | null
+  dueDate: Date | null
   password: string | null
 }
 
@@ -53,8 +53,8 @@ export type StudentMaxAggregateOutputType = {
   rg: string | null
   qrcode: string | null
   photo: string | null
-  birthDate: string | null
-  dueDate: string | null
+  birthDate: Date | null
+  dueDate: Date | null
   password: string | null
 }
 
@@ -213,8 +213,8 @@ export type StudentGroupByOutputType = {
   rg: string
   qrcode: string | null
   photo: string | null
-  birthDate: string
-  dueDate: string
+  birthDate: Date
+  dueDate: Date
   password: string | null
   _count: StudentCountAggregateOutputType | null
   _min: StudentMinAggregateOutputType | null
@@ -251,8 +251,8 @@ export type StudentWhereInput = {
   rg?: Prisma.StringFilter<"Student"> | string
   qrcode?: Prisma.StringNullableFilter<"Student"> | string | null
   photo?: Prisma.StringNullableFilter<"Student"> | string | null
-  birthDate?: Prisma.StringFilter<"Student"> | string
-  dueDate?: Prisma.StringFilter<"Student"> | string
+  birthDate?: Prisma.DateTimeFilter<"Student"> | Date | string
+  dueDate?: Prisma.DateTimeFilter<"Student"> | Date | string
   password?: Prisma.StringNullableFilter<"Student"> | string | null
 }
 
@@ -289,10 +289,10 @@ export type StudentWhereUniqueInput = Prisma.AtLeast<{
   admission?: Prisma.StringFilter<"Student"> | string
   qrcode?: Prisma.StringNullableFilter<"Student"> | string | null
   photo?: Prisma.StringNullableFilter<"Student"> | string | null
-  birthDate?: Prisma.StringFilter<"Student"> | string
-  dueDate?: Prisma.StringFilter<"Student"> | string
+  birthDate?: Prisma.DateTimeFilter<"Student"> | Date | string
+  dueDate?: Prisma.DateTimeFilter<"Student"> | Date | string
   password?: Prisma.StringNullableFilter<"Student"> | string | null
-}, "ra" | "ra" | "email" | "cpf" | "rg">
+}, "ra" | "email" | "cpf" | "rg">
 
 export type StudentOrderByWithAggregationInput = {
   ra?: Prisma.SortOrder
@@ -329,8 +329,8 @@ export type StudentScalarWhereWithAggregatesInput = {
   rg?: Prisma.StringWithAggregatesFilter<"Student"> | string
   qrcode?: Prisma.StringNullableWithAggregatesFilter<"Student"> | string | null
   photo?: Prisma.StringNullableWithAggregatesFilter<"Student"> | string | null
-  birthDate?: Prisma.StringWithAggregatesFilter<"Student"> | string
-  dueDate?: Prisma.StringWithAggregatesFilter<"Student"> | string
+  birthDate?: Prisma.DateTimeWithAggregatesFilter<"Student"> | Date | string
+  dueDate?: Prisma.DateTimeWithAggregatesFilter<"Student"> | Date | string
   password?: Prisma.StringNullableWithAggregatesFilter<"Student"> | string | null
 }
 
@@ -346,8 +346,8 @@ export type StudentCreateInput = {
   rg: string
   qrcode?: string | null
   photo?: string | null
-  birthDate: string
-  dueDate: string
+  birthDate: Date | string
+  dueDate: Date | string
   password?: string | null
 }
 
@@ -363,8 +363,8 @@ export type StudentUncheckedCreateInput = {
   rg: string
   qrcode?: string | null
   photo?: string | null
-  birthDate: string
-  dueDate: string
+  birthDate: Date | string
+  dueDate: Date | string
   password?: string | null
 }
 
@@ -380,8 +380,8 @@ export type StudentUpdateInput = {
   rg?: Prisma.StringFieldUpdateOperationsInput | string
   qrcode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   photo?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  birthDate?: Prisma.StringFieldUpdateOperationsInput | string
-  dueDate?: Prisma.StringFieldUpdateOperationsInput | string
+  birthDate?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  dueDate?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   password?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
@@ -397,8 +397,8 @@ export type StudentUncheckedUpdateInput = {
   rg?: Prisma.StringFieldUpdateOperationsInput | string
   qrcode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   photo?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  birthDate?: Prisma.StringFieldUpdateOperationsInput | string
-  dueDate?: Prisma.StringFieldUpdateOperationsInput | string
+  birthDate?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  dueDate?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   password?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
@@ -414,8 +414,8 @@ export type StudentCreateManyInput = {
   rg: string
   qrcode?: string | null
   photo?: string | null
-  birthDate: string
-  dueDate: string
+  birthDate: Date | string
+  dueDate: Date | string
   password?: string | null
 }
 
@@ -431,8 +431,8 @@ export type StudentUpdateManyMutationInput = {
   rg?: Prisma.StringFieldUpdateOperationsInput | string
   qrcode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   photo?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  birthDate?: Prisma.StringFieldUpdateOperationsInput | string
-  dueDate?: Prisma.StringFieldUpdateOperationsInput | string
+  birthDate?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  dueDate?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   password?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
@@ -448,8 +448,8 @@ export type StudentUncheckedUpdateManyInput = {
   rg?: Prisma.StringFieldUpdateOperationsInput | string
   qrcode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   photo?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  birthDate?: Prisma.StringFieldUpdateOperationsInput | string
-  dueDate?: Prisma.StringFieldUpdateOperationsInput | string
+  birthDate?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  dueDate?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   password?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
@@ -518,6 +518,10 @@ export type NullableStringFieldUpdateOperationsInput = {
   set?: string | null
 }
 
+export type DateTimeFieldUpdateOperationsInput = {
+  set?: Date | string
+}
+
 
 
 export type StudentSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -573,8 +577,8 @@ export type $StudentPayload<ExtArgs extends runtime.Types.Extensions.InternalArg
     rg: string
     qrcode: string | null
     photo: string | null
-    birthDate: string
-    dueDate: string
+    birthDate: Date
+    dueDate: Date
     password: string | null
   }, ExtArgs["result"]["student"]>
   composites: {}
@@ -956,8 +960,8 @@ export interface StudentFieldRefs {
   readonly rg: Prisma.FieldRef<"Student", 'String'>
   readonly qrcode: Prisma.FieldRef<"Student", 'String'>
   readonly photo: Prisma.FieldRef<"Student", 'String'>
-  readonly birthDate: Prisma.FieldRef<"Student", 'String'>
-  readonly dueDate: Prisma.FieldRef<"Student", 'String'>
+  readonly birthDate: Prisma.FieldRef<"Student", 'DateTime'>
+  readonly dueDate: Prisma.FieldRef<"Student", 'DateTime'>
   readonly password: Prisma.FieldRef<"Student", 'String'>
 }
     

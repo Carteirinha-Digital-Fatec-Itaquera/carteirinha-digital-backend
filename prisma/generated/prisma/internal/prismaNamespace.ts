@@ -557,8 +557,6 @@ export const StudentOrderByRelevanceFieldEnum = {
   rg: 'rg',
   qrcode: 'qrcode',
   photo: 'photo',
-  birthDate: 'birthDate',
-  dueDate: 'dueDate',
   password: 'password'
 } as const
 
@@ -575,6 +573,13 @@ export type StudentOrderByRelevanceFieldEnum = (typeof StudentOrderByRelevanceFi
  * Reference to a field of type 'String'
  */
 export type StringFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'String'>
+    
+
+
+/**
+ * Reference to a field of type 'DateTime'
+ */
+export type DateTimeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DateTime'>
     
 
 

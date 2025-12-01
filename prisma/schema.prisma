@@ -7,7 +7,6 @@
 generator client {
   provider = "prisma-client"
   output = "./generated/prisma"
-  // previewFeatures = ["relationJoins", "driverAdapters", "metrics", "queryCompiler"]
   moduleFormat = "cjs"
 }
 
@@ -16,7 +15,7 @@ datasource db {
 }
 
 model Student {
-  ra        String @id @unique
+  ra        String @id
   course    String
   period    String
   status    String
@@ -27,7 +26,7 @@ model Student {
   rg        String @unique
   qrcode    String?
   photo     String?
-  birthDate String
-  dueDate   String
+  birthDate DateTime
+  dueDate   DateTime
   password  String?
 }

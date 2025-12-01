@@ -118,8 +118,6 @@ export const StudentOrderByRelevanceFieldEnum = {
   rg: 'rg',
   qrcode: 'qrcode',
   photo: 'photo',
-  birthDate: 'birthDate',
-  dueDate: 'dueDate',
   password: 'password'
 } as const
 
