@@ -20,8 +20,8 @@ export class StudentMapper {
       student.rg,
       null,
       null,
-      student.birthDate,
-      student.dueDate,
+      new Date(student.birthDate),
+      new Date(student.dueDate),
       null,
     );
   }

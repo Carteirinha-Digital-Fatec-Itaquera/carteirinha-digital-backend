@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, Matches } from 'class-validator';
+import { IsDate, IsDateString, IsEmail, IsNotEmpty, Matches } from 'class-validator';
 
 export class CreateStudentDTO {
   @IsNotEmpty({ message: 'O campo RA é obrigatório' })
@@ -24,20 +24,22 @@ export class CreateStudentDTO {
   email: string;
 
   @IsNotEmpty({ message: 'O campo CPF é obrigatório' })
-  @Matches(/^\\d{3}\\.\\d{3}\\.\\d{3}-\\d{2}$/, {
+  @Matches(/^\d{3}\.\d{3}\.\d{3}-\d{2}$/, {
     message: 'CPF deve estar no formato 000.000.000-00',
   })
   cpf: string;
 
   @IsNotEmpty({ message: 'O campo RG é obrigatório' })
-  @Matches(/^\\d{2}\\.\\d{3}\\.\\d{3}-\\d{1}$/, {
+  @Matches(/^\d{2}\.\d{3}\.\d{3}-\d{1}$/, {
     message: 'RG deve estar no formato 00.000.000-0',
   })
   rg: string;
 
   @IsNotEmpty({ message: 'O campo data de nascimento é obrigatório' })
-  birthDate: Date;
+  @IsDateString({}, { message: "O formato da data de nascimento está inválido" })
+  birthDate: string;
 
   @IsNotEmpty({ message: 'O campo data de vencimento é obrigatório' })
-  dueDate: Date;
+  @IsDateString({}, { message: "O formato da data de vencimento está inválido" })
+  dueDate: string;
 }
