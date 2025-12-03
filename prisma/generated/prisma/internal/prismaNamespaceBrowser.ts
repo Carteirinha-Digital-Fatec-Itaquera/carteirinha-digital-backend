@@ -98,28 +98,18 @@ export const SortOrder = {
 export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder]
 
 
+export const QueryMode = {
+  default: 'default',
+  insensitive: 'insensitive'
+} as const
+
+export type QueryMode = (typeof QueryMode)[keyof typeof QueryMode]
+
+
 export const NullsOrder = {
   first: 'first',
   last: 'last'
 } as const
 
 export type NullsOrder = (typeof NullsOrder)[keyof typeof NullsOrder]
-
-
-export const StudentOrderByRelevanceFieldEnum = {
-  ra: 'ra',
-  course: 'course',
-  period: 'period',
-  status: 'status',
-  name: 'name',
-  admission: 'admission',
-  email: 'email',
-  cpf: 'cpf',
-  rg: 'rg',
-  qrcode: 'qrcode',
-  photo: 'photo',
-  password: 'password'
-} as const
-
-export type StudentOrderByRelevanceFieldEnum = (typeof StudentOrderByRelevanceFieldEnum)[keyof typeof StudentOrderByRelevanceFieldEnum]
 
