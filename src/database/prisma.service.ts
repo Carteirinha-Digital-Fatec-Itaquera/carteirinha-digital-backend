@@ -6,13 +6,13 @@ import { PrismaPg } from '@prisma/adapter-pg';
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit {
   constructor() {
-    const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+    const adapter = new PrismaPg({ connectionString: process.env.DIRECT_URL });
     super({ adapter });
   }
 
   async onModuleInit() {
     try {
-      await this.$connect;
+      await this.$queryRaw`SELECT 1`;;
       Logger.log('Conexão com o banco de dados estabelecida');
     }
     catch (error){

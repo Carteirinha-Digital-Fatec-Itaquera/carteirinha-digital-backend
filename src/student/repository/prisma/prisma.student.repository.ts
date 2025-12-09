@@ -39,7 +39,7 @@ export class PrismaStudentRepository implements StudentRepository {
         qrcode: null,
         birthDate: student.birthDate,
         dueDate: student.dueDate,
-        password: null,
+        password: student.password,
       },
     });
   }

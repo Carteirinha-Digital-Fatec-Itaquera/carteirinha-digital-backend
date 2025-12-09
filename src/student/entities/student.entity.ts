@@ -13,7 +13,7 @@ export class StudentEntity {
     photo: string | null,
     birthDate: Date,
     dueDate: Date,
-    password: string | null,
+    password: string,
   ) {
     this.ra = ra;
     this.course = course;
@@ -43,5 +43,5 @@ export class StudentEntity {
   photo: string | null;
   birthDate: Date;
   dueDate: Date;
-  password: string | null;
+  password: string;
 }

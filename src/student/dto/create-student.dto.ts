@@ -42,4 +42,7 @@ export class CreateStudentDTO {
   @IsNotEmpty({ message: 'O campo data de vencimento é obrigatório' })
   @IsDateString({}, { message: "O formato da data de vencimento está inválido" })
   dueDate: string;
+
+  @IsNotEmpty({ message: 'O campo senha é obrigatório' })
+  password: string;
 }

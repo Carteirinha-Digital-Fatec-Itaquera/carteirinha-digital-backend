@@ -27,7 +27,7 @@ model Student {
 model Secretary {
   id Int @id @default(autoincrement())
   name String 
-  email @unique
+  email String @unique
   dueDate DateTime
   password String
 }

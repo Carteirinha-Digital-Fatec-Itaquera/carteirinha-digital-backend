@@ -22,7 +22,7 @@ export class StudentMapper {
       null,
       new Date(student.birthDate),
       new Date(student.dueDate),
-      null,
+      student.password,
     );
   }
 
