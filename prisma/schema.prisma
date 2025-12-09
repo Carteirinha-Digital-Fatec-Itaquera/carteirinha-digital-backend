@@ -1,32 +1,33 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
-  provider = "prisma-client"
-  moduleFormat = "cjs"
-  output = "./generated/prisma"
+  provider = "prisma-client-js"
+  moduleFormat= "cjs"
 }
 
 datasource db {
-  provider  = "postgresql"
+  provider = "postgresql"
 }
-        
+
 model Student {
-  ra        String @id
+  ra        String   @id
   course    String
   period    String
   status    String
   name      String
   admission String
-  email     String @unique
-  cpf       String @unique
-  rg        String @unique
+  email     String   @unique
+  cpf       String   @unique
+  rg        String   @unique
   qrcode    String?
   photo     String?
   birthDate DateTime
   dueDate   DateTime
-  password  String?
+  password  String
+}
+
+model Secretary {
+  id Int @id @default(autoincrement())
+  name String 
+  email @unique
+  dueDate DateTime
+  password String
 }
