@@ -9,6 +9,7 @@ export class SecretaryMapper {
 
   toEntity(secretary: CreateSecretaryDTO): SecretaryEntity {
     return new SecretaryEntity(
+      // necessário introduzir o id:number para aplicar buscas por iD
       secretary.id,
       secretary.name,
       secretary.email,

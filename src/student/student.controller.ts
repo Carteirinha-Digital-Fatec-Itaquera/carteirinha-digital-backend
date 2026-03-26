@@ -30,6 +30,6 @@ export class StudentController {
 
   @Post('criar')
   async createStudent(@Body() student: CreateStudentDTO) {
-    await this.service.createStudent(student);
+    return await this.service.createStudent(student);
   }
 }
