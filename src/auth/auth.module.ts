@@ -10,6 +10,14 @@ import { StudentRepository } from 'src/student/repository/student.repository';
 import { PrismaStudentRepository } from 'src/student/repository/prisma/prisma.student.repository';
 import { PrismaService } from 'src/database/prisma.service';
 
+//Adicional do
+import { PrismaSecretaryRepository } from 'src/secretary/repository/prisma/prisma.secretary.repository';
+
+// type PrismaTypeRepository ={
+//   student: PrismaSecretaryRepository,
+//   secretary:PrismaSecretaryRepository
+// }
+
 @Module({
   controllers: [AuthController],
   providers: [
@@ -22,7 +30,7 @@ import { PrismaService } from 'src/database/prisma.service';
     PrismaService,
     {
       provide: StudentRepository,
-      useClass: PrismaStudentRepository,
+      useClass: PrismaSecretaryRepository || PrismaStudentRepository ,
     },
   ],
 })
