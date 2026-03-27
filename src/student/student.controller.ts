@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
 import { CreateStudentDTO } from './dto/create-student.dto';
 import { StudentService } from './student.service';
 import { StudentMapper } from './mapper/student.mapper';
@@ -31,5 +31,18 @@ export class StudentController {
   @Post('criar')
   async createStudent(@Body() student: CreateStudentDTO) {
     await this.service.createStudent(student);
+  }
+
+  @Put('atualizar/:ra')
+  async updateStudent(
+    @Param('ra') ra: string,
+    @Body() student: CreateStudentDTO
+  ) {
+    await this.service.updateStudents(this.mapper.toEntity({ ...student, ra }));
+  }
+
+  @Delete('deletar/:ra')
+  async deleteStudent(@Param('ra') ra: string) {
+    await this.service.deleteStudent(ra);
   }
 }

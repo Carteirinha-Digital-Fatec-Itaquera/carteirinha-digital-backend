@@ -35,4 +35,11 @@ export class StudentService {
     await this.repository.create(this.mapper.toEntity(student));
   }
 //
+  async updateStudents(student: StudentEntity) {
+    await this.repository.update(student);
+  }
+
+  async deleteStudent(ra: string) {
+    await this.repository.delete(ra);
+  }
 }

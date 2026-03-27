@@ -7,6 +7,10 @@ export abstract class StudentRepository {
 
   abstract findByEmail(email: string): Promise<StudentEntity | null>;
 
-  abstract create(student: StudentEntity): Promise<void>;//
+  abstract create(student: StudentEntity): Promise<void>;
+  
+  abstract update(student: StudentEntity): Promise<void>;
+
+  abstract delete(ra: string): Promise<void>;
 
 }

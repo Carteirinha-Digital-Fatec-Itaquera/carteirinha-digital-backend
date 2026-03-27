@@ -44,5 +44,31 @@ export class PrismaStudentRepository implements StudentRepository {
     });
   }
 
+  async update(student: StudentEntity): Promise<void>{
+    await this.prisma.student.update({
+      where: { ra: student.ra },
+      data: {
+        course: student.course,
+        period: student.period,
+        status: student.status,
+        name: student.name,
+        admission: student.admission,
+        email: student.email,
+        cpf: student.cpf,
+        rg: student.rg,
+        photo: null,
+        qrcode: null,
+        birthDate: student.birthDate,
+        dueDate: student.dueDate,
+        password: student.password,
+      },
+    });
+  }
+
+  async delete(ra: string): Promise<void> {
+    await this.prisma.student.delete({
+      where: { ra: ra },
+    });
+  }
 
 }
