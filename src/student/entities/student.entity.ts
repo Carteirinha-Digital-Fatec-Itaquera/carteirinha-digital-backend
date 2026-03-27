@@ -1,6 +1,5 @@
 export class StudentEntity {
   constructor(
-    id: string,
     ra: string,
     course: string,
     period: string,
@@ -16,7 +15,6 @@ export class StudentEntity {
     dueDate: Date,
     password: string,
   ) {
-    this.id = id;
     this.ra = ra;
     this.course = course;
     this.period = period;
@@ -32,7 +30,6 @@ export class StudentEntity {
     this.dueDate = dueDate;
     this.password = password;
   }
-  id: string; //
   ra: string;
   course: string;
   period: string;

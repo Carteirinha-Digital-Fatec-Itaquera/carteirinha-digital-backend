@@ -11,12 +11,6 @@ export class PrismaStudentRepository implements StudentRepository {
     return this.prisma.student.findMany();
   }
 
-  findById(id: string): Promise<StudentEntity>{ //
-    return this.prisma.student.findUnique({
-      where: {id: id }
-    })
-  }
-
   findByRa(ra: string): Promise<StudentEntity | null> {
     return this.prisma.student.findUnique({
       where: { ra: ra },
@@ -50,12 +44,5 @@ export class PrismaStudentRepository implements StudentRepository {
     });
   }
 
-  async delete(id: string): Promise<void>{ //
-    await this.prisma.student.delete()
 
-  }
-
-  async update(student: StudentEntity): Promise<void>{
-    await this.prisma.student.update({})
-  }
 }
