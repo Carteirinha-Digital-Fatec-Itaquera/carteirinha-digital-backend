@@ -1,5 +1,6 @@
 import { IsDate, IsDateString, IsEmail, IsNotEmpty, Matches } from 'class-validator';
 
+
 export class CreateStudentDTO {
   @IsNotEmpty({ message: 'O campo RA é obrigatório' })
   ra: string;

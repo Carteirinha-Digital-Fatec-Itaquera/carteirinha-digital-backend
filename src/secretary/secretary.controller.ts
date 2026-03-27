@@ -12,17 +12,20 @@ export class SecretaryController {
   ) {}
 
   @Get('listar-todos')
-  getSecretary(): ViewSecretaryDTO[] {
-    return this.mapper.toListDTO(this.service.getSecretary());
-  }
+async getSecretary(): Promise<ViewSecretaryDTO[]> {
+  const data = await this.service.getSecretary();
+  return this.mapper.toListDTO(data);
+}
 
   @Get('encontrar-por-id/:id')
-  getSecretaryById(@Param('id') id: string): ViewSecretaryDTO {
-    return this.mapper.toDTO(this.service.getSecretaryById(id));
-  }
+async getSecretaryById(@Param('id') id: string): Promise<ViewSecretaryDTO> {
+  const data = await this.service.getSecretaryById(id);
+  return this.mapper.toDTO(data);
+}
 
   @Post('criar')
-  createSecretary(@Body() secretary: CreateSecretaryDTO) {
-    this.service.createSecretary(secretary);
-  }
+async createSecretary(@Body() secretary: CreateSecretaryDTO) {
+  const data = await this.service.createSecretary(secretary);
+  return this.mapper.toDTO(data);
+}
 }

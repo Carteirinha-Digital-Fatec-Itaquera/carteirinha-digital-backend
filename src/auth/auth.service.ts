@@ -34,15 +34,24 @@ export class AuthService {
     return this.jwtService.signAsync(payload);
   }
 
-  signInSecretary(email: string, pass: string): Promise<string> {
-    const secretary = this.secretaryService.getSecretaryByEmail(email);
-    if (secretary.password !== pass) {
-      throw new UnauthorizedException();
-    }
-    const payload = {
-      id: secretary.id,
-      email: secretary.email,
-    };
-    return this.jwtService.signAsync(payload);
+  async signInSecretary(email: string, pass: string): Promise<string> {
+  const secretary = await this.secretaryService.getSecretaryByEmail(email);
+
+  const messageError = 'O e-mail ou a senha estão errados';
+
+  if (!secretary) {
+    throw new UnauthorizedException(messageError);
   }
+
+  if (secretary.password !== pass) {
+    throw new UnauthorizedException(messageError);
+  }
+
+  const payload = {
+    id: secretary.id,
+    email: secretary.email,
+  };
+
+  return this.jwtService.signAsync(payload);
+}
 }
