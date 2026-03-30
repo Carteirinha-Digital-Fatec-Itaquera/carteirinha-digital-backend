@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put } from '@nestjs/common';
 import { CreateSecretaryDTO } from './dto/create-secretary.dto';
 import { SecretaryService } from './secretary.service';
 import { SecretaryMapper } from './mapper/secretary.mapper';
@@ -18,14 +18,28 @@ async getSecretary(): Promise<ViewSecretaryDTO[]> {
 }
 
   @Get('encontrar-por-id/:id')
-async getSecretaryById(@Param('id') id: string): Promise<ViewSecretaryDTO> {
-  const data = await this.service.getSecretaryById(id);
-  return this.mapper.toDTO(data);
-}
+  async getSecretaryById(@Param('id', ParseIntPipe) id: number): Promise<ViewSecretaryDTO> {
+    return this.mapper.toDTO(await this.service.getSecretaryById(id));
+  }
+
+  @Get('encontrar-por-email/:email')
+  async getSecretaryByEmail(@Param('email') email: string): Promise<ViewSecretaryDTO> {
+    return this.mapper.toDTO(await this.service.getSecretaryByEmail(email));
+  }
 
   @Post('criar')
-async createSecretary(@Body() secretary: CreateSecretaryDTO) {
-  const data = await this.service.createSecretary(secretary);
-  return this.mapper.toDTO(data);
+  async createSecretary(@Body() secretary: CreateSecretaryDTO) {
+    return await this.service.createSecretary(secretary);
+  }
+
+  @Put('atualizar/:id')
+  async updateSecretary(@Param('id', ParseIntPipe) id: number, @Body() secretary: CreateSecretaryDTO) {
+    return await this.service.updateSecretary(this.mapper.toEntity({ ...secretary, id }));
+  }
+
+  @Delete('deletar/:id')
+  async deleteSecretary(@Param('id', ParseIntPipe) id: number) {
+    return await this.service.deleteSecretary(id);
+  }
 }
-}
+
