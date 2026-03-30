@@ -30,7 +30,7 @@ export class StudentController {
 
   @Post('criar')
   async createStudent(@Body() student: CreateStudentDTO) {
-    await this.service.createStudent(student);
+    return await this.service.createStudent(student);
   }
 
   @Put('atualizar/:ra')
@@ -38,11 +38,11 @@ export class StudentController {
     @Param('ra') ra: string,
     @Body() student: CreateStudentDTO
   ) {
-    await this.service.updateStudents(this.mapper.toEntity({ ...student, ra }));
+    return await this.service.updateStudents(this.mapper.toEntity({ ...student, ra }));
   }
 
   @Delete('deletar/:ra')
   async deleteStudent(@Param('ra') ra: string) {
-    await this.service.deleteStudent(ra);
+    return await this.service.deleteStudent(ra);
   }
 }
