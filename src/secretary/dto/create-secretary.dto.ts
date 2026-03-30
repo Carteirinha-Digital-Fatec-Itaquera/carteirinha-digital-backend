@@ -1,5 +1,5 @@
 export class CreateSecretaryDTO {
-  id: string;
+  id?: number;
   name: string;
   email: string;
   dueDate: string;
