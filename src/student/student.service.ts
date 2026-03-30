@@ -36,10 +36,20 @@ export class StudentService {
   }
 //
   async updateStudents(student: StudentEntity) {
-    await this.repository.update(student);
+    const result =  await this.repository.findByRa(student.ra);
+    
+    if(result == null) {
+      throw new NotFoundException('Estudante não encontrado');
+    }
+    return await this.repository.update(student);
   }
 
   async deleteStudent(ra: string) {
-    await this.repository.delete(ra);
+    const result = await this.repository.findByRa(ra);
+
+    if(result == null) {
+      throw new NotFoundException('Estudante não encontrado');
+    }
+    return await this.repository.delete(ra);
   }
 }
