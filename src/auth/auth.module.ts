@@ -8,6 +8,8 @@ import { SecretaryService } from 'src/secretary/secretary.service';
 import { SecretaryMapper } from 'src/secretary/mapper/secretary.mapper';
 import { StudentRepository } from 'src/student/repository/student.repository';
 import { PrismaStudentRepository } from 'src/student/repository/prisma/prisma.student.repository';
+import { SecretaryRepository } from 'src/secretary/repository/secretary.repository';
+import { PrismaSecretaryRepository } from 'src/secretary/repository/prisma/prisma.secretary.repository';
 import { PrismaService } from 'src/database/prisma.service';
 
 @Module({
@@ -23,6 +25,10 @@ import { PrismaService } from 'src/database/prisma.service';
     {
       provide: StudentRepository,
       useClass: PrismaStudentRepository,
+    },
+    {
+      provide: SecretaryRepository,
+      useClass: PrismaSecretaryRepository,
     },
   ],
 })
