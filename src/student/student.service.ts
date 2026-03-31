@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { CreateStudentDTO } from './dto/create-student.dto';
 import { StudentEntity } from './entities/student.entity';
 import { StudentMapper } from './mapper/student.mapper';
 import { StudentRepository } from './repository/student.repository';
 import { error } from 'console';
+import ValidarCpf from 'src/utils/validadorCpf';
 
 @Injectable()
 export class StudentService {
@@ -32,11 +33,14 @@ export class StudentService {
   }
 
   async createStudent(student: CreateStudentDTO) {
-    await this.repository.create(this.mapper.toEntity(student));
+   ValidarCpf(student.cpf)
+  
+    return await this.repository.create(this.mapper.toEntity(student));
   }
 //
   async updateStudents(student: StudentEntity) {
     const result =  await this.repository.findByRa(student.ra);
+    ValidarCpf(student.cpf)
     
     if(result == null) {
       throw new NotFoundException('Estudante não encontrado');
