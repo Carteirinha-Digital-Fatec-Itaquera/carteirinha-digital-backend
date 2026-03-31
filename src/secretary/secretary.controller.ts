@@ -31,7 +31,7 @@ async getSecretary(): Promise<ViewSecretaryDTO[]> {
 
   @Post('criar')
   async createSecretary(@Body() secretary: CreateSecretaryDTO) {
-    console.log(secretary);  
+    // console.log(secretary);  
     if (!secretary) {
       return { msg: "body is missing" };
     }
@@ -45,7 +45,7 @@ async getSecretary(): Promise<ViewSecretaryDTO[]> {
       return await this.service.createSecretary(secretary);
     }catch(error){
       console.log(error)
-      return 
+      return { msg: "error creating user" };
     }
   }
 

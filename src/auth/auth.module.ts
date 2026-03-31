@@ -11,17 +11,26 @@ import { PrismaStudentRepository } from 'src/student/repository/prisma/prisma.st
 import { SecretaryRepository } from 'src/secretary/repository/secretary.repository';
 import { PrismaSecretaryRepository } from 'src/secretary/repository/prisma/prisma.secretary.repository';
 import { PrismaService } from 'src/database/prisma.service';
+import { HashContentService } from 'src/utils/hashContent';
+import { JwtModule } from '@nestjs/jwt';
 
 @Module({
+  imports: [
+    JwtModule.register({
+      secret: process.env.JWT_SECRET || 'SUPER_SECRET_KEY', // 👈 must have a value
+      signOptions: { expiresIn: '1h' }, // optional
+    }),
+  ],
   controllers: [AuthController],
   providers: [
     AuthService,
     StudentService,
-    JwtService,
+    // JwtService,
     StudentMapper,
     SecretaryService,
     SecretaryMapper,
     PrismaService,
+    HashContentService,
     {
       provide: StudentRepository,
       useClass: PrismaStudentRepository,

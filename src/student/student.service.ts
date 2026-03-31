@@ -24,8 +24,8 @@ export class StudentService {
     return result;
   }
 
-  async getStudentByEmail(ra: string): Promise<StudentEntity> {
-    const result = await this.repository.findByEmail(ra);
+  async getStudentByEmail(email: string): Promise<StudentEntity> {
+    const result = await this.repository.findByEmail(email);
     if (result == null) {
       throw new NotFoundException('Estudante não encontrado');
     }

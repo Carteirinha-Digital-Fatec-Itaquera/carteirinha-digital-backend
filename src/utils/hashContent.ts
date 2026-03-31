@@ -18,10 +18,12 @@ export class HashContentService{
     }
     async compareHash( valuesToCompare:string, password?:string, content?:string):Promise<boolean>{
         const valuesComparreHash = password || content
+        // console.log(`\n\n${valuesComparreHash}\n${password}`)
         if(!valuesComparreHash){
             console.log("valor invalido ou nulo")
             return false
         }
+    
         return bcrypt.compare(valuesComparreHash, valuesToCompare)
         // console.log("verficação relizada com sucesso")
         // return true

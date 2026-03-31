@@ -7,6 +7,9 @@ import { JwtService } from '@nestjs/jwt';
 import { SecretaryService } from 'src/secretary/secretary.service';
 import { StudentService } from 'src/student/student.service';
 
+import { HashContentService } from 'src/utils/hashContent';
+
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -16,17 +19,26 @@ export class AuthService {
   ) {}
 
   async signInStudent(email: string, pass: string): Promise<string> {
+
+    
     const student = await this.studentService.getStudentByEmail(email);
+    
+    
     const messageError = 'O e-mail ou a senha estão errados';
     if (student == null) {
       throw new UnauthorizedException(messageError);
     }
-    if (student.password == null) {
-      throw new ConflictException('A senha desta conta ainda não foi definida');
-    }
-    if (student.password !== pass) {
-      throw new UnauthorizedException(messageError);
-    }
+    const hashService = new HashContentService()
+    const isValidPassword:boolean = await hashService.compareHash(student.password, pass)
+    if (!isValidPassword){
+        throw new ConflictException('A senha desta conta ainda não foi definida');
+    } 
+    // if (student.password == null) {
+    //   throw new ConflictException('A senha desta conta ainda não foi definida');
+    // }
+    // if (student.password !== pass) {
+    //   throw new UnauthorizedException(messageError);
+    // }
     const payload = {
       ra: student.ra,
       email: student.email,
@@ -42,16 +54,19 @@ export class AuthService {
   if (!secretary) {
     throw new UnauthorizedException(messageError);
   }
-
-  if (secretary.password !== pass) {
-    throw new UnauthorizedException(messageError);
-  }
-
+  const hashService = new HashContentService()
+  const isValidPassword = await hashService.compareHash(secretary.password, pass)
+  console.log(isValidPassword)
+  if (!isValidPassword){
+      throw new ConflictException('A senha desta conta ainda não foi definida');
+  } 
+  // if (secretary.password !== pass) {
+  //   throw new UnauthorizedException(messageError);
+  // }
   const payload = {
     id: secretary.id,
     email: secretary.email,
   };
-
   return this.jwtService.signAsync(payload);
 }
 }
