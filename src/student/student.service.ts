@@ -5,6 +5,7 @@ import { StudentMapper } from './mapper/student.mapper';
 import { StudentRepository } from './repository/student.repository';
 import { error } from 'console';
 import ValidarCpf from 'src/utils/validadorCpf';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class StudentService {
@@ -33,11 +34,21 @@ export class StudentService {
   }
 
   async createStudent(student: CreateStudentDTO) {
-   ValidarCpf(student.cpf)
-  
+  try {
+    ValidarCpf(student.cpf)
+
     return await this.repository.create(this.mapper.toEntity(student));
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2002') {
+        throw new BadRequestException('Já existe um registro com esses dados, verifique se o email, rg, ou cpf estão corretos');
+      }
+    }
+
+    throw error;
   }
-//
+}
+
   async updateStudents(student: StudentEntity) {
     const result =  await this.repository.findByRa(student.ra);
     ValidarCpf(student.cpf)
