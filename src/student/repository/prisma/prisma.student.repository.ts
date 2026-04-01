@@ -22,7 +22,7 @@ export class PrismaStudentRepository implements StudentRepository {
       where: { email: email },
     });
   }
-
+  
   async create(student: StudentEntity): Promise<void> {
     await this.prisma.student.create({
       data: {

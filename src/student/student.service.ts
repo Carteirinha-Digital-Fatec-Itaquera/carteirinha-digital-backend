@@ -6,6 +6,7 @@ import { StudentRepository } from './repository/student.repository';
 import { error } from 'console';
 import ValidarCpf from 'src/utils/validadorCpf';
 import { Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class StudentService {
@@ -35,13 +36,24 @@ export class StudentService {
 
   async createStudent(student: CreateStudentDTO) {
   try {
-    ValidarCpf(student.cpf)
+    ValidarCpf(student.cpf);
 
-    return await this.repository.create(this.mapper.toEntity(student));
+    const token = randomUUID();
+
+    const entity = this.mapper.toEntity(student);
+
+    entity.qrcode = token;
+
+    return await this.repository.create(entity);
+
+    
+
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === 'P2002') {
-        throw new BadRequestException('Já existe um registro com esses dados, verifique se o email, rg, ou cpf estão corretos');
+        throw new BadRequestException(
+          'Já existe um registro com esses dados, verifique email, RG ou CPF'
+        );
       }
     }
 
