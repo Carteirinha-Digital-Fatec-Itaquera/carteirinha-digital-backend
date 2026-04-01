@@ -173,17 +173,15 @@ export class SecretaryService {
     const data = await pdfParse(buffer);
     const texto = data.text;
     
-    // Remove quebras de linha e junta tudo
     let textoLimpo = texto.replace(/\n/g, '');
     
-    // Procura os alunos pelo padrão de RA (7 dígitos começando com 2025)
     const regex = /(2025\d{3});([^;]+);([^;]+);([^;]+);([^;]+);([^;]+);([^;]+);([^;]+);([^;]+);(\d{4}-\d{2}-\d{2});(\d{4}-\d{2}-\d{2});(\d+)/g;
     
     const alunos: any[] = [];
     let match;
     
     while ((match = regex.exec(textoLimpo)) !== null) {
-      // Pula se for o cabeçalho
+      
       if (match[1] === 'ra' || match[1] === '2025') continue;
       
       alunos.push({
@@ -216,7 +214,7 @@ export class SecretaryService {
           throw new Error('Campos obrigatórios faltando');
         }
 
-        // Valida a data
+        
         const birthDate = new Date(aluno.birthDate);
         const dueDate = new Date(aluno.dueDate);
         
