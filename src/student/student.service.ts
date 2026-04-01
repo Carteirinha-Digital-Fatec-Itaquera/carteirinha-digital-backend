@@ -41,7 +41,7 @@ export class StudentService {
   
     return await this.repository.create(this.mapper.toEntity(student));
   }
-}
+
 
   async updateStudents(student: StudentEntity) {
     const result =  await this.repository.findByRa(student.ra);
