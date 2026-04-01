@@ -65,4 +65,5 @@ export class AuthService {
 
   return this.jwtService.signAsync(payload);
 }
+  
 }
