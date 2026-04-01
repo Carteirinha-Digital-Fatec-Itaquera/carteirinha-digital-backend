@@ -4,12 +4,15 @@ import { CreateSecretaryDTO } from './dto/create-secretary.dto';
 import { SecretaryMapper } from './mapper/secretary.mapper';
 import { SecretaryRepository } from './repository/secretary.repository';
 import { SecretaryEntity } from './entities/secretary.entity';
+import { HashContentService } from 'src/utils/hashContentService';
+
 
 @Injectable()
 export class SecretaryService {
   constructor(
     private readonly mapper: SecretaryMapper,
-    private readonly repository: SecretaryRepository
+    private readonly repository: SecretaryRepository,
+    private readonly hashService: HashContentService
   ) {}
 
   async getSecretary(): Promise<SecretaryEntity[]> {
@@ -38,8 +41,15 @@ export class SecretaryService {
     return result;
   }
 
-  async createSecretary(secretary: CreateSecretaryDTO): Promise<void> {
-    return await this.repository.create(this.mapper.toEntity(secretary));
+  async createSecretary(secretary: CreateSecretaryDTO) {
+    // const passwordHash = await this.hashService.hashContent(secretary)
+    try{
+      secretary.password = await this.hashService.hashContent(secretary.password)
+      return await this.repository.create(this.mapper.toEntity(secretary));
+    }catch (error){
+      return {msg: `\nErro ao criar usuário do tipo Secretaria.\n${error}`}
+    }
+    
   }
 
   async updateSecretary(secretary: SecretaryEntity) {

@@ -7,9 +7,11 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { SecretaryRepository } from './repository/secretary.repository';
 import { PrismaSecretaryRepository } from './repository/prisma/prisma.secretary.repository';
+import { UtilsModule } from 'src/utils/utilsModule';
+
 
 @Module({
-  imports: [DatabaseModule], 
+  imports: [DatabaseModule, UtilsModule], 
   controllers: [SecretaryController],
   providers: [
     SecretaryService, 
