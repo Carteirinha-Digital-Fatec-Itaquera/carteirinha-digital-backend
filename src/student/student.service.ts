@@ -6,11 +6,14 @@ import { StudentRepository } from './repository/student.repository';
 import { error } from 'console';
 import ValidarCpf from 'src/utils/validadorCpf';
 
+import { HashContentService } from 'src/utils/hashContentService';
 @Injectable()
 export class StudentService {
   constructor(
     private readonly mapper: StudentMapper,
     private readonly repository: StudentRepository,
+    private readonly hashService: HashContentService,
+
   ) {}
   async getStudents(): Promise<StudentEntity[]> {
     return (await this.repository.findAll()).map((student) => student);
@@ -33,9 +36,15 @@ export class StudentService {
   }
 
   async createStudent(student: CreateStudentDTO) {
-   ValidarCpf(student.cpf)
-  
-    return await this.repository.create(this.mapper.toEntity(student));
+      ValidarCpf(student.cpf)
+
+      const passwordHash = await this.hashService.hashContent(student.birthDate)
+      try{
+        student.password = passwordHash
+        return await this.repository.create(this.mapper.toEntity(student));
+      }catch(error){
+        return error
+      }
   }
 //
   async updateStudents(student: StudentEntity) {

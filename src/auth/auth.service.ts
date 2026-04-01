@@ -7,7 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 import { SecretaryService } from 'src/secretary/secretary.service';
 import { StudentService } from 'src/student/student.service';
 
-import { HashContentService } from 'src/utils/hashContent';
+import { HashContentService } from 'src/utils/hashContentService';
 
 
 @Injectable()
@@ -69,4 +69,15 @@ export class AuthService {
   };
   return this.jwtService.signAsync(payload);
 }
+
+  async firstSignIn(email:string, ra?:string):Promise<{values:string}>{
+    
+    try{
+      
+      return {values: ""}
+    }catch(error){
+      return {values: "error"}
+    }
+
+  }
 }

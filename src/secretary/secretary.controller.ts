@@ -3,7 +3,7 @@ import { CreateSecretaryDTO } from './dto/create-secretary.dto';
 import { SecretaryService } from './secretary.service';
 import { SecretaryMapper } from './mapper/secretary.mapper';
 import { ViewSecretaryDTO } from './dto/view-secretary.dto';
-import { HashContentService } from 'src/utils/hashContent';
+import { HashContentService } from 'src/utils/hashContentService';
 
 
 @Controller('secretaria')

@@ -11,9 +11,9 @@ import { PrismaStudentRepository } from 'src/student/repository/prisma/prisma.st
 import { SecretaryRepository } from 'src/secretary/repository/secretary.repository';
 import { PrismaSecretaryRepository } from 'src/secretary/repository/prisma/prisma.secretary.repository';
 import { PrismaService } from 'src/database/prisma.service';
-import { HashContentService } from 'src/utils/hashContent';
+import { HashContentService } from 'src/utils/hashContentService';
 import { JwtModule } from '@nestjs/jwt';
-
+// import { HashContentService } from 'src/utils/hashContent';
 @Module({
   imports: [
     JwtModule.register({
@@ -24,7 +24,7 @@ import { JwtModule } from '@nestjs/jwt';
   controllers: [AuthController],
   providers: [
     AuthService,
-    StudentService,
+    StudentService, 
     // JwtService,
     StudentMapper,
     SecretaryService,
