@@ -37,8 +37,8 @@ export class StudentService {
   }
 
   async createStudent(student: CreateStudentDTO) {
-   ValidarCpf(student.cpf)
-  
+    ValidarCpf(student.cpf)
+    
     return await this.repository.create(this.mapper.toEntity(student));
   }
 
