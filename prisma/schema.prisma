@@ -31,3 +31,12 @@ model Secretary {
   dueDate DateTime
   password String
 }
+
+model VerificationCode {
+  id        Int      @id @default(autoincrement())
+  email     String
+  code      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  used      Boolean  @default(false)
+}
