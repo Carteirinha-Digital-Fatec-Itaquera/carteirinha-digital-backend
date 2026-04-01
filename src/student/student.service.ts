@@ -5,6 +5,7 @@ import { StudentMapper } from './mapper/student.mapper';
 import { StudentRepository } from './repository/student.repository';
 import { error } from 'console';
 import ValidarCpf from 'src/utils/validadorCpf';
+import { Prisma } from '@prisma/client';
 
 import { HashContentService } from 'src/utils/hashContentService';
 @Injectable()
@@ -36,17 +37,12 @@ export class StudentService {
   }
 
   async createStudent(student: CreateStudentDTO) {
-      ValidarCpf(student.cpf)
-
-      const passwordHash = await this.hashService.hashContent(student.birthDate)
-      try{
-        student.password = passwordHash
-        return await this.repository.create(this.mapper.toEntity(student));
-      }catch(error){
-        return error
-      }
+   ValidarCpf(student.cpf)
+  
+    return await this.repository.create(this.mapper.toEntity(student));
   }
-//
+}
+
   async updateStudents(student: StudentEntity) {
     const result =  await this.repository.findByRa(student.ra);
     ValidarCpf(student.cpf)
