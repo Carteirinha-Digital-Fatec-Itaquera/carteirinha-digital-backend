@@ -3,12 +3,15 @@ import { PrismaService } from "../../../database/prisma.service";
 import { SecretaryRepository } from "../secretary.repository";
 import { SecretaryEntity } from "../../entities/secretary.entity";
 
+import { StatusContaSecretaria } from "@prisma/client";
+
 @Injectable()
 export class PrismaSecretaryRepository implements SecretaryRepository {
   constructor(private prisma: PrismaService) {}
 
   findAll(): Promise<SecretaryEntity[]> {
     return this.prisma.secretary.findMany();
+
   }
 
   findById(id: number): Promise<SecretaryEntity | null> {
@@ -26,11 +29,12 @@ export class PrismaSecretaryRepository implements SecretaryRepository {
   async create(secretary: SecretaryEntity): Promise<void> {
     await this.prisma.secretary.create({
        data: {
-         name: secretary.name,
-         email: secretary.email,
-         dueDate: secretary.dueDate,
-         password: secretary.password,
-       },
+          name: secretary.name,
+          email: secretary.email,
+          dueDate: secretary.dueDate,
+          password: secretary.password,
+          statusConta: secretary.statusConta,
+        },
      });
     }
     async update(secretary: SecretaryEntity): Promise<void> {    
