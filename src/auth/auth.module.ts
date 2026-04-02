@@ -14,6 +14,8 @@ import { PrismaService } from 'src/database/prisma.service';
 import { JwtModule } from '@nestjs/jwt';
 import { UtilsModule } from 'src/utils/utilsModule';
 
+import { FirstLoginService } from 'src/utils/firstLoginService';
+
 @Module({
   imports: [
     JwtModule.register({
@@ -32,7 +34,7 @@ import { UtilsModule } from 'src/utils/utilsModule';
     SecretaryService,
     SecretaryMapper,
     PrismaService,
-    HashContentService,
+    // HashContentService,
     {
       provide: StudentRepository,
       useClass: PrismaStudentRepository,

@@ -29,7 +29,7 @@ export class PrismaStudentRepository implements StudentRepository {
         ra: student.ra,
         course: student.course,
         period: student.period,
-        status: student.status,
+        statusConta: student.statusConta,
         name: student.name,
         admission: student.admission,
         email: student.email,
@@ -51,7 +51,7 @@ export class PrismaStudentRepository implements StudentRepository {
       data: {
         course: student.course,
         period: student.period,
-        status: student.status,
+        statusConta: student.statusConta,
         name: student.name,
         admission: student.admission,
         email: student.email,

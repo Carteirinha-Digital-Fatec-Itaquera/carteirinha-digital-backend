@@ -9,25 +9,15 @@ datasource db {
   provider = "postgresql"
 }
 
-<<<<<<< HEAD
 enum StatusContaAluno{
   EM_CURSO @map("EM-CURSO")
   INATIVO 
   FINALIZADO @map("FINALIZADO")
-=======
-enum StatusContaEstudante{
-  EM_CURSO
-  INATIVO
->>>>>>> 1faccd07d1479805430bd62c2b13d83701a03d79
 }
 enum StatusContaSecretaria{
   ATIVA
   INATIVA
 }
-<<<<<<< HEAD
-
-=======
->>>>>>> 1faccd07d1479805430bd62c2b13d83701a03d79
 model Student {
   ra        String   @id
   course    String
@@ -55,12 +45,7 @@ model Secretary {
   email String @unique
   dueDate DateTime //retirar valor
   password String
-<<<<<<< HEAD
   birthDate DateTime @db.Date
   lastLogin DateTime?
   statusConta StatusContaSecretaria @default(ATIVA)
-=======
-  statusConta StatusContaSecretaria @default(ATIVA)
-  lastLogin DateTime?
->>>>>>> 1faccd07d1479805430bd62c2b13d83701a03d79
 }
