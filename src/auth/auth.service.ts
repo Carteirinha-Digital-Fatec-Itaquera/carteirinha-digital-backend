@@ -17,7 +17,11 @@ export class AuthService {
   ) {}
 
   async signInStudent(email: string, pass: string): Promise<string> {
+
+    
     const student = await this.studentService.getStudentByEmail(email);
+    
+    
     const messageError = 'O e-mail ou a senha estão errados';
     if (student == null) {
       throw new UnauthorizedException(messageError);
@@ -60,7 +64,6 @@ export class AuthService {
     id: secretary.id,
     email: secretary.email,
   };
-
   return this.jwtService.signAsync(payload);
 }
   
