@@ -43,8 +43,10 @@ export class StudentService {
     ValidarCpf(student.cpf)
     student.password= passwordHash
     return await this.repository.create(this.mapper.toEntity(student));
+  }catch(error){
+    return error
   }
-
+  }
 
   async updateStudents(student: StudentEntity) {
     const result =  await this.repository.findByRa(student.ra);
@@ -65,4 +67,4 @@ export class StudentService {
     return await this.repository.delete(ra);
   }
 }
-}
+
