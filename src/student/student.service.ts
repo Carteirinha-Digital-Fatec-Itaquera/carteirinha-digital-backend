@@ -26,6 +26,16 @@ export class StudentService {
     return result;
   }
 
+  async findByTokenQrcode(qrcode: string): Promise<StudentEntity>{
+    const result = await this.repository.findByTokenQrcode(qrcode)
+
+    if(result == null){
+      throw new NotFoundException('Estudante não encontrado')
+    }
+    return result
+
+  }
+
   async getStudentByEmail(ra: string): Promise<StudentEntity> {
     const result = await this.repository.findByEmail(ra);
     if (result == null) {
@@ -34,9 +44,27 @@ export class StudentService {
     return result;
   }
 
+  async validarTokenQrcode(qrcode: string): Promise<StudentEntity> {
+  const student = await this.repository.findByTokenQrcode(qrcode);
+
+  if (!student) {
+    throw new NotFoundException(`Estudante não encontrado`);
+  }
+
+  if (student.status !== 'Ativo') {
+    throw new BadRequestException('Aluno não está ativo');
+  }
+
+  if (new Date() > new Date(student.dueDate)) {
+    throw new BadRequestException('Carteirinha vencida');
+  }
+
+  return student;
+}
+
   async createStudent(student: CreateStudentDTO) {
   try {
-    ValidarCpf(student.cpf);
+    ValidarCpf(student.cpf); 
 
     const token = randomUUID();
 
@@ -63,7 +91,7 @@ export class StudentService {
 
   async updateStudents(student: StudentEntity) {
     const result =  await this.repository.findByRa(student.ra);
-    ValidarCpf(student.cpf)
+    ValidarCpf(student.cpf);
     
     if(result == null) {
       throw new NotFoundException('Estudante não encontrado');

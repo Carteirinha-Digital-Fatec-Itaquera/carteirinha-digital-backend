@@ -28,6 +28,12 @@ export class StudentController {
     return this.mapper.toDTO(await this.service.getStudentByEmail(email));
   }
 
+  @Get('verificar/:qrcode')
+  async verificarTokenQrcode(@Param('qrcode') qrcode: string): Promise<ViewStudentDTO>{
+    return this.mapper.toDTO(await this.service.validarTokenQrcode(qrcode))
+  }
+
+
   @Post('criar')
   async createStudent(@Body() student: CreateStudentDTO) {
     return await this.service.createStudent(student);

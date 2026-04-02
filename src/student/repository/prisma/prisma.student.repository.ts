@@ -17,6 +17,12 @@ export class PrismaStudentRepository implements StudentRepository {
     });
   }
 
+  findByTokenQrcode(qrcode: string): Promise<StudentEntity | null>{
+    return this.prisma.student.findUnique({
+      where: { qrcode }
+    })
+  }
+
   findByEmail(email: string): Promise<StudentEntity | null> {
     return this.prisma.student.findUnique({
       where: { email: email },
@@ -36,7 +42,7 @@ export class PrismaStudentRepository implements StudentRepository {
         cpf: student.cpf,
         rg: student.rg,
         photo: null,
-        qrcode: null,
+        qrcode: student.qrcode,
         birthDate: student.birthDate,
         dueDate: student.dueDate,
         password: student.password,
@@ -57,10 +63,8 @@ export class PrismaStudentRepository implements StudentRepository {
         cpf: student.cpf,
         rg: student.rg,
         photo: null,
-        qrcode: null,
         birthDate: student.birthDate,
         dueDate: student.dueDate,
-        password: student.password,
       },
     });
   }

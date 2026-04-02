@@ -7,6 +7,8 @@ export abstract class StudentRepository {
 
   abstract findByEmail(email: string): Promise<StudentEntity | null>;
 
+  abstract findByTokenQrcode(qrcode: string): Promise<StudentEntity | null>;
+
   abstract create(student: StudentEntity): Promise<void>;
   
   abstract update(student: StudentEntity): Promise<void>;
