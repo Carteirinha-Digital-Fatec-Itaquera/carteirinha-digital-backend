@@ -3,6 +3,8 @@ import { CreateSecretaryDTO } from './dto/create-secretary.dto';
 import { SecretaryService } from './secretary.service';
 import { SecretaryMapper } from './mapper/secretary.mapper';
 import { ViewSecretaryDTO } from './dto/view-secretary.dto';
+import { HashContentService } from 'src/utils/hashContentService';
+
 
 @Controller('secretaria')
 export class SecretaryController {
@@ -29,7 +31,22 @@ async getSecretary(): Promise<ViewSecretaryDTO[]> {
 
   @Post('criar')
   async createSecretary(@Body() secretary: CreateSecretaryDTO) {
-    return await this.service.createSecretary(secretary);
+    // console.log(secretary);  
+    if (!secretary) {
+      return { msg: "body is missing" };
+    }
+    if (!secretary.password) {
+      return { msg: "password is required" };
+    }
+    const hashService = new HashContentService()
+    const passwordHash = await hashService.hashContent(secretary.password)
+    try{
+      secretary.password = passwordHash
+      return await this.service.createSecretary(secretary);
+    }catch(error){
+      console.log(error)
+      return { msg: "error creating user" };
+    }
   }
 
   @Put('atualizar/:id')

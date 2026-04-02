@@ -29,8 +29,8 @@ export class StudentService {
     return result;
   }
 
-  async getStudentByEmail(ra: string): Promise<StudentEntity> {
-    const result = await this.repository.findByEmail(ra);
+  async getStudentByEmail(email: string): Promise<StudentEntity> {
+    const result = await this.repository.findByEmail(email);
     if (result == null) {
       throw new NotFoundException('Estudante não encontrado');
     }
@@ -43,16 +43,8 @@ export class StudentService {
     ValidarCpf(student.cpf)
     student.password= passwordHash
     return await this.repository.create(this.mapper.toEntity(student));
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (error.code === 'P2002') {
-        throw new BadRequestException('Já existe um registro com esses dados, verifique se o email, rg, ou cpf estão corretos');
-      }
-    }
-
-    throw error;
   }
-}
+
 
   async updateStudents(student: StudentEntity) {
     const result =  await this.repository.findByRa(student.ra);
@@ -72,4 +64,5 @@ export class StudentService {
     }
     return await this.repository.delete(ra);
   }
+}
 }
