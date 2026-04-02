@@ -7,11 +7,20 @@ datasource db {
   provider = "postgresql"
 }
 
+enum StatusContaAluno{
+  EM_CURSO @map("EM-CURSO")
+  INATIVO 
+  FINALIZADO @map("FINALIZADO")
+}
+enum StatusContaSecretaria{
+  ATIVA
+  INATIVA
+}
+
 model Student {
   ra        String   @id
   course    String
   period    String
-  status    String
   name      String
   admission String
   email     String   @unique
@@ -19,13 +28,14 @@ model Student {
   rg        String   @unique
   qrcode    String?
   photo     String?
-  birthDate DateTime
+  birthDate DateTime @db.Date
   dueDate   DateTime
   //inserir possivel valor de lastLogin do tipo DateTime que pode ser null, seria um valor interessante de colocar
   //para aplicar a funcionalizade de firsLogin:
-  // lastLogin DateTime? //No caso ficaria como null na criação e na hora do login se o usuário ter esse atributo como null ele redireciona para 
+  lastLogin DateTime? //No caso ficaria como null na criação e na hora do login se o usuário ter esse atributo como null ele redireciona para 
   //as rotas de resetar senha 
   password  String
+  statusConta StatusContaAluno @default(EM_CURSO)
 }
 
 model Secretary {
@@ -34,4 +44,7 @@ model Secretary {
   email String @unique
   dueDate DateTime //retirar valor
   password String
+  birthDate DateTime @db.Date
+  lastLogin DateTime?
+  statusConta StatusContaSecretaria @default(ATIVA)
 }

@@ -30,6 +30,7 @@ export class PrismaSecretaryRepository implements SecretaryRepository {
          email: secretary.email,
          dueDate: secretary.dueDate,
          password: secretary.password,
+         birthDate: secretary.birthDate
        },
      });
     }
