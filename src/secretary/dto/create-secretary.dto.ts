@@ -1,6 +1,5 @@
 import { StatusContaSecretaria } from "@prisma/client";
 
-
 export class CreateSecretaryDTO {
   id?: number;
   name: string;

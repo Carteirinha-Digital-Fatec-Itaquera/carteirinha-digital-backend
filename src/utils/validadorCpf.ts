@@ -7,7 +7,6 @@ export default function ValidarCpf(cpf: string): boolean{
     if(cpf.length != 11){
         throw new error('CPF inválido, o documento não possui 11 dígitos', error)
     }
-
     const digitoVerificador = (cpfIncompleto): string => {
         let somatoria = 0
         for(let i = 0; i < cpfIncompleto.length; i++){

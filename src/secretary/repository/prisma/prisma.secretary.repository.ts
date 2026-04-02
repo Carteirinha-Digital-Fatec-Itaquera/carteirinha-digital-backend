@@ -3,12 +3,15 @@ import { PrismaService } from "../../../database/prisma.service";
 import { SecretaryRepository } from "../secretary.repository";
 import { SecretaryEntity } from "../../entities/secretary.entity";
 
+import { StatusContaSecretaria } from "@prisma/client";
+
 @Injectable()
 export class PrismaSecretaryRepository implements SecretaryRepository {
   constructor(private prisma: PrismaService) {}
 
   findAll(): Promise<SecretaryEntity[]> {
     return this.prisma.secretary.findMany();
+
   }
 
   findById(id: number): Promise<SecretaryEntity | null> {

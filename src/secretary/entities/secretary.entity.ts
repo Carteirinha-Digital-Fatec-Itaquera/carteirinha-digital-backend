@@ -26,7 +26,12 @@ export class SecretaryEntity {
   email: string;
   dueDate: Date;
   password: string;
+<<<<<<< HEAD
   lastLogin?: Date|null;
   statusConta:StatusContaSecretaria
   birthDate: Date
+=======
+  statusConta:StatusContaSecretaria;
+  lastLogin?: Date | null
+>>>>>>> 1faccd07d1479805430bd62c2b13d83701a03d79
 }

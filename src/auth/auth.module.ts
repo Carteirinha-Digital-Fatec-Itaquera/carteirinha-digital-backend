@@ -32,6 +32,7 @@ import { UtilsModule } from 'src/utils/utilsModule';
     SecretaryService,
     SecretaryMapper,
     PrismaService,
+    HashContentService,
     {
       provide: StudentRepository,
       useClass: PrismaStudentRepository,

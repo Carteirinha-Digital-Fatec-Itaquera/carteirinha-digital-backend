@@ -39,7 +39,8 @@ export class PrismaStudentRepository implements StudentRepository {
         qrcode: null,
         birthDate: student.birthDate,
         dueDate: student.dueDate,
-        password: student.password,
+        // password: student.password, //retirado por não ser ncessário do ponto de vista da secretária
+        password: student.password
       },
     });
   }
