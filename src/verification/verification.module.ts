@@ -8,5 +8,6 @@ import { PrismaService } from 'src/database/prisma.service';
   imports: [MailModule],
   controllers: [VerificationController],
   providers: [VerificationService, PrismaService],
+  exports: [VerificationService], // <-- PRECISA TER ISSO
 })
 export class VerificationModule {}

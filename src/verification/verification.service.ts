@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/database/prisma.service';
 import { MailService } from 'src/mail/mail.service';
 
@@ -10,46 +10,47 @@ export class VerificationService {
   ) {}
 
   async sendCode(email: string) {
-    // Gera código de 6 dígitos
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    // Salva no banco
+
     await this.prisma.verificationCode.create({
       data: {
         email,
         code,
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutos
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
         used: false,
       },
     });
 
-    // Envia email
     await this.mailService.sendVerificationCode(email, code);
-    
+
     return { message: 'Código enviado com sucesso' };
   }
 
-  async verifyCode(email: string, code: string) {
-    // Busca código válido
-    const verificationCode = await this.prisma.verificationCode.findFirst({
-      where: {
-        email,
-        code,
-        used: false,
-        expiresAt: { gt: new Date() },
-      },
-    });
+  async verifyCode(email: string, code: string): Promise<boolean> {
+  console.log('🔍 Buscando:', { email, code });
+  
+  const verificationCode = await this.prisma.verificationCode.findFirst({
+    where: {
+      email,
+      code,
+      used: false,
+      expiresAt: { gt: new Date() },
+    },
+  });
 
-    if (!verificationCode) {
-      throw new BadRequestException('Código inválido ou expirado');
-    }
+  console.log('🔍 Encontrado:', verificationCode);
+  console.log('🔍 Data atual:', new Date());
+  console.log('🔍 Expira em:', verificationCode?.expiresAt);
 
-    // Marca como usado
-    await this.prisma.verificationCode.update({
-      where: { id: verificationCode.id },
-      data: { used: true },
-    });
-
-    return { verified: true };
+  if (!verificationCode) {
+    return false;
   }
+
+  await this.prisma.verificationCode.update({
+    where: { id: verificationCode.id },
+    data: { used: true },
+  });
+
+  return true;
+}
 }
