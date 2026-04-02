@@ -17,7 +17,7 @@ model Student {
   email     String   @unique
   cpf       String   @unique
   rg        String   @unique
-  qrcode    String?
+  qrcode    String?   @unique
   photo     String?
   birthDate DateTime
   dueDate   DateTime
