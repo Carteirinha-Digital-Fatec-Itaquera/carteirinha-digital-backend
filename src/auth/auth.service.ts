@@ -29,8 +29,7 @@ export class AuthService {
     // if (student.password !== pass) {
     //   throw new UnauthorizedException(messageError);
     // }
-    const hashService = new HashContentService()
-    const isValidPassword:boolean = await hashService.compareHash(student.password, pass)
+    const isValidPassword:boolean = await this.hashService.compareHash(student.password, pass)
     if (!isValidPassword){
         throw new ConflictException('A senha desta conta ainda não foi definida');
     } 
@@ -53,8 +52,7 @@ export class AuthService {
   // if (secretary.password !== pass) {
   //   throw new UnauthorizedException(messageError);
   // }
-  const hashService = new HashContentService()
-  const isValidPassword:boolean = await hashService.compareHash(secretary.password, pass)
+  const isValidPassword:boolean = await this.hashService.compareHash(secretary.password, pass)
   if (!isValidPassword){
       throw new ConflictException('A senha desta conta ainda não foi definida');
   } 
