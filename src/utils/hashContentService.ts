@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt'
-import TestAgent from 'supertest/lib/agent';
 
 
 @Injectable()
