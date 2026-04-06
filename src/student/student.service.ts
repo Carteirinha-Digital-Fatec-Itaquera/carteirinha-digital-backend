@@ -8,11 +8,15 @@ import ValidarCpf from 'src/utils/validadorCpf';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 
+import { HashContentService } from 'src/utils/hashContentService';
+
+
 @Injectable()
 export class StudentService {
   constructor(
     private readonly mapper: StudentMapper,
     private readonly repository: StudentRepository,
+    private readonly hashService: HashContentService 
   ) {}
   async getStudents(): Promise<StudentEntity[]> {
     return (await this.repository.findAll()).map((student) => student);
@@ -63,19 +67,19 @@ export class StudentService {
 }
 
   async createStudent(student: CreateStudentDTO) {
+    const passwordHash = await this.hashService.hashContent(student.birthDate)
   try {
-    ValidarCpf(student.cpf); 
+     ValidarCpf(student.cpf); 
 
     const token = randomUUID();
 
     const entity = this.mapper.toEntity(student);
 
     entity.qrcode = token;
+    entity.password = passwordHash;
 
     return await this.repository.create(entity);
-
     
-
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === 'P2002') {

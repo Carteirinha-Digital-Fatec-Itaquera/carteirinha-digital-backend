@@ -7,8 +7,11 @@ import { PrismaStudentRepository } from './repository/prisma/prisma.student.repo
 import { PrismaService } from 'src/database/prisma.service';
 import { DatabaseModule } from 'src/database/database.module';
 
+import { UtilsModule } from 'src/utils/utilsModule';
+
+
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, UtilsModule],
   controllers: [StudentController],
   providers: [
     StudentService,
