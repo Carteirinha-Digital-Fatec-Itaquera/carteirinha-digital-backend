@@ -4,9 +4,15 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { SecretaryEntity } from 'src/secretary/entities/secretary.entity';
 import { SecretaryService } from 'src/secretary/secretary.service';
 import { StudentService } from 'src/student/student.service';
 import { HashContentService } from 'src/utils/hashContentService';
+
+
+
+
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -40,28 +46,45 @@ export class AuthService {
     return this.jwtService.signAsync(payload);
   }
 
-  async signInSecretary(email: string, pass: string): Promise<string> {
-  const secretary = await this.secretaryService.getSecretaryByEmail(email);
+  // async signInSecretary(email: string, pass: string): Promise<string> {
+  async signInSecretary(email: string, pass: string){
+    const secretary = await this.secretaryService.getSecretaryByEmail(email);
+    const messageError = 'O e-mail ou a senha estão errados';
 
-  const messageError = 'O e-mail ou a senha estão errados';
+    if (!secretary) {
+      throw new UnauthorizedException(messageError);
+    }
 
-  if (!secretary) {
-    throw new UnauthorizedException(messageError);
+    // if (secretary.password !== pass) {
+    //   throw new UnauthorizedException(messageError);
+    // }
+    const isValidPassword:boolean = await this.hashService.compareHash(secretary.password, pass)
+    if (!isValidPassword){
+        throw new ConflictException('A senha desta conta ainda não foi definida');
+    } 
+
+    const isFirstLogin = secretary.lastLogin===null
+    if (!isFirstLogin) {
+      await this.setLoginTimestamp(secretary.id);
+    }
+
+    const payload = {
+      id: secretary.id,
+      email: secretary.email,
+      firstLogin: isFirstLogin
+    };
+    const token = await this.jwtService.signAsync(payload);
+
+    return {accessToken: token, firstLogin: isFirstLogin}
+
+
+
   }
-
-  // if (secretary.password !== pass) {
-  //   throw new UnauthorizedException(messageError);
-  // }
-  const isValidPassword:boolean = await this.hashService.compareHash(secretary.password, pass)
-  if (!isValidPassword){
-      throw new ConflictException('A senha desta conta ainda não foi definida');
-  } 
-  const payload = {
-    id: secretary.id,
-    email: secretary.email,
-  };
-
-  return this.jwtService.signAsync(payload);
-}
-  
+  private async setLoginTimestamp(id: number) {
+    try {
+      await this.secretaryService.updateLastLogin(id);
+    } catch (error) {
+      console.error('Erro ao atualizar último login:', error);
+    }
+  }
 }

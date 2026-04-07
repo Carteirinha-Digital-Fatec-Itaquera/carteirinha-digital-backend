@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/database/prisma.service'; // ajusta se necessário
 import { CreateSecretaryDTO } from './dto/create-secretary.dto';
 import { SecretaryMapper } from './mapper/secretary.mapper';
@@ -31,7 +31,6 @@ export class SecretaryService {
 
   async getSecretaryByEmail(email: string): Promise<SecretaryEntity> {
     const result = await this.repository.findByEmail(email);
-
     if (!result) {
       throw new NotFoundException(
         `Secretaria com email '${email}' não encontrada`,
@@ -42,12 +41,21 @@ export class SecretaryService {
   }
 
   async createSecretary(secretary: CreateSecretaryDTO) {
-    // const passwordHash = await this.hashService.hashContent(secretary)
     try{
-      secretary.password = await this.hashService.hashContent(secretary.password)
-      return await this.repository.create(this.mapper.toEntity(secretary));
+      const rawPassoword = this.generateInitialPassword(secretary.birthDate)
+
+      const hashPassowrd = await this.hashService.hashContent(rawPassoword)
+      const entity = this.mapper.toEntity({
+        ...secretary,
+        password:hashPassowrd,
+        lastLogin:null
+      })
+      
+      // return await this.repository.create(this.mapper.toEntity(secretary));
+      return await this.repository.create(entity)
     }catch (error){
-      return {msg: `\nErro ao criar usuário do tipo Secretaria.\n${error}`}
+      // return {msg: `\nErro ao criar usuário do tipo Secretaria.\n${error}`}
+      throw new InternalServerErrorException(`Erro ao criar secretaria: ${error.message}`)
     }
     
   }
@@ -59,7 +67,9 @@ export class SecretaryService {
       throw new NotFoundException('Secretaria não encontrada');
     }
     return await this.repository.update(secretary);
-}
+
+  }
+
 
   async deleteSecretary(id: number): Promise<void> {
     const result = await this.repository.findById(id);
@@ -68,5 +78,19 @@ export class SecretaryService {
       throw new NotFoundException('Secretaria não encontrada');
     }
     return await this.repository.delete(id);
+  }
+
+
+  async updateLastLogin(id: number) {
+    return await this.repository.updateLastLogin(id);
+  }
+
+  private generateInitialPassword(birthDate: Date): string {
+    const date = new Date(birthDate);
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const year = String(date.getUTCFullYear());
+    
+    return `${day}${month}${year}`;
   }
 }

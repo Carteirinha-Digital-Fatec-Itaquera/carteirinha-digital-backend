@@ -30,6 +30,10 @@ export class PrismaSecretaryRepository implements SecretaryRepository {
          email: secretary.email,
          dueDate: secretary.dueDate,
          password: secretary.password,
+         
+         lastLogin: secretary.lastLogin,
+         birthDate: secretary.birthDate
+         
        },
      });
     }
@@ -46,5 +50,13 @@ export class PrismaSecretaryRepository implements SecretaryRepository {
         await this.prisma.secretary.delete({
             where: { id },
         });
+    }
+    async updateLastLogin(id: number): Promise<void> {
+      await this.prisma.secretary.update({
+        where: { id },
+        data: {
+          lastLogin: new Date(),
+        },
+      });
     }
 }

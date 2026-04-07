@@ -12,4 +12,6 @@ export abstract class SecretaryRepository {
     abstract update(secretary: SecretaryEntity): Promise<void>;
     
     abstract delete(id: number): Promise<void>;
+
+    abstract updateLastLogin(id:number): Promise<void>
 }

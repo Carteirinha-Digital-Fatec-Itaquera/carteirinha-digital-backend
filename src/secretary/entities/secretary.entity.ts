@@ -5,12 +5,17 @@ export class SecretaryEntity {
     email: string,
     dueDate: Date,
     password: string,
+    birthDate: Date,
+    lastLogin?: Date|null
+    
   ) {
     this.id = id;
     this.name = name;
     this.email = email;
     this.dueDate = dueDate;
     this.password = password;
+    this.birthDate = birthDate;
+    this.lastLogin = lastLogin;
   }
 
   id: number;
@@ -18,4 +23,7 @@ export class SecretaryEntity {
   email: string;
   dueDate: Date;
   password: string;
+  birthDate: Date
+  lastLogin?: Date|null
+
 }

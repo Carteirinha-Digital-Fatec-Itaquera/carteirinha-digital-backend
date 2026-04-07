@@ -23,7 +23,7 @@ model Student {
   dueDate   DateTime
   password  String
 
-  lastLogin DateTime? @default(null)
+  lastLogin DateTime? 
 }
 
 model Secretary {
@@ -32,6 +32,6 @@ model Secretary {
   email String @unique
   dueDate DateTime //retirar valor
   password String
-  lastLogin DateTime? @default(null)
-
+  birthDate DateTime
+  lastLogin DateTime? 
 }
