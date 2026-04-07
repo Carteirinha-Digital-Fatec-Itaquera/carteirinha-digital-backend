@@ -19,11 +19,22 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Post('login')
   async signInStudent(@Body() authDTO: AuthDTO): Promise<TokenDTO> {
-    const token = await this.authService.signInStudent(
+
+    const results = await this.authService.signInStudent(
       authDTO.email,
       authDTO.password,
     );
-    return new TokenDTO(token);
+    if (results.firstLogin){
+      return{
+        message: "troca de senha Obrigatória",
+        mustChangePassword: true,
+        token: results.accesstoken
+      }
+    }
+    
+    
+    
+    return new TokenDTO(results.accesstoken);
   }
 
   @HttpCode(HttpStatus.OK)

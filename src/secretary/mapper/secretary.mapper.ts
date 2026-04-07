@@ -14,6 +14,7 @@ export class SecretaryMapper {
       secretary.email,
       new Date(secretary.dueDate),
       secretary.password,
+      secretary.birthDate
     );
   }
 

@@ -67,26 +67,28 @@ export class StudentService {
 }
 
   async createStudent(student: CreateStudentDTO) {
-    const passwordHash = await this.hashService.hashContent(student.birthDate)
-  try {
-     ValidarCpf(student.cpf); 
+    try {
+      const rawPassoword = this.generateInitialPassword(student.birthDate)
+      const passwordHash = await this.hashService.hashContent(rawPassoword)
+      
+      ValidarCpf(student.cpf); 
+      const token = randomUUID();
+      const entity = this.mapper.toEntity({
+        ...student,
+        password: passwordHash,
+        lastLogin:null
+      });
+      entity.qrcode = token;
 
-    const token = randomUUID();
-
-    const entity = this.mapper.toEntity(student);
-
-    entity.qrcode = token;
-    entity.password = passwordHash;
-
-    return await this.repository.create(entity);
+      return await this.repository.create(entity);
     
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (error.code === 'P2002') {
-        throw new BadRequestException(
-          'Já existe um registro com esses dados, verifique email, RG ou CPF'
-        );
-      }
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        if (error.code === 'P2002') {
+          throw new BadRequestException(
+            'Já existe um registro com esses dados, verifique email, RG ou CPF'
+          );
+        }
     }
 
     throw error;
@@ -110,5 +112,17 @@ export class StudentService {
       throw new NotFoundException('Estudante não encontrado');
     }
     return await this.repository.delete(ra);
+  }
+  async updateLastLoginStudent(ra: string) {
+    return await this.repository.updateLastLogin(ra);
+  }
+
+  private generateInitialPassword(birthDate: Date): string {
+    const date = new Date(birthDate);
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const year = String(date.getUTCFullYear());
+    
+    return `${day}${month}${year}`;
   }
 }

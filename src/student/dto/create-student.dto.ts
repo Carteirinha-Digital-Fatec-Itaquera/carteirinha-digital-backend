@@ -38,7 +38,7 @@ export class CreateStudentDTO {
 
   @IsNotEmpty({ message: 'O campo data de nascimento é obrigatório' })
   @IsDateString({}, { message: "O formato da data de nascimento está inválido" })
-  birthDate: string;
+  birthDate: Date;
 
   @IsNotEmpty({ message: 'O campo data de vencimento é obrigatório' })
   @IsDateString({}, { message: "O formato da data de vencimento está inválido" })
@@ -46,4 +46,6 @@ export class CreateStudentDTO {
 
   @IsEmpty({ message: 'O campo senha não necessário para inicio' })
   password: string;
+
+  lastLogin?:Date |null
 }

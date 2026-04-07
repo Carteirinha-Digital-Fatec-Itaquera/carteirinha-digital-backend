@@ -3,7 +3,11 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ExceptionsHandler } from '@nestjs/core/exceptions/exceptions-handler';
 import { JwtService } from '@nestjs/jwt';
+import { isFirebasePushId } from 'class-validator';
+import { STATUS_CODES } from 'http';
+import { first } from 'rxjs';
 import { SecretaryEntity } from 'src/secretary/entities/secretary.entity';
 import { SecretaryService } from 'src/secretary/secretary.service';
 import { StudentService } from 'src/student/student.service';
@@ -22,10 +26,10 @@ export class AuthService {
     private readonly hashService:HashContentService
   ) {}
 
-  async signInStudent(email: string, pass: string): Promise<string> {
+  async signInStudent(email: string, pass: string){
     const student = await this.studentService.getStudentByEmail(email);
     const messageError = 'O e-mail ou a senha estão errados';
-    if (student == null) {
+    if (!student) {
       throw new UnauthorizedException(messageError);
     }
     // if (student.password == null) {
@@ -39,11 +43,20 @@ export class AuthService {
     if (!isValidPassword){
         throw new ConflictException('A senha desta conta ainda não foi definida');
     } 
+
+
+    const isFirstLogin = student.lastLogin ===null
+    if(!isFirstLogin){
+      await this.setLoginTimestampStudent(student.ra)    
+    }
+
     const payload = {
       ra: student.ra,
       email: student.email,
+      firstLogin:isFirstLogin
     };
-    return this.jwtService.signAsync(payload);
+    const token =await this.jwtService.signAsync(payload);
+    return {accesstoken: token, firstLogin:isFirstLogin}
   }
 
   // async signInSecretary(email: string, pass: string): Promise<string> {
@@ -83,6 +96,13 @@ export class AuthService {
   private async setLoginTimestamp(id: number) {
     try {
       await this.secretaryService.updateLastLogin(id);
+    } catch (error) {
+      console.error('Erro ao atualizar último login:', error);
+    }
+  }
+  private async setLoginTimestampStudent(ra: string) {
+    try {
+      await this.studentService.updateLastLoginStudent(ra);
     } catch (error) {
       console.error('Erro ao atualizar último login:', error);
     }

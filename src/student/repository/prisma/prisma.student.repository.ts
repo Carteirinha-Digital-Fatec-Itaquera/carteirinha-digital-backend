@@ -75,4 +75,12 @@ export class PrismaStudentRepository implements StudentRepository {
     });
   }
 
+  async updateLastLogin(ra: string): Promise<void> {
+      await this.prisma.student.update({
+        where: { ra },
+        data: {
+          lastLogin: new Date(),
+        },
+      });
+  }
 }

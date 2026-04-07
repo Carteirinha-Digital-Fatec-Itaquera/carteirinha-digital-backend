@@ -14,6 +14,7 @@ export class StudentEntity {
     birthDate: Date,
     dueDate: Date,
     password: string,
+    lastLogin?: Date |null
   ) {
     this.ra = ra;
     this.course = course;
@@ -29,6 +30,7 @@ export class StudentEntity {
     this.birthDate = birthDate;
     this.dueDate = dueDate;
     this.password = password;
+    this.lastLogin = lastLogin
   }
   ra: string;
   course: string;
@@ -44,4 +46,5 @@ export class StudentEntity {
   birthDate: Date;
   dueDate: Date;
   password: string;
+  lastLogin?: Date|null
 }

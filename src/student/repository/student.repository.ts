@@ -15,4 +15,5 @@ export abstract class StudentRepository {
 
   abstract delete(ra: string): Promise<void>;
 
+  abstract updateLastLogin(ra: string): Promise<void>
 }
