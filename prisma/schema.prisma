@@ -21,11 +21,9 @@ model Student {
   photo     String?
   birthDate DateTime
   dueDate   DateTime
-  //inserir possivel valor de lastLogin do tipo DateTime que pode ser null, seria um valor interessante de colocar
-  //para aplicar a funcionalizade de firsLogin:
-  // lastLogin DateTime? //No caso ficaria como null na criação e na hora do login se o usuário ter esse atributo como null ele redireciona para 
-  //as rotas de resetar senha 
   password  String
+
+  lastLogin DateTime? @default(null)
 }
 
 model Secretary {
@@ -34,4 +32,6 @@ model Secretary {
   email String @unique
   dueDate DateTime //retirar valor
   password String
+  lastLogin DateTime? @default(null)
+
 }
