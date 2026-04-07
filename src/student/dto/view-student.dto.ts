@@ -1,9 +1,12 @@
+import { StatusContaAluno } from "@prisma/client";
+
+
 export class ViewStudentDTO {
   constructor(
     ra: string,
     course: string,
     period: string,
-    status: string,
+    statusConta: StatusContaAluno,
     name: string,
     admission: string,
     email: string,
@@ -13,11 +16,13 @@ export class ViewStudentDTO {
     photo: string,
     birthDate: Date,
     dueDate: Date,
+
+    lastLogin?:Date |null
   ) {
     this.ra = ra;
     this.course = course;
     this.period = period;
-    this.status = status;
+    this.statusConta = statusConta;
     this.name = name;
     this.admission = admission;
     this.email = email;
@@ -32,7 +37,7 @@ export class ViewStudentDTO {
   ra: string;
   course: string;
   period: string;
-  status: string;
+  statusConta: StatusContaAluno;
   name: string;
   admission: string;
   email: string;
@@ -42,4 +47,7 @@ export class ViewStudentDTO {
   photo: string;
   birthDate: Date;
   dueDate: Date;
+
+  lastLoginw:Date|null
 }
+

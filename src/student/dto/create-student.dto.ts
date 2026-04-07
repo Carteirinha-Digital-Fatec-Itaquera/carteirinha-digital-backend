@@ -1,5 +1,5 @@
-import { IsDate, IsDateString, IsEmail, IsNotEmpty, Matches } from 'class-validator';
-
+import { IsDate, IsDateString, IsEmail, IsEmpty, isEmpty, IsNotEmpty, IsOptional, Matches } from 'class-validator';
+import { StatusContaAluno } from '@prisma/client';
 
 export class CreateStudentDTO {
   @IsNotEmpty({ message: 'O campo RA é obrigatório' })
@@ -12,7 +12,7 @@ export class CreateStudentDTO {
   period: string;
 
   @IsNotEmpty({ message: 'O campo status é obrigatório' })
-  status: string;
+  statusConta: StatusContaAluno;
 
   @IsNotEmpty({ message: 'O campo nome é obrigatório' })
   name: string;
@@ -44,6 +44,10 @@ export class CreateStudentDTO {
   @IsDateString({}, { message: "O formato da data de vencimento está inválido" })
   dueDate: string;
 
-  @IsNotEmpty({ message: 'O campo senha é obrigatório' })
+  // @IsNotEmpty({ message: 'O campo senha é obrigatório' })
+  @IsEmpty()
   password: string;
+
+  
+
 }

@@ -30,18 +30,8 @@ export class StudentService {
     return result;
   }
 
-  async findByTokenQrcode(qrcode: string): Promise<StudentEntity>{
-    const result = await this.repository.findByTokenQrcode(qrcode)
-
-    if(result == null){
-      throw new NotFoundException('Estudante não encontrado')
-    }
-    return result
-
-  }
-
-  async getStudentByEmail(ra: string): Promise<StudentEntity> {
-    const result = await this.repository.findByEmail(ra);
+  async getStudentByEmail(email: string): Promise<StudentEntity> {
+    const result = await this.repository.findByEmail(email);
     if (result == null) {
       throw new NotFoundException('Estudante não encontrado');
     }
@@ -69,29 +59,13 @@ export class StudentService {
   async createStudent(student: CreateStudentDTO) {
     const passwordHash = await this.hashService.hashContent(student.birthDate)
   try {
-     ValidarCpf(student.cpf); 
-
-    const token = randomUUID();
-
-    const entity = this.mapper.toEntity(student);
-
-    entity.qrcode = token;
-    entity.password = passwordHash;
-
-    return await this.repository.create(entity);
-    
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (error.code === 'P2002') {
-        throw new BadRequestException(
-          'Já existe um registro com esses dados, verifique email, RG ou CPF'
-        );
-      }
-    }
-
-    throw error;
+    ValidarCpf(student.cpf)
+    student.password= passwordHash
+    return await this.repository.create(this.mapper.toEntity(student));
+  }catch(error){
+    return error
   }
-}
+  }
 
   async updateStudents(student: StudentEntity) {
     const result =  await this.repository.findByRa(student.ra);
@@ -112,3 +86,4 @@ export class StudentService {
     return await this.repository.delete(ra);
   }
 }
+

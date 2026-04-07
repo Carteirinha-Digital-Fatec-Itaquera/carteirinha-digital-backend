@@ -9,7 +9,6 @@ import { DatabaseModule } from 'src/database/database.module';
 
 import { UtilsModule } from 'src/utils/utilsModule';
 
-
 @Module({
   imports: [DatabaseModule, UtilsModule],
   controllers: [StudentController],

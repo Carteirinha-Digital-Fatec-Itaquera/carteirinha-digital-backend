@@ -35,7 +35,7 @@ export class PrismaStudentRepository implements StudentRepository {
         ra: student.ra,
         course: student.course,
         period: student.period,
-        status: student.status,
+        statusConta: student.statusConta,
         name: student.name,
         admission: student.admission,
         email: student.email,
@@ -45,7 +45,8 @@ export class PrismaStudentRepository implements StudentRepository {
         qrcode: student.qrcode,
         birthDate: student.birthDate,
         dueDate: student.dueDate,
-        password: student.password,
+        // password: student.password, //retirado por não ser ncessário do ponto de vista da secretária
+        password: student.password
       },
     });
   }
@@ -56,7 +57,7 @@ export class PrismaStudentRepository implements StudentRepository {
       data: {
         course: student.course,
         period: student.period,
-        status: student.status,
+        statusConta: student.statusConta,
         name: student.name,
         admission: student.admission,
         email: student.email,

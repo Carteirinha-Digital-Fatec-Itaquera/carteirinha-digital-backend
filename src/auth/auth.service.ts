@@ -7,6 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 import { SecretaryService } from 'src/secretary/secretary.service';
 import { StudentService } from 'src/student/student.service';
 import { HashContentService } from 'src/utils/hashContentService';
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -41,27 +42,29 @@ export class AuthService {
   }
 
   async signInSecretary(email: string, pass: string): Promise<string> {
-  const secretary = await this.secretaryService.getSecretaryByEmail(email);
+    const secretary = await this.secretaryService.getSecretaryByEmail(email);
+    const messageError = 'O e-mail ou a senha estão errados';
 
-  const messageError = 'O e-mail ou a senha estão errados';
+    if (!secretary) {
+      throw new UnauthorizedException(messageError);
+    }
+    if (!secretary.lastLogin){
+      
+    }
+    // if (secretary.password !== pass) {
+    //   throw new UnauthorizedException(messageError);
+    // }
+    const isValidPassword:boolean = await this.hashService.compareHash(secretary.password, pass)
+    if (!isValidPassword){
+        throw new ConflictException('A senha desta conta ainda não foi definida');
+    } 
+    const payload = {
+      id: secretary.id,
+      email: secretary.email,
+    };
 
-  if (!secretary) {
-    throw new UnauthorizedException(messageError);
-  }
-
-  // if (secretary.password !== pass) {
-  //   throw new UnauthorizedException(messageError);
-  // }
-  const isValidPassword:boolean = await this.hashService.compareHash(secretary.password, pass)
-  if (!isValidPassword){
-      throw new ConflictException('A senha desta conta ainda não foi definida');
-  } 
-  const payload = {
-    id: secretary.id,
-    email: secretary.email,
-  };
-
-  return this.jwtService.signAsync(payload);
+    return this.jwtService.signAsync(payload);
 }
+
   
 }
