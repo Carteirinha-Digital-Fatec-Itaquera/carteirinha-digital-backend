@@ -1,5 +1,6 @@
-import { PrismaService } from 'src/database/prisma.service';
-import { StudentEntity } from 'src/student/entities/student.entity';
+import { PrismaService } from '../../../database/prisma.service';
+
+import { StudentEntity } from '../../../../src/student/entities/student.entity';
 import { StudentRepository } from '../student.repository';
 import { Injectable } from '@nestjs/common';
 

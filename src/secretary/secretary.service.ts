@@ -1,10 +1,10 @@
 import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
-import { PrismaService } from 'src/database/prisma.service'; // ajusta se necessário
+// import { PrismaService } from 'src/database/prisma.service'; // ajusta se necessário
 import { CreateSecretaryDTO } from './dto/create-secretary.dto';
 import { SecretaryMapper } from './mapper/secretary.mapper';
 import { SecretaryRepository } from './repository/secretary.repository';
 import { SecretaryEntity } from './entities/secretary.entity';
-import { HashContentService } from 'src/utils/hashContentService';
+import { HashContentService } from '../../src/utils/hashContentService';
 
 
 @Injectable()
@@ -42,20 +42,23 @@ export class SecretaryService {
 
   async createSecretary(secretary: CreateSecretaryDTO) {
     try{
-      const rawPassoword = this.generateInitialPassword(secretary.birthDate)
 
+      const birthDate = new Date(secretary.birthDate)
+      const rawPassoword = this.generateInitialPassword(secretary.birthDate)
       const hashPassowrd = await this.hashService.hashContent(rawPassoword)
       const entity = this.mapper.toEntity({
         ...secretary,
+        birthDate: birthDate,
         password:hashPassowrd,
         lastLogin:null
       })
-      
+      console.log(`${entity.birthDate},\n\nPASSWORD: ${rawPassoword}\N\N\N\Nn${entity.password}, \n${entity.email}`)
       // return await this.repository.create(this.mapper.toEntity(secretary));
       return await this.repository.create(entity)
     }catch (error){
       // return {msg: `\nErro ao criar usuário do tipo Secretaria.\n${error}`}
-      throw new InternalServerErrorException(`Erro ao criar secretaria: ${error.message}`)
+      console.log(error)
+      throw new InternalServerErrorException(`Erro ao criar secretaria: ${error}`)
     }
     
   }

@@ -7,7 +7,15 @@ import { PrismaPg } from '@prisma/adapter-pg';
 export class PrismaService extends PrismaClient implements OnModuleInit {
   constructor() {
     const adapter = new PrismaPg({ connectionString: process.env.DIRECT_URL });
-    super({ adapter });
+    super({ 
+      adapter,
+      log:[
+        {level:'query', emit:'stdout'},
+        {level:'error', emit:'stdout'},
+        {level:'info', emit:'stdout'},
+        {level:'warn', emit:'stdout'}
+      ]   
+    });
   }
 
   async onModuleInit() {

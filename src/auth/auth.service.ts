@@ -8,10 +8,11 @@ import { JwtService } from '@nestjs/jwt';
 import { isFirebasePushId } from 'class-validator';
 import { STATUS_CODES } from 'http';
 import { first } from 'rxjs';
-import { SecretaryEntity } from 'src/secretary/entities/secretary.entity';
-import { SecretaryService } from 'src/secretary/secretary.service';
-import { StudentService } from 'src/student/student.service';
-import { HashContentService } from 'src/utils/hashContentService';
+import { SecretaryEntity } from '../../src/secretary/entities/secretary.entity';
+import { SecretaryService } from '../../src/secretary/secretary.service';
+import { StudentService } from '../../src/student/student.service';
+import { HashContentService } from '../../src/utils/hashContentService';
+import { TokenPayload } from './dto/payload.dto';
 
 
 
@@ -75,13 +76,14 @@ export class AuthService {
     if (!isValidPassword){
         throw new ConflictException('A senha desta conta ainda não foi definida');
     } 
-
     const isFirstLogin = secretary.lastLogin===null
+
+    // console.log(`\nn\n\n${isFirstLogin}`)
     if (!isFirstLogin) {
       await this.setLoginTimestamp(secretary.id);
     }
 
-    const payload = {
+    const payload:TokenPayload = {
       id: secretary.id,
       email: secretary.email,
       firstLogin: isFirstLogin
@@ -93,13 +95,25 @@ export class AuthService {
 
 
   }
+
+
+  async changePassword(password: string, tipopouser?: string):Promise<void>{ 
+
+
+  }
+
+
+
   private async setLoginTimestamp(id: number) {
     try {
-      await this.secretaryService.updateLastLogin(id);
+      const valueLastLogin =await this.secretaryService.updateLastLogin(id);
+      console.log(`\n\n\n\n${valueLastLogin}`)
     } catch (error) {
       console.error('Erro ao atualizar último login:', error);
     }
   }
+  
+  
   private async setLoginTimestampStudent(ra: string) {
     try {
       await this.studentService.updateLastLoginStudent(ra);
@@ -107,4 +121,7 @@ export class AuthService {
       console.error('Erro ao atualizar último login:', error);
     }
   }
+
+
+
 }

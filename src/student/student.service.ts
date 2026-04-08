@@ -4,11 +4,11 @@ import { StudentEntity } from './entities/student.entity';
 import { StudentMapper } from './mapper/student.mapper';
 import { StudentRepository } from './repository/student.repository';
 import { error } from 'console';
-import ValidarCpf from 'src/utils/validadorCpf';
+import ValidarCpf from '../../src/utils/validadorCpf';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 
-import { HashContentService } from 'src/utils/hashContentService';
+import { HashContentService } from '../../src/utils/hashContentService';
 
 
 @Injectable()

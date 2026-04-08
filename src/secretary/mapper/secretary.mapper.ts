@@ -13,7 +13,7 @@ export class SecretaryMapper {
       secretary.name,
       secretary.email,
       new Date(secretary.dueDate),
-      secretary.password,
+      secretary.password || "",
       secretary.birthDate
     );
   }
