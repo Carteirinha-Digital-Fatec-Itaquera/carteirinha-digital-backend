@@ -1,15 +1,17 @@
-import { Body, Controller, Get, Param, Post, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Patch, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CreateSecretaryDTO } from './dto/create-secretary.dto';
 import { SecretaryService } from './secretary.service';
 import { SecretaryMapper } from './mapper/secretary.mapper';
 import { ViewSecretaryDTO } from './dto/view-secretary.dto';
+import { StudentService } from '../student/student.service'; 
 
 @Controller('secretaria')
 export class SecretaryController {
   constructor(
     private readonly mapper: SecretaryMapper,
     private readonly service: SecretaryService,
+    private readonly studentService: StudentService, 
   ) {}
 
   @Get('listar-todos')
@@ -53,4 +55,25 @@ export class SecretaryController {
     
     throw new BadRequestException('Formato não suportado. Use CSV, TXT ou PDF');
   }
+
+
+  @Get('fotos-pendentes')
+  async getPendingPhotos() {
+    return this.studentService.getPendingPhotos();
+  }
+
+ @Patch('aprovar-foto/:ra')
+async approvePhoto(
+  @Param('ra') ra: string,
+  @Body() body: { status: string; rejectionReason?: string }
+) {
+  console.log('RA recebido:', ra);
+  console.log('Body recebido:', body);
+  
+  if (!body || !body.status) {
+    throw new BadRequestException('Status é obrigatório');
+  }
+  
+  return this.studentService.approvePhoto(ra, body.status, body.rejectionReason || null, 'secretaria');
+}
 }

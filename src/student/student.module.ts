@@ -5,8 +5,10 @@ import { StudentRepository } from './repository/student.repository';
 import { PrismaStudentRepository } from './repository/prisma/prisma.student.repository';
 import { StudentMapper } from './mapper/student.mapper';
 import { PrismaService } from 'src/database/prisma.service';
+import { UploadModule } from '../upload/upload.module'; 
 
 @Module({
+  imports: [UploadModule], 
   controllers: [StudentController],
   providers: [
     StudentService,
