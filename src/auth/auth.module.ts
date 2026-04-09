@@ -14,6 +14,7 @@ import { PrismaService } from 'src/database/prisma.service';
 import { JwtModule } from '@nestjs/jwt';
 import { UtilsModule } from 'src/utils/utilsModule';
 
+import { AuthGuard } from './auth.guard';
 @Module({
   imports: [
     JwtModule.register({
@@ -26,6 +27,7 @@ import { UtilsModule } from 'src/utils/utilsModule';
   controllers: [AuthController],
   providers: [
     AuthService,
+    AuthGuard,
     StudentService,
     // JwtService,
     StudentMapper,

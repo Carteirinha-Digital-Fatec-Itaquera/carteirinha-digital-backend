@@ -59,4 +59,14 @@ export class PrismaSecretaryRepository implements SecretaryRepository {
         },
       });
     }
+
+
+    async updatePassword(id: number, newPassword: string): Promise<void> {
+      await this.prisma.secretary.update({
+        where:{id},
+        data:{
+          password: newPassword
+        }
+      })
+    }
 }

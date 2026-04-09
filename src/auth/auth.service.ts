@@ -1,6 +1,7 @@
 import {
   ConflictException,
   Injectable,
+  InternalServerErrorException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ExceptionsHandler } from '@nestjs/core/exceptions/exceptions-handler';
@@ -51,13 +52,14 @@ export class AuthService {
       await this.setLoginTimestampStudent(student.ra)    
     }
 
-    const payload = {
-      ra: student.ra,
-      email: student.email,
+    const payload:TokenPayload = {
+      sub: student.ra,
+      // email: student.email,
+      role: 'student',
       firstLogin:isFirstLogin
     };
     const token =await this.jwtService.signAsync(payload);
-    return {accesstoken: token, firstLogin:isFirstLogin}
+    return {accessToken: token, firstLogin:isFirstLogin}
   }
 
   // async signInSecretary(email: string, pass: string): Promise<string> {
@@ -84,10 +86,12 @@ export class AuthService {
     }
 
     const payload:TokenPayload = {
-      id: secretary.id,
-      email: secretary.email,
+      sub: secretary.id,
+      // email: secretary.email,
+      role: 'secretary',
       firstLogin: isFirstLogin
     };
+
     const token = await this.jwtService.signAsync(payload);
 
     return {accessToken: token, firstLogin: isFirstLogin}
@@ -97,9 +101,36 @@ export class AuthService {
   }
 
 
-  async changePassword(password: string, tipopouser?: string):Promise<void>{ 
+  async changePassword(newPassword: string, valuesSearch:number|string, userType: 'student'|'secretary'):Promise<void>{ 
+    
+    try{
+      const hashedPassword = await this.hashService.hashContent(newPassword)
+      if(userType === 'student'){
+        const [resPasswordUpdate, resLastLoginUpdate] = await Promise.all(
+          [
+          this.studentService.updateStudentPassword(String(valuesSearch), hashedPassword),
+          this.studentService.updateLastLoginStudent(String(valuesSearch))]
+        )
+        // console.log(`\n\n\n${resPasswordUpdate}\n\n ${resLastLoginUpdate}`)
+      }
+      else {
 
+        const idNumeric = Number(valuesSearch);
+        if (isNaN(idNumeric)) {
+            throw new Error("ID de secretária inválido para conversão numérica");
+        }
+          
+        await Promise.all([
+            this.secretaryService.updateSecretaryPassword(idNumeric, hashedPassword),
+            this.secretaryService.updateLastLogin(idNumeric)
+        ]);
 
+      }
+    }catch(error){
+      console.error('Erro ao troca senha', error)
+      throw new InternalServerErrorException('Não é possível atualizar a senha')
+    }
+    
   }
 
 
@@ -107,7 +138,7 @@ export class AuthService {
   private async setLoginTimestamp(id: number) {
     try {
       const valueLastLogin =await this.secretaryService.updateLastLogin(id);
-      console.log(`\n\n\n\n${valueLastLogin}`)
+      // console.log(`\n\n\n\n${valueLastLogin}`)
     } catch (error) {
       console.error('Erro ao atualizar último login:', error);
     }

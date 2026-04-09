@@ -2,7 +2,8 @@
 
 
 export interface TokenPayload{
-    id:number
-    email:string
+    sub:number|string
+    // email:string
+    role: string
     firstLogin: boolean
 }

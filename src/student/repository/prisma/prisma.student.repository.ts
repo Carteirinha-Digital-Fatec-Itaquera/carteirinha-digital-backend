@@ -3,6 +3,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { StudentEntity } from '../../../../src/student/entities/student.entity';
 import { StudentRepository } from '../student.repository';
 import { Injectable } from '@nestjs/common';
+import passport from 'passport';
 
 @Injectable()
 export class PrismaStudentRepository implements StudentRepository {
@@ -83,5 +84,14 @@ export class PrismaStudentRepository implements StudentRepository {
           lastLogin: new Date(),
         },
       });
+  }
+
+  async updatePassword(ra: string, newPassword:string): Promise<void> {
+    await this.prisma.student.update({
+      where: {ra},
+      data:  {
+        password: newPassword
+      }
+    })
   }
 }

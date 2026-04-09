@@ -14,4 +14,5 @@ export abstract class SecretaryRepository {
     abstract delete(id: number): Promise<void>;
 
     abstract updateLastLogin(id:number): Promise<void>
+    abstract updatePassword(id:number, newPassword:string):Promise<void>
 }

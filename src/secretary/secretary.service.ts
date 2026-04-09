@@ -52,7 +52,7 @@ export class SecretaryService {
         password:hashPassowrd,
         lastLogin:null
       })
-      console.log(`${entity.birthDate},\n\nPASSWORD: ${rawPassoword}\N\N\N\Nn${entity.password}, \n${entity.email}`)
+      // console.log(`${entity.birthDate},\n\nPASSWORD: ${rawPassoword}\N\N\N\Nn${entity.password}, \n${entity.email}`)
       // return await this.repository.create(this.mapper.toEntity(secretary));
       return await this.repository.create(entity)
     }catch (error){
@@ -88,6 +88,11 @@ export class SecretaryService {
     return await this.repository.updateLastLogin(id);
   }
 
+
+
+  async updateSecretaryPassword(id:number, newPassword:string){
+    return await this.repository.updatePassword(id, newPassword)
+  }
   private generateInitialPassword(birthDate: Date): string {
     const date = new Date(birthDate);
     const day = String(date.getUTCDate()).padStart(2, '0');

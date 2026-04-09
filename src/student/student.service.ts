@@ -5,10 +5,14 @@ import { StudentMapper } from './mapper/student.mapper';
 import { StudentRepository } from './repository/student.repository';
 import { error } from 'console';
 import ValidarCpf from '../../src/utils/validadorCpf';
+
 import { Prisma } from '@prisma/client';
+
+
 import { randomUUID } from 'crypto';
 
 import { HashContentService } from '../../src/utils/hashContentService';
+import passport from 'passport';
 
 
 @Injectable()
@@ -115,6 +119,10 @@ export class StudentService {
   }
   async updateLastLoginStudent(ra: string) {
     return await this.repository.updateLastLogin(ra);
+  } 
+
+  async updateStudentPassword(ra:string, newPassword:string){
+    return await this.repository.updatePassword(ra, newPassword)
   }
 
   private generateInitialPassword(birthDate: Date): string {
