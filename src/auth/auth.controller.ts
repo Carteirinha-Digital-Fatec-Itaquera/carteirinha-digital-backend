@@ -107,4 +107,18 @@ export class AuthController {
     )
   } 
 
+  @HttpCode(HttpStatus.OK)
+  @Post('reset-password')
+  async esqueciMinhaSenha(
+    @Request()req:any,
+    @Body() passwordDTO: PasswordDTO
+  ):Promise<any>{
+    const userId = req.user.sub
+    const userType = req.user.role as 'student' |'secretary'
+    await this.authService.changePassword(
+      passwordDTO.newPassword,
+      userId,
+      userType
+    )
+  }
 }

@@ -8,6 +8,9 @@ export class PasswordDTO{
     
     @IsOptional({message: "Tokem invalido ou inativo"})
     token?: string;
+
+    @IsOptional({message:"Email inserido invalido"})
+    email?:String
 }
 
 // export class PasswordResponse

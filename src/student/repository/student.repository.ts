@@ -17,4 +17,6 @@ export abstract class StudentRepository {
 
   abstract updateLastLogin(ra: string): Promise<void>
   abstract updatePassword(ra: string, newPassword:string): Promise<void>
+
+  // abstract resetPassword(email:string): Promise<void>
 }

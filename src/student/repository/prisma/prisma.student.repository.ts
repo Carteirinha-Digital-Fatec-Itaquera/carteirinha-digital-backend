@@ -94,4 +94,5 @@ export class PrismaStudentRepository implements StudentRepository {
       }
     })
   }
+  
 }

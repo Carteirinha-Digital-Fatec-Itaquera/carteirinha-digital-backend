@@ -100,6 +100,36 @@ export class AuthService {
 
   }
 
+  async resetPassword(email:string,Password:string, userType: 'student'|'secretary'){
+    try{
+      if(userType ==='student'){
+        const user = await this.studentService.getStudentByEmail(email)
+        if(!user)return {msg: "nenhum usuário encontrado"}
+        
+        const newPasswordHash = await this.hashService.hashContent(Password)
+        const [resPasswordUpdate, resLastLoginUpdate] = await Promise.all(
+          [
+          this.studentService.updateStudentPassword(String(user.ra), newPasswordHash),
+          this.studentService.updateLastLoginStudent(String(user.ra))]
+        ) 
+      
+      }else if(userType === 'secretary'){
+        const user = await this.secretaryService.getSecretaryByEmail(email)
+        if(!user)return {msg: "nenhum usuário encontrado"}
+        
+        const newPasswordHash = await this.hashService.hashContent(Password)
+        const [resPasswordUpdate, resLastLoginUpdate] = await Promise.all(
+          [
+          this.studentService.updateStudentPassword(String(user.id), newPasswordHash),
+          this.studentService.updateLastLoginStudent(String(user.id))]
+        ) 
+      }else{
+        return {msg:"nenhum usuário encontrado"}
+      }
+    }catch(error){
+      return error
+    }
+  }
 
   async changePassword(newPassword: string, valuesSearch:number|string, userType: 'student'|'secretary'):Promise<void>{ 
     
