@@ -14,9 +14,9 @@ import { SecretaryService } from '../../src/secretary/secretary.service';
 import { StudentService } from '../../src/student/student.service';
 import { HashContentService } from '../../src/utils/hashContentService';
 import { TokenPayload } from './dto/payload.dto';
+import { StudentEntity } from 'src/student/entities/student.entity';
 
-
-
+import { MailService } from 'src/utils/mailService';
 
 
 @Injectable()
@@ -25,7 +25,8 @@ export class AuthService {
     private readonly studentService: StudentService,
     private readonly secretaryService: SecretaryService,
     private readonly jwtService: JwtService,
-    private readonly hashService:HashContentService
+    private readonly hashService:HashContentService,
+    private readonly mailService: MailService, 
   ) {}
 
   async signInStudent(email: string, pass: string){
@@ -100,37 +101,6 @@ export class AuthService {
 
   }
 
-  async resetPassword(email:string,Password:string, userType: 'student'|'secretary'){
-    try{
-      if(userType ==='student'){
-        const user = await this.studentService.getStudentByEmail(email)
-        if(!user)return {msg: "nenhum usuário encontrado"}
-        
-        const newPasswordHash = await this.hashService.hashContent(Password)
-        const [resPasswordUpdate, resLastLoginUpdate] = await Promise.all(
-          [
-          this.studentService.updateStudentPassword(String(user.ra), newPasswordHash),
-          this.studentService.updateLastLoginStudent(String(user.ra))]
-        ) 
-      
-      }else if(userType === 'secretary'){
-        const user = await this.secretaryService.getSecretaryByEmail(email)
-        if(!user)return {msg: "nenhum usuário encontrado"}
-        
-        const newPasswordHash = await this.hashService.hashContent(Password)
-        const [resPasswordUpdate, resLastLoginUpdate] = await Promise.all(
-          [
-          this.studentService.updateStudentPassword(String(user.id), newPasswordHash),
-          this.studentService.updateLastLoginStudent(String(user.id))]
-        ) 
-      }else{
-        return {msg:"nenhum usuário encontrado"}
-      }
-    }catch(error){
-      return error
-    }
-  }
-
   async changePassword(newPassword: string, valuesSearch:number|string, userType: 'student'|'secretary'):Promise<void>{ 
     
     try{
@@ -164,6 +134,50 @@ export class AuthService {
   }
 
 
+  
+  async sendForgotPasswordEmail(email: string, userType: 'student' | 'secretary') {
+    let user;
+    if (userType === 'student') {
+      user = await this.studentService.getStudentByEmail(email);
+    } else if(userType === 'secretary') {
+      user = await this.secretaryService.getSecretaryByEmail(email);
+    }
+    if (!user) {
+      return { message: 'Se o e-mail estiver cadastrado, você receberá um link em breve.' };
+    }
+
+    const secret = process.env.JWT_SECRET + user.password;
+    const token = await this.jwtService.signAsync(
+      { sub: user.ra || user.id, role: userType },
+      { secret, expiresIn: '15m' }
+    );
+
+    const resetUrl = `http://localhost:3000/reset-password?token=${token}&id=${user.ra || user.id}&type=${userType}`;
+    await this.mailService.sendResetPasswordEmail(user.email, user.name, resetUrl);
+    return { message: 'E-mail enviado com sucesso.' };
+  }
+
+  async resetPasswordWithToken(token: string, id: string|number, userType: 'student' | 'secretary', newPass: string) {
+    let user;
+    if (userType === 'student') {
+      user = await this.studentService.getStudentByRa(String(id)); // ou getByRA
+    } else if(userType === 'secretary') {
+      user = await this.secretaryService.getSecretaryById(Number(id));
+    }
+
+    if (!user) throw new UnauthorizedException('Usuário inválido');
+
+    try {
+      const secret = process.env.JWT_SECRET + user.password;
+      await this.jwtService.verifyAsync(token, { secret });
+
+      await this.changePassword(newPass, id, userType);
+      
+      return { message: 'Senha redefinida com sucesso!' };
+    } catch (e) {
+      throw new UnauthorizedException('Link expirado ou já utilizado.');
+    }
+  }
 
   private async setLoginTimestamp(id: number) {
     try {

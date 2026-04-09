@@ -107,18 +107,14 @@ export class AuthController {
     )
   } 
 
-  @HttpCode(HttpStatus.OK)
-  @Post('reset-password')
-  async esqueciMinhaSenha(
-    @Request()req:any,
-    @Body() passwordDTO: PasswordDTO
-  ):Promise<any>{
-    const userId = req.user.sub
-    const userType = req.user.role as 'student' |'secretary'
-    await this.authService.changePassword(
-      passwordDTO.newPassword,
-      userId,
-      userType
-    )
+  @Post('forgot-password')
+  async forgot(@Body() body: { email: string, type: 'student' | 'secretary' }) {
+    return this.authService.sendForgotPasswordEmail(body.email, body.type);
   }
+
+  @Post('reset-password')
+  async reset(@Body() body: { token: string, id: string, type: 'student' | 'secretary', newPass: string }) {
+    return this.authService.resetPasswordWithToken(body.token, body.id, body.type, body.newPass);
+  }
+  
 }
