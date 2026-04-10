@@ -149,15 +149,16 @@ export class AuthService {
     const secret = process.env.JWT_SECRET + user.password;
     const token = await this.jwtService.signAsync(
       { sub: user.ra || user.id, role: userType },
-      { secret, expiresIn: '15m' }
+      { secret, expiresIn: '15h' }
     );
-
+    console.log(`${token}, \n\n\n\n${user.ra || user.id}\n\n\n ${userType}`)
     const resetUrl = `http://localhost:3000/reset-password?token=${token}&id=${user.ra || user.id}&type=${userType}`;
     await this.mailService.sendResetPasswordEmail(user.email, user.name, resetUrl);
     return { message: 'E-mail enviado com sucesso.' };
   }
 
   async resetPasswordWithToken(token: string, id: string|number, userType: 'student' | 'secretary', newPass: string) {
+    console.log(`\n\n${token}, \n${id}, \n\n${userType}, \n\n${userType}, ${newPass}`)
     let user;
     if (userType === 'student') {
       user = await this.studentService.getStudentByRa(String(id)); // ou getByRA

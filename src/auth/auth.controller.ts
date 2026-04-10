@@ -112,9 +112,16 @@ export class AuthController {
     return this.authService.sendForgotPasswordEmail(body.email, body.type);
   }
 
-  @Post('reset-password')
-  async reset(@Body() body: { token: string, id: string, type: 'student' | 'secretary', newPass: string }) {
-    return this.authService.resetPasswordWithToken(body.token, body.id, body.type, body.newPass);
+  @Post('reset') 
+  async reset(
+    @Body() body: { token: string; id: string; type: 'student' | 'secretary'; newPass: string }
+  ) {
+    return this.authService.resetPasswordWithToken(
+      body.token,
+      body.id,
+      body.type,
+      body.newPass
+    );
   }
   
 }

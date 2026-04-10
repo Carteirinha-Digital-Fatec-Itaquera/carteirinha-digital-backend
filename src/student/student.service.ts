@@ -12,7 +12,6 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 
 import { HashContentService } from '../../src/utils/hashContentService';
-import passport from 'passport';
 
 
 @Injectable()
@@ -87,6 +86,7 @@ export class StudentService {
       return await this.repository.create(entity);
     
     } catch (error) {
+      
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
         if (error.code === 'P2002') {
           throw new BadRequestException(

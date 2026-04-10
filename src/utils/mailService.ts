@@ -9,6 +9,7 @@ export class MailService {
     this.transporter = nodemailer.createTransport({
       host: process.env.MAIL_HOST, // Ex: smtp.gmail.com
       port: Number(process.env.MAIL_PORT),
+      secure:false,
       auth: {
         user: process.env.MAIL_USER,
         pass: process.env.MAIL_PASS,
@@ -16,7 +17,7 @@ export class MailService {
     });
   }
 
-  async sendResetPasswordEmail(email: string, resetLink: string, userName: string) {
+  async sendResetPasswordEmail(email: string, userName: string,resetLink: string) {
     const htmlBody = `
       <div style="font-family: Arial, sans-serif; max-width: 600px;">
         <h2>Olá, ${userName}!</h2>
