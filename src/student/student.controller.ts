@@ -15,7 +15,7 @@ export class StudentController {
   async getStudents(): Promise<ViewStudentDTO[]> {
     return this.mapper.toListDTO(await this.service.getStudents());
   }
-
+  
   @Get('encontrar-por-ra/:ra')
   async getStudentByRa(@Param('ra') ra: string): Promise<ViewStudentDTO> {
     return this.mapper.toDTO(await this.service.getStudentByRa(ra));
