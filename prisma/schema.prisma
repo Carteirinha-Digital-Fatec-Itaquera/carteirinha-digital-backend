@@ -6,23 +6,33 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+enum PhotoStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
 
 model Student {
-  ra        String   @id
-  course    String
-  period    String
-  status    String
-  name      String
-  admission String
-  email     String   @unique
-  cpf       String   @unique
-  rg        String   @unique
-  qrcode    String?
-  photo     String?
-  birthDate DateTime
-  dueDate   DateTime
-  password  String
+  ra              String      @id
+  course          String
+  period          String
+  status          String
+  name            String
+  admission       String
+  email           String      @unique
+  cpf             String      @unique
+  rg              String      @unique
+  qrcode          String?
+  photo           String?      
+  birthDate       DateTime
+  dueDate         DateTime
+  password        String
+  photoStatus     PhotoStatus   @default(PENDING)
+  approvedBy      String?       
+  approvedAt      DateTime?
+  rejectionReason String?
 }
+
 
 model Secretary {
   id Int @id @default(autoincrement())
@@ -30,4 +40,13 @@ model Secretary {
   email String @unique
   dueDate DateTime
   password String
+}
+
+model VerificationCode {
+  id        Int      @id @default(autoincrement())
+  email     String
+  code      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  used      Boolean  @default(false)
 }

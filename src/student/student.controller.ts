@@ -1,14 +1,17 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseInterceptors, UploadedFile, BadRequestException, UseGuards, Req } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { CreateStudentDTO } from './dto/create-student.dto';
 import { StudentService } from './student.service';
 import { StudentMapper } from './mapper/student.mapper';
 import { ViewStudentDTO } from './dto/view-student.dto';
+import { UploadService } from '../upload/upload.service';
 
 @Controller('estudantes')
 export class StudentController {
   constructor(
     private readonly mapper: StudentMapper,
     private readonly service: StudentService,
+    private readonly uploadService: UploadService,
   ) {}
 
   @Get('listar-todos')
@@ -31,5 +34,27 @@ export class StudentController {
   @Post('criar')
   async createStudent(@Body() student: CreateStudentDTO) {
     await this.service.createStudent(student);
+  }
+
+  // ========== NOVOS ENDPOINTS DE FOTO ==========
+
+  @Post('upload-foto')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadPhoto(@UploadedFile() file: Express.Multer.File, @Body() body: { ra: string }) {
+    if (!file) {
+      throw new BadRequestException('Nenhum arquivo enviado');
+    }
+
+    if (!body.ra) {
+      throw new BadRequestException('RA é obrigatório');
+    }
+
+    const photoUrl = await this.uploadService.uploadPhoto(file, body.ra);
+    return this.service.requestPhotoApproval(body.ra, photoUrl);
+  }
+
+  @Get('foto-status/:ra')
+  async getPhotoStatus(@Param('ra') ra: string) {
+    return this.service.getPhotoStatus(ra);
   }
 }
