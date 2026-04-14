@@ -56,17 +56,21 @@ export class AuthController {
       authDTO.password,
     );
     
-    if (results.firstLogin) {
-      return {
-        message: 'Troca de senha obrigatória',
-        mustChangePassword: true,
-        token: results.accessToken 
-      };
-    }
-    console.log(`${results.firstLogin}`)
-    return new TokenDTO(results.accessToken);
+    // if (results.firstLogin) {
+    //   return {
+    //     message: 'Troca de senha obrigatória',
+    //     mustChangePassword: true,
+    //     token: results.accessToken 
+    //   };
+    // }
+    // console.log(`${results.firstLogin}`)
+    // return new TokenDTO(results.accessToken);
   
-
+    return {
+      message: results.firstLogin ? "Troca de senha obrigatória" : "Login realizado",
+      mustChangePassword: results.firstLogin,
+      token: results.accessToken,
+    };
   }
 
   @UseGuards(AuthGuard)
