@@ -28,11 +28,11 @@ export class SecretaryController {
   @Get('encontrar-por-email/:email')
   async getSecretaryByEmail(@Param('email') email: string): Promise<ViewSecretaryDTO> {
     return this.mapper.toDTO(await this.service.getSecretaryByEmail(email));
-    
-  async getSecretaryById(@Param('id') id: string): Promise<ViewSecretaryDTO> {
-    const data = await this.service.getSecretaryById(id);
-    return this.mapper.toDTO(data);
   }
+  // async getSecretaryById(@Param('id') id: string): Promise<ViewSecretaryDTO> {
+  //   const data = await this.service.getSecretaryById(id);
+  //   return this.mapper.toDTO(data);
+  // }
 
   @Post('criar')
   async createSecretary(@Body() secretary: CreateSecretaryDTO) {
@@ -48,11 +48,8 @@ export class SecretaryController {
   async deleteSecretary(@Param('id', ParseIntPipe) id: number) {
     return await this.service.deleteSecretary(id);
   }
-}
 
-    const data = await this.service.createSecretary(secretary);
-    return this.mapper.toDTO(data);
-  }
+
 
   @Post('upload-alunos')
   @UseInterceptors(FileInterceptor('file'))
@@ -84,18 +81,20 @@ export class SecretaryController {
     return this.studentService.getPendingPhotos();
   }
 
- @Patch('aprovar-foto/:ra')
-async approvePhoto(
-  @Param('ra') ra: string,
-  @Body() body: { status: string; rejectionReason?: string }
-) {
-  console.log('RA recebido:', ra);
-  console.log('Body recebido:', body);
-  
-  if (!body || !body.status) {
-    throw new BadRequestException('Status é obrigatório');
+  @Patch('aprovar-foto/:ra')
+  async approvePhoto(
+    @Param('ra') ra: string,
+    @Body() body: { status: string; rejectionReason?: string }
+  ) {
+    console.log('RA recebido:', ra);
+    console.log('Body recebido:', body);
+    
+    if (!body || !body.status) {
+      throw new BadRequestException('Status é obrigatório');
+    }
+    
+    return this.studentService.approvePhoto(ra, body.status, body.rejectionReason || null, 'secretaria');
   }
+
   
-  return this.studentService.approvePhoto(ra, body.status, body.rejectionReason || null, 'secretaria');
-}
 }

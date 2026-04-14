@@ -23,25 +23,17 @@ import { AuthGuard } from './auth.guard';
       secret: process.env.JWT_SECRET || 'supa_secret_passwordXD',
       signOptions: { expiresIn: '1h' },
     }),
-    UtilsModule
-
+    UtilsModule,
     VerificationModule,
     MailModule,
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'secret',
-      signOptions: { expiresIn: '1d' },
-    }),
   ],
   controllers: [AuthController],
   providers: [
     AuthService,
     AuthGuard,
     StudentService,
-<<<<<<< HEAD
-    // JwtService,
-=======
->>>>>>> maria-cecilia/upload-arquivos
     StudentMapper,
+    
     SecretaryService,
     SecretaryMapper,
     PrismaService,

@@ -16,7 +16,7 @@ export class StudentService {
   constructor(
     private readonly mapper: StudentMapper,
     private readonly repository: StudentRepository,
-    private readonly hashService: HashContentService 
+    private readonly hashService: HashContentService ,
     private readonly prisma: PrismaService, // Adicione
   ) {}
   

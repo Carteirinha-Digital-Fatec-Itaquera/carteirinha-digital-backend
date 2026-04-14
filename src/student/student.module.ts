@@ -7,20 +7,26 @@ import { PrismaService } from '../../src/database/prisma.service';
 import { DatabaseModule } from '../../src/database/database.module';
 
 import { UtilsModule } from '../../src/utils/utilsModule';
-
-
-@Module({
-  imports: [DatabaseModule, UtilsModule],
+import { UploadModule } from 'src/upload/upload.module';
 import { StudentMapper } from './mapper/student.mapper';
-import { UploadModule } from '../upload/upload.module'; 
+
+
+
+// @Module({
+//   imports: [DatabaseModule, UtilsModule],
+// import { StudentMapper } from './mapper/student.mapper';
+// import { UploadModule } from '../upload/upload.module'; 
+// })
+
+
 
 @Module({
-  imports: [UploadModule], 
+  imports: [UploadModule, DatabaseModule, UtilsModule], 
   controllers: [StudentController],
   providers: [
     StudentService,
-    StudentMapper,
     PrismaService,
+    StudentMapper,
     {
       provide: StudentRepository,
       useClass: PrismaStudentRepository,
@@ -29,3 +35,4 @@ import { UploadModule } from '../upload/upload.module';
   exports: [StudentService],
 })
 export class StudentModule {}
+

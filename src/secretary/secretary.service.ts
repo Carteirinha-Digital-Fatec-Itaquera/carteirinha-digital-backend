@@ -17,7 +17,7 @@ export class SecretaryService {
   constructor(
     private readonly mapper: SecretaryMapper,
     private readonly repository: SecretaryRepository,
-    private readonly hashService: HashContentService
+    private readonly hashService: HashContentService,
     private readonly prisma: PrismaService,
     private readonly studentService: StudentService,
   ) {}
@@ -204,7 +204,7 @@ export class SecretaryService {
           email: colunas[6],
           cpf: colunas[7],
           rg: colunas[8],
-          birthDate: colunas[9],
+          birthDate: new Date(colunas[9]),
           dueDate: colunas[10],
           password: colunas[11] || '123456',
         });

@@ -32,20 +32,7 @@ model Student {
   password  String
 
   lastLogin DateTime? 
-  ra              String      @id
-  course          String
-  period          String
-  status          String
-  name            String
-  admission       String
-  email           String      @unique
-  cpf             String      @unique
-  rg              String      @unique
-  qrcode          String?
-  photo           String?      
-  birthDate       DateTime
-  dueDate         DateTime
-  password        String
+
   photoStatus     PhotoStatus   @default(PENDING)
   approvedBy      String?       
   approvedAt      DateTime?
