@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt'; // <-- ADICIONA
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { StudentService } from 'src/student/student.service';
-import { JwtService } from '@nestjs/jwt';
 import { StudentMapper } from 'src/student/mapper/student.mapper';
 import { SecretaryService } from 'src/secretary/secretary.service';
 import { SecretaryMapper } from 'src/secretary/mapper/secretary.mapper';
@@ -11,8 +11,10 @@ import { PrismaStudentRepository } from 'src/student/repository/prisma/prisma.st
 import { SecretaryRepository } from 'src/secretary/repository/secretary.repository';
 import { PrismaSecretaryRepository } from 'src/secretary/repository/prisma/prisma.secretary.repository';
 import { PrismaService } from 'src/database/prisma.service';
-import { JwtModule } from '@nestjs/jwt';
 import { UtilsModule } from 'src/utils/utilsModule';
+import { VerificationModule } from '../verification/verification.module';
+import { VerificationService } from '../verification/verification.service';
+import { MailModule } from '../mail/mail.module';
 
 import { AuthGuard } from './auth.guard';
 @Module({
@@ -23,17 +25,27 @@ import { AuthGuard } from './auth.guard';
     }),
     UtilsModule
 
+    VerificationModule,
+    MailModule,
+    JwtModule.register({
+      secret: process.env.JWT_SECRET || 'secret',
+      signOptions: { expiresIn: '1d' },
+    }),
   ],
   controllers: [AuthController],
   providers: [
     AuthService,
     AuthGuard,
     StudentService,
+<<<<<<< HEAD
     // JwtService,
+=======
+>>>>>>> maria-cecilia/upload-arquivos
     StudentMapper,
     SecretaryService,
     SecretaryMapper,
     PrismaService,
+    VerificationService,
     {
       provide: StudentRepository,
       useClass: PrismaStudentRepository,

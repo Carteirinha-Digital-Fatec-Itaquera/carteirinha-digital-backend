@@ -11,6 +11,11 @@ import { UtilsModule } from '../../src/utils/utilsModule';
 
 @Module({
   imports: [DatabaseModule, UtilsModule], 
+import { DatabaseModule } from 'src/database/database.module';
+import { StudentModule } from 'src/student/student.module';
+
+@Module({
+  imports: [DatabaseModule, StudentModule],
   controllers: [SecretaryController],
   providers: [
     SecretaryService, 

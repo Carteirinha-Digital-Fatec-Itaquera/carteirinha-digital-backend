@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { StudentController } from './student.controller';
 import { StudentService } from './student.service';
-import { StudentMapper } from './mapper/student.mapper';
 import { StudentRepository } from './repository/student.repository';
 import { PrismaStudentRepository } from './repository/prisma/prisma.student.repository';
 import { PrismaService } from '../../src/database/prisma.service';
@@ -12,6 +11,11 @@ import { UtilsModule } from '../../src/utils/utilsModule';
 
 @Module({
   imports: [DatabaseModule, UtilsModule],
+import { StudentMapper } from './mapper/student.mapper';
+import { UploadModule } from '../upload/upload.module'; 
+
+@Module({
+  imports: [UploadModule], 
   controllers: [StudentController],
   providers: [
     StudentService,
@@ -22,5 +26,6 @@ import { UtilsModule } from '../../src/utils/utilsModule';
       useClass: PrismaStudentRepository,
     },
   ],
+  exports: [StudentService],
 })
 export class StudentModule {}

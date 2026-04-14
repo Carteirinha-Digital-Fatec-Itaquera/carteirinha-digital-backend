@@ -125,3 +125,16 @@ export class AuthController {
   }
   
 }
+  // NOVOS ENDPOINTS PARA 2FA
+  @HttpCode(HttpStatus.OK)
+  @Post('enviar-codigo')
+  async sendVerificationCode(@Body() body: { email: string }) {
+    return this.authService.sendVerificationCode(body.email);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('verificar-codigo')
+  async verifyCodeAndLogin(@Body() body: { email: string; code: string }) {
+    return this.authService.verifyCodeAndLogin(body.email, body.code);
+  }
+}
