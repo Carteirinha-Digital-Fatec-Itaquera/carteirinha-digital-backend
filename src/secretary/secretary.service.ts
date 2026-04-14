@@ -1,5 +1,9 @@
-import { Injectable, InternalServerErrorException, NotFoundException, BadRequestException} from '@nestjs/common';
-// import { PrismaService } from 'src/database/prisma.service'; // ajusta se necessário
+import { 
+  Injectable, 
+  InternalServerErrorException, 
+  NotFoundException, 
+  BadRequestException 
+} from '@nestjs/common';
 import { parse } from 'csv-parse';
 import { StudentService } from '../student/student.service';
 import { PrismaService } from 'src/database/prisma.service';
@@ -8,7 +12,6 @@ import { SecretaryMapper } from './mapper/secretary.mapper';
 import { SecretaryRepository } from './repository/secretary.repository';
 import { SecretaryEntity } from './entities/secretary.entity';
 import { HashContentService } from '../../src/utils/hashContentService';
-
 
 const pdfParse = require('pdf-parse');
 
@@ -48,38 +51,43 @@ export class SecretaryService {
   }
 
   async createSecretary(secretary: CreateSecretaryDTO) {
-    try{
+    try {
+      const birthDate = new Date(secretary.birthDate);
+      
+      // PRIORIDADE: 
+      // 1. Se veio senha no formulário (secretary.password), usamos ela.
+      // 2. Se não veio, geramos a inicial baseada na data de nascimento.
+      const passwordToHash = secretary.password 
+        ? secretary.password 
+        : this.generateInitialPassword(birthDate);
 
-      const birthDate = new Date(secretary.birthDate)
-      const rawPassoword = this.generateInitialPassword(secretary.birthDate)
-      const hashPassowrd = await this.hashService.hashContent(rawPassoword)
+      // Gera o HASH da senha escolhida
+      const hashedPassword = await this.hashService.hashContent(passwordToHash);
+      
       const entity = this.mapper.toEntity({
         ...secretary,
         birthDate: birthDate,
-        password:hashPassowrd,
-        lastLogin:null
-      })
-      // console.log(`${entity.birthDate},\n\nPASSWORD: ${rawPassoword}\N\N\N\Nn${entity.password}, \n${entity.email}`)
-      // return await this.repository.create(this.mapper.toEntity(secretary));
-      return await this.repository.create(entity)
-    }catch (error){
-      // return {msg: `\nErro ao criar usuário do tipo Secretaria.\n${error}`}
-      console.log(error)
-      throw new InternalServerErrorException(`Erro ao criar secretaria: ${error}`)
+        password: hashedPassword, // Sobe o hash da senha do formulário
+        lastLogin: null
+      });
+
+      console.log(`Secretaria criada: ${entity.email} | Senha utilizada: ${passwordToHash}`);
+      
+      return await this.repository.create(entity);
+    } catch (error) {
+      console.error('Erro ao criar secretaria:', error);
+      throw new InternalServerErrorException(`Erro ao criar secretaria: ${error.message}`);
     }
-    
   }
 
   async updateSecretary(secretary: SecretaryEntity) {
-    const result = await this.repository.findById(secretary.id)
+    const result = await this.repository.findById(secretary.id);
     
-    if(!result) {
+    if (!result) {
       throw new NotFoundException('Secretaria não encontrada');
     }
     return await this.repository.update(secretary);
-
   }
-
 
   async deleteSecretary(id: number): Promise<void> {
     const result = await this.repository.findById(id);
@@ -90,25 +98,25 @@ export class SecretaryService {
     return await this.repository.delete(id);
   }
 
-
   async updateLastLogin(id: number) {
     return await this.repository.updateLastLogin(id);
   }
 
-
-
-  async updateSecretaryPassword(id:number, newPassword:string){
-    return await this.repository.updatePassword(id, newPassword)
+  async updateSecretaryPassword(id: number, newPassword: string) {
+    // Certifique-se que o "newPassword" que chega aqui já seja um HASH 
+    // ou faça o hash aqui se preferir centralizar.
+    return await this.repository.updatePassword(id, newPassword);
   }
+
   private generateInitialPassword(birthDate: Date): string {
-    const date = new Date(birthDate);
-    const day = String(date.getUTCDate()).padStart(2, '0');
-    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const year = String(date.getUTCFullYear());
+    const day = String(birthDate.getUTCDate()).padStart(2, '0');
+    const month = String(birthDate.getUTCMonth() + 1).padStart(2, '0');
+    const year = String(birthDate.getUTCFullYear());
     
     return `${day}${month}${year}`;
   }
 
+  // --- MÉTODOS DE PROCESSAMENTO DE ARQUIVOS ---
 
   async processarAlunosCSV(buffer: Buffer) {
     const records: any[] = [];
@@ -142,17 +150,7 @@ export class SecretaryService {
         }
 
         await this.studentService.createStudent({
-          ra: aluno.ra,
-          course: aluno.course,
-          period: aluno.period,
-          status: aluno.status,
-          name: aluno.name,
-          admission: aluno.admission,
-          email: aluno.email,
-          cpf: aluno.cpf,
-          rg: aluno.rg,
-          birthDate: aluno.birthDate,
-          dueDate: aluno.dueDate,
+          ...aluno,
           password: aluno.password || '123456',
         });
         resultados.sucesso++;
@@ -222,94 +220,81 @@ export class SecretaryService {
     return resultados;
   }
 
-
- async processarAlunosPDF(buffer: Buffer) {
-  try {
-    const data = await pdfParse(buffer);
-    const texto = data.text;
-    
-    let textoLimpo = texto.replace(/\n/g, '');
-    
-    const regex = /(2025\d{3});([^;]+);([^;]+);([^;]+);([^;]+);([^;]+);([^;]+);([^;]+);([^;]+);(\d{4}-\d{2}-\d{2});(\d{4}-\d{2}-\d{2});(\d+)/g;
-    
-    const alunos: any[] = [];
-    let match;
-    
-    while ((match = regex.exec(textoLimpo)) !== null) {
+  async processarAlunosPDF(buffer: Buffer) {
+    try {
+      const data = await pdfParse(buffer);
+      const texto = data.text;
       
-      if (match[1] === 'ra' || match[1] === '2025') continue;
+      let textoLimpo = texto.replace(/\n/g, '');
       
-      alunos.push({
-        ra: match[1],
-        course: match[2],
-        period: match[3],
-        status: match[4],
-        name: match[5],
-        admission: match[6],
-        email: match[7],
-        cpf: match[8],
-        rg: match[9],
-        birthDate: match[10],
-        dueDate: match[11],
-        password: match[12],
-      });
-    }
-    
-    const resultados = {
-      total: alunos.length,
-      sucesso: 0,
-      erros: [] as { linha: number; ra: string; erro: string }[],
-    };
-
-    for (let i = 0; i < alunos.length; i++) {
-      const aluno = alunos[i];
+      const regex = /(2025\d{3});([^;]+);([^;]+);([^;]+);([^;]+);([^;]+);([^;]+);([^;]+);([^;]+);(\d{4}-\d{2}-\d{2});(\d{4}-\d{2}-\d{2});(\d+)/g;
       
-      try {
-        if (!aluno.ra || !aluno.name || !aluno.email || !aluno.cpf) {
-          throw new Error('Campos obrigatórios faltando');
-        }
-
+      const alunos: any[] = [];
+      let match;
+      
+      while ((match = regex.exec(textoLimpo)) !== null) {
+        if (match[1] === 'ra' || match[1] === '2025') continue;
         
-        const birthDate = new Date(aluno.birthDate);
-        const dueDate = new Date(aluno.dueDate);
-        
-        if (isNaN(birthDate.getTime())) {
-          throw new Error(`Data de nascimento inválida: ${aluno.birthDate}`);
-        }
-        
-        if (isNaN(dueDate.getTime())) {
-          throw new Error(`Data de vencimento inválida: ${aluno.dueDate}`);
-        }
-
-        await this.studentService.createStudent({
-          ra: aluno.ra,
-          course: aluno.course,
-          period: aluno.period,
-          status: aluno.status,
-          name: aluno.name,
-          admission: aluno.admission,
-          email: aluno.email,
-          cpf: aluno.cpf,
-          rg: aluno.rg,
-          birthDate: aluno.birthDate,
-          dueDate: aluno.dueDate,
-          password: aluno.password || '123456',
-        });
-        resultados.sucesso++;
-        
-      } catch (error) {
-        resultados.erros.push({
-          linha: i + 1,
-          ra: aluno.ra || 'N/A',
-          erro: error.message,
+        alunos.push({
+          ra: match[1],
+          course: match[2],
+          period: match[3],
+          status: match[4],
+          name: match[5],
+          admission: match[6],
+          email: match[7],
+          cpf: match[8],
+          rg: match[9],
+          birthDate: match[10],
+          dueDate: match[11],
+          password: match[12],
         });
       }
-    }
+      
+      const resultados = {
+        total: alunos.length,
+        sucesso: 0,
+        erros: [] as { linha: number; ra: string; erro: string }[],
+      };
 
-    return resultados;
-  } catch (error) {
-    console.error('Erro ao processar PDF:', error);
-    throw new BadRequestException('Erro ao processar arquivo PDF: ' + error.message);
+      for (let i = 0; i < alunos.length; i++) {
+        const aluno = alunos[i];
+        
+        try {
+          if (!aluno.ra || !aluno.name || !aluno.email || !aluno.cpf) {
+            throw new Error('Campos obrigatórios faltando');
+          }
+
+          const birthDate = new Date(aluno.birthDate);
+          const dueDate = new Date(aluno.dueDate);
+          
+          if (isNaN(birthDate.getTime())) {
+            throw new Error(`Data de nascimento inválida: ${aluno.birthDate}`);
+          }
+          
+          if (isNaN(dueDate.getTime())) {
+            throw new Error(`Data de vencimento inválida: ${aluno.dueDate}`);
+          }
+
+          await this.studentService.createStudent({
+            ...aluno,
+            password: aluno.password || '123456',
+          });
+          resultados.sucesso++;
+          
+        } catch (error) {
+          resultados.erros.push({
+            linha: i + 1,
+            ra: aluno.ra || 'N/A',
+            erro: error.message,
+          });
+        }
+      }
+
+      return resultados;
+    } catch (error) {
+      console.error('Erro ao processar PDF:', error);
+      throw new BadRequestException('Erro ao processar arquivo PDF: ' + error.message);
+    }
   }
 }
-} 
