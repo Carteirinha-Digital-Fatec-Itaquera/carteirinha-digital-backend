@@ -6,6 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
+    "prisma:seed": "npx prisma db seed",
     "prisma:init": "npx prisma generate && npx prisma migrate dev",
     "prisma:db": "npx prisma generate && npx prisma db push",
     "build": "nest build",
@@ -34,17 +35,17 @@
     "brcypt": "^1.0.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
+    "csv-parse": "^6.2.1",
+    "multer": "^2.1.1",
     "nodemailer": "^8.0.5",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
-    "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1",
-    "uuid": "^13.0.0",
-    "csv-parse": "^6.2.1",
-    "multer": "^2.1.1",
     "pdf-parse": "^1.1.1",
+    "reflect-metadata": "^0.2.2",
     "resend": "^6.10.0",
-    "sharp": "^0.34.5"
+    "rxjs": "^7.8.1",
+    "sharp": "^0.34.5",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -74,6 +75,7 @@
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0"
   },
