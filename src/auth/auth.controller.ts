@@ -37,7 +37,7 @@ export class AuthController {
       return{
         message: "troca de senha Obrigatória",
         mustChangePassword: true,
-        token: results.accessToken
+        token: results.accessToken,
       }
     }
     
