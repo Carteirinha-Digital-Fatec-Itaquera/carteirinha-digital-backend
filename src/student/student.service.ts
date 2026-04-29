@@ -20,9 +20,24 @@ export class StudentService {
     private readonly prisma: PrismaService, // Adicione
   ) {}
   
-  async getStudents(): Promise<StudentEntity[]> {
+  async getStudents(query?: string): Promise<StudentEntity[]> {
+  if (!query || query.trim() === '') {
     return (await this.repository.findAll()).map((student) => student);
   }
+
+  return this.prisma.student.findMany({
+    where: {
+      OR: [
+        { name: { contains: query, mode: 'insensitive' } },
+        { email: { contains: query, mode: 'insensitive' } },
+        { ra: { contains: query, mode: 'insensitive' } },
+        { cpf: { contains: query, mode: 'insensitive' } },
+        { course: { contains: query, mode: 'insensitive' } },
+        { status: { contains: query, mode: 'insensitive' } },
+      ],
+    },
+  });
+}
 
   async getStudentByRa(ra: string): Promise<StudentEntity> {
     const result = await this.repository.findByRa(ra);
@@ -98,15 +113,20 @@ export class StudentService {
   }
 }
 
-  async updateStudents(student: StudentEntity) {
-    const result =  await this.repository.findByRa(student.ra);
-    ValidarCpf(student.cpf);
-    
-    if(result == null) {
-      throw new NotFoundException('Estudante não encontrado');
-    }
-    return await this.repository.update(student);
+  async updateStudents(student: Partial<StudentEntity> & { ra: string }) {
+  const result = await this.repository.findByRa(student.ra);
+
+  if (result == null) {
+    throw new NotFoundException('Estudante não encontrado');
   }
+
+  // Mescla os dados existentes com os novos
+  const updated = { ...result, ...student };
+
+  if (updated.cpf) ValidarCpf(updated.cpf);
+
+  return await this.repository.update(updated as StudentEntity);
+}
 
   async deleteStudent(ra: string) {
     const result = await this.repository.findByRa(ra);

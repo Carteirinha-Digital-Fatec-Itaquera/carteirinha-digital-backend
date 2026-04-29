@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, Get, Param, Post, Put,UseInterceptors, UploadedFile, BadRequestException, UseGuards, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CreateStudentDTO } from './dto/create-student.dto';
 import { StudentService } from './student.service';
 import { StudentMapper } from './mapper/student.mapper';
 import { ViewStudentDTO } from './dto/view-student.dto';
 import { UploadService } from '../upload/upload.service';
+import { UpdateStudentDto } from './dto/update-student.dto';
 
 @Controller('estudantes')
 export class StudentController {
@@ -15,8 +16,8 @@ export class StudentController {
   ) {}
 
   @Get('listar-todos')
-  async getStudents(): Promise<ViewStudentDTO[]> {
-    return this.mapper.toListDTO(await this.service.getStudents());
+    async getStudents(@Query('query') query?: string): Promise<ViewStudentDTO[]> {
+    return this.mapper.toListDTO(await this.service.getStudents(query));
   }
   
   @Get('encontrar-por-ra/:ra')
@@ -42,19 +43,26 @@ export class StudentController {
     return await this.service.createStudent(student);
   }
 
-  @Put('atualizar/:ra')
-  async updateStudent(
-    @Param('ra') ra: string,
-    @Body() student: CreateStudentDTO
-  ) {
-    return await this.service.updateStudents(this.mapper.toEntity({ ...student, ra }));
-  }
-
   @Delete('deletar/:ra')
   async deleteStudent(@Param('ra') ra: string) {
     return await this.service.deleteStudent(ra);
   }
 
+  @Put('atualizar/:ra')
+async updateStudent(
+  @Param('ra') ra: string,
+  @Body() student: UpdateStudentDto
+) {
+  const existing = await this.service.getStudentByRa(ra);
+  const merged = this.mapper.toEntity({
+    ...existing,
+    ...student,
+    ra,
+    birthDate: student.birthDate ?? existing.birthDate,
+    dueDate: student.dueDate ?? existing.dueDate,
+  } as any);
+  return await this.service.updateStudents(merged);
+}
   // ========== NOVOS ENDPOINTS DE FOTO ==========
 
   @Post('upload-foto')
