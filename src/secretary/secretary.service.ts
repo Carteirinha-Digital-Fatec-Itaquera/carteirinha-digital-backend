@@ -195,13 +195,11 @@ export class SecretaryService {
         await this.studentService.createStudent({
           ra: colunas[0],
           course: colunas[1],
-          period: colunas[2],
           status: colunas[3],
           name: colunas[4],
           admission: colunas[5],
           email: colunas[6],
           cpf: colunas[7],
-          rg: colunas[8],
           birthDate: new Date(colunas[9]),
           dueDate: colunas[10],
           password: colunas[11] || '123456',

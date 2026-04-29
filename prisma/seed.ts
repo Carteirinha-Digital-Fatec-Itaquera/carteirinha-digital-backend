@@ -49,13 +49,11 @@ async function main() {
         update :{email: emailEstudante, password: passwordHash},
         create: {
             ra: "12345678910",
-            period: "vespertino",
             status: "ATIVO",
             name: "Robson da Silva Prado",
             admission: "2026-01-01",
             email: emailEstudante,
             cpf:'537.815.150-36', 
-            rg: '24.606.372-5',
             qrcode: "",
             photo: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTSgr2kXZBnfQTP2FOhOpVQupRTVqKw9m2WIQ&s",
             birthDate: birthDateGeral,
