@@ -18,13 +18,11 @@ enum PhotoStatus {
 model Student {
   ra        String   @id
   course    String
-  period    String
   status    String
   name      String
   admission String
   email     String   @unique
   cpf       String   @unique
-  rg        String   @unique
   qrcode    String?   @unique
   photo     String?
   birthDate DateTime
