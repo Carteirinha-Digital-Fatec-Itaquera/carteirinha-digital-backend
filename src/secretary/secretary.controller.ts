@@ -5,6 +5,7 @@ import { SecretaryService } from './secretary.service';
 import { SecretaryMapper } from './mapper/secretary.mapper';
 import { ViewSecretaryDTO } from './dto/view-secretary.dto';
 import { StudentService } from '../student/student.service'; 
+import { UpdateSecretaryDto } from './dto/update-secretary.dto';
 
 @Controller('secretaria')
 export class SecretaryController {
@@ -40,9 +41,12 @@ export class SecretaryController {
   }
 
   @Put('atualizar/:id')
-  async updateSecretary(@Param('id', ParseIntPipe) id: number, @Body() secretary: CreateSecretaryDTO) {
-    return await this.service.updateSecretary(this.mapper.toEntity({ ...secretary, id }));
-  }
+async updateSecretary(
+  @Param('id', ParseIntPipe) id: number,
+  @Body() secretary: UpdateSecretaryDto
+) {
+  return await this.service.updateSecretaryFromDto(id, secretary);
+}
 
   @Delete('deletar/:id')
   async deleteSecretary(@Param('id', ParseIntPipe) id: number) {
