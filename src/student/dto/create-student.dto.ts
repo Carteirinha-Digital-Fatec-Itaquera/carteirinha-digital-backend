@@ -1,4 +1,4 @@
-import { IsDate, IsDateString, IsEmail, IsEmpty, IsNotEmpty, Matches } from 'class-validator';
+import { IsDate, IsDateString, IsEmail, IsEmpty, IsNotEmpty, Matches, IsOptional } from 'class-validator';
 
 
 export class CreateStudentDTO {
@@ -31,9 +31,8 @@ export class CreateStudentDTO {
   @IsDateString({}, { message: "O formato da data de nascimento está inválido" })
   birthDate: Date;
 
-  @IsNotEmpty({ message: 'O campo data de vencimento é obrigatório' })
-  @IsDateString({}, { message: "O formato da data de vencimento está inválido" })
-  dueDate: string;
+  @IsOptional()
+  dueDate?: string;
 
   @IsEmpty({ message: 'O campo senha não necessário para inicio' })
   password: string;
