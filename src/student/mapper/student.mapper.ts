@@ -8,19 +8,19 @@ export class StudentMapper {
   constructor() {}
 
   toEntity(student: CreateStudentDTO): StudentEntity {
-    return new StudentEntity(
-      student.ra,
-      student.course,
-      student.status,
-      student.name,
-      student.admission,
-      student.email,
-      student.cpf,
-      null,
-      null,
-      new Date(student.birthDate),
-      new Date(student.dueDate),
-      student.password,
+  return new StudentEntity(
+    student.ra,
+    student.course,
+    student.status,
+    student.name,
+    student.admission,
+    student.email,
+    student.cpf,
+    null,
+    null,
+    new Date(student.birthDate),
+    student.dueDate ? new Date(student.dueDate) : new Date(), // ← fallback
+    student.password,
     );
   }
 
