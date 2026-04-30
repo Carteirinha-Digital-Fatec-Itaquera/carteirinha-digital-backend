@@ -84,31 +84,41 @@ export class StudentService {
 }
 
   async createStudent(student: CreateStudentDTO) {
-    try {
-      const rawPassoword = this.generateInitialPassword(student.birthDate)
-      const passwordHash = await this.hashService.hashContent(rawPassoword)
-      
-      ValidarCpf(student.cpf); 
-      const token = randomUUID();
-      const entity = this.mapper.toEntity({
-        ...student,
-        password: passwordHash,
-        lastLogin:null
-      });
-      entity.qrcode = token;
+  try {
+    const rawPassword = this.generateInitialPassword(student.birthDate);
+    const passwordHash = await this.hashService.hashContent(rawPassword);
 
-      return await this.repository.create(entity);
-    
-    } catch (error) {
-      
-      if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        if (error.code === 'P2002') {
-          throw new BadRequestException(
-            'Já existe um registro com esses dados, verifique email, RG ou CPF'
-          );
-        }
+    ValidarCpf(student.cpf);
+    const token = randomUUID();
+
+    // Calcula dueDate automaticamente: 5 anos a partir do admission
+    const admissionYear = parseInt(student.admission.toString().substring(0, 4));
+    const admissionSemester = student.admission.toString().length === 5
+      ? parseInt(student.admission.toString().substring(4, 5))
+      : 1;
+    const admissionMonth = admissionSemester === 2 ? 7 : 1; // 1º sem = janeiro, 2º sem = julho
+    const dueDate = new Date(admissionYear + 5, admissionMonth - 1, 1)
+      .toISOString()
+      .split('T')[0];
+
+    const entity = this.mapper.toEntity({
+      ...student,
+      dueDate,
+      password: passwordHash,
+      lastLogin: null,
+    });
+    entity.qrcode = token;
+
+    return await this.repository.create(entity);
+
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2002') {
+        throw new BadRequestException(
+          'Já existe um registro com esses dados, verifique email, RG ou CPF'
+        );
+      }
     }
-
     throw error;
   }
 }
@@ -120,13 +130,35 @@ export class StudentService {
     throw new NotFoundException('Estudante não encontrado');
   }
 
-  // Mescla os dados existentes com os novos
   const updated = { ...result, ...student };
 
   if (updated.cpf) ValidarCpf(updated.cpf);
 
+  // Recalcula dueDate sempre que admission mudar
+  if (student.admission && student.admission !== result.admission) {
+    const admissionYear = parseInt(updated.admission.toString().substring(0, 4));
+    const admissionSemester = updated.admission.toString().length === 5
+      ? parseInt(updated.admission.toString().substring(4, 5))
+      : 1;
+    const admissionMonth = admissionSemester === 2 ? 7 : 1;
+    updated.dueDate = new Date(admissionYear + 5, admissionMonth - 1, 1);
+  }
+
+  // Se status não é "Em curso", força carteirinha vencida
+  if (updated.status !== 'Em curso') {
+    updated.dueDate = new Date('2000-01-01');
+  } else if (result.status !== 'Em curso' && updated.status === 'Em curso') {
+    const admissionYear = parseInt(updated.admission.toString().substring(0, 4));
+    const admissionSemester = updated.admission.toString().length === 5
+      ? parseInt(updated.admission.toString().substring(4, 5))
+      : 1;
+    const admissionMonth = admissionSemester === 2 ? 7 : 1;
+    updated.dueDate = new Date(admissionYear + 5, admissionMonth - 1, 1);
+  }
+
   return await this.repository.update(updated as StudentEntity);
-}
+  }
+
 
   async deleteStudent(ra: string) {
     const result = await this.repository.findByRa(ra);
