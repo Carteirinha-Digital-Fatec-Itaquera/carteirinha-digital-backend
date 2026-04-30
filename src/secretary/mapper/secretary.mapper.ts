@@ -19,8 +19,14 @@ export class SecretaryMapper {
   }
 
   toDTO(secretary: SecretaryEntity): ViewSecretaryDTO {
-    return new ViewSecretaryDTO( secretary.id,secretary.name, secretary.email);
-  }
+  return new ViewSecretaryDTO(
+    secretary.id,
+    secretary.name,
+    secretary.email,
+    secretary.birthDate,
+    secretary.dueDate.toISOString(),
+  );
+}
 
   toListDTO(secretary: SecretaryEntity[]): ViewSecretaryDTO[] {
     return secretary.map((secretary) => this.toDTO(secretary));
