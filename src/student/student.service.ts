@@ -145,7 +145,7 @@ export class StudentService {
   }
 
   // Se status não é "Em curso", força carteirinha vencida
-  if (updated.status !== 'Em curso') {
+  if (updated.status?.trim().toLowerCase() !== 'em curso' && updated.status?.trim().toLowerCase() !== 'ativo') {
     updated.dueDate = new Date('2000-01-01');
   } else if (result.status !== 'Em curso' && updated.status === 'Em curso') {
     const admissionYear = parseInt(updated.admission.toString().substring(0, 4));
