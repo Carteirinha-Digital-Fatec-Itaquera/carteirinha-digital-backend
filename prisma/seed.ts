@@ -8,7 +8,7 @@ import { PhotoStatus } from '@prisma/client';
 import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { error } from 'console';
-
+import { randomUUID } from 'crypto';
 
 //Para rodas as seeds realizar o comando npm run prisma:seed ou se prefirir manualmente npx prisma db seed
 const adapter = new PrismaPg({
@@ -58,7 +58,7 @@ async function main() {
             admission: "2026-01-01",
             email: emailEstudante,
             cpf:'537.815.150-36', 
-            qrcode: "",
+            qrcode: randomUUID(),
             photo: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTSgr2kXZBnfQTP2FOhOpVQupRTVqKw9m2WIQ&s",
             birthDate: birthDateGeral,
             dueDate: dueDateGeral,

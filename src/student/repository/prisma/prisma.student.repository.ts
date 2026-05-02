@@ -63,6 +63,7 @@ export class PrismaStudentRepository implements StudentRepository {
         photo: null,
         birthDate: student.birthDate,
         dueDate: student.dueDate,
+        qrcode: student.qrcode, 
       },
     });
   }

@@ -66,21 +66,26 @@ export class StudentService {
   }
 
   async validarTokenQrcode(qrcode: string): Promise<StudentEntity> {
-  const student = await this.repository.findByTokenQrcode(qrcode);
+    const student = await this.repository.findByTokenQrcode(qrcode);
 
-  if (!student) {
-    throw new NotFoundException(`Estudante não encontrado`);
-  }
+    if (!student) {
+      throw new NotFoundException(`Estudante não encontrado`);
+    }
 
-  if (student.status !== 'Ativo') {
-    throw new BadRequestException('Aluno não está ativo');
-  }
+    // if (student.status !== 'Ativo') {
+    //   throw new BadRequestException('Aluno não está ativo');
+    // }
+    const statusFormatado = student.status?.trim().toLowerCase();
 
-  if (new Date() > new Date(student.dueDate)) {
-    throw new BadRequestException('Carteirinha vencida');
-  }
+    if (statusFormatado !== 'ativo' && statusFormatado !== 'em curso') {
+      throw new BadRequestException('Aluno não está ativo');
+    }
+    
+    if (new Date() > new Date(student.dueDate)) {
+      throw new BadRequestException('Carteirinha vencida');
+    }
 
-  return student;
+    return student;
 }
 
   async createStudent(student: CreateStudentDTO) {
