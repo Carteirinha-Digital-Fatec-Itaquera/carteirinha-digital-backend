@@ -18,7 +18,8 @@ export class UploadService {
     }
   }
 
-  async uploadPhoto(file: Express.Multer.File, ra: string): Promise<string> {
+  async uploadPhoto(file: any, ra: string): Promise<string> {
+  // async uploadPhoto(file: Express.Multer.File, ra: string): Promise<string> {
     const allowedFormats = ['image/jpeg', 'image/png', 'image/webp'];
     if (!allowedFormats.includes(file.mimetype)) {
       throw new BadRequestException('Formato não permitido. Use JPG, PNG ou WEBP');

@@ -1,3 +1,5 @@
+import { PhotoStatus } from "@prisma/client";
+
 export class ViewStudentDTO {
   constructor(
     ra: string,
@@ -11,6 +13,7 @@ export class ViewStudentDTO {
     photo: string,
     birthDate: Date,
     dueDate: Date,
+    photoStatus?: PhotoStatus
   ) {
     this.ra = ra;
     this.course = course;
@@ -23,6 +26,7 @@ export class ViewStudentDTO {
     this.qrcode = qrcode;
     this.birthDate = birthDate;
     this.dueDate = dueDate;
+    this.photoStatus = photoStatus
   }
 
   ra: string;
@@ -36,4 +40,6 @@ export class ViewStudentDTO {
   photo: string;
   birthDate: Date;
   dueDate: Date;
+  photoStatus?: PhotoStatus
+
 }

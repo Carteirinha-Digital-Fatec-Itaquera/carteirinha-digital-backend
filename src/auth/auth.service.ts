@@ -136,7 +136,7 @@ export class AuthService {
       { secret, expiresIn: '15h' }
     );
     
-    const resetUrl = `http://localhost:3000/reset-password?token=${token}&id=${user.ra || user.id}&type=${userType}`;
+    const resetUrl = `http://localhost:5173/ResetPasswordScreen?token=${token}&id=${user.ra || user.id}&type=${userType}`;
     await this.mailService.sendResetPasswordEmail(user.email, user.name, resetUrl);
     return { message: 'E-mail enviado com sucesso.' };
   }

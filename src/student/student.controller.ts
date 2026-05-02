@@ -67,7 +67,8 @@ async updateStudent(
 
   @Post('upload-foto')
   @UseInterceptors(FileInterceptor('file'))
-  async uploadPhoto(@UploadedFile() file: Express.Multer.File, @Body() body: { ra: string }) {
+  // async uploadPhoto(@UploadedFile() file: Express.Multer.File, @Body() body: { ra: string }) {
+  async uploadPhoto(@UploadedFile() file: any, @Body() body: { ra: string }) {
     if (!file) {
       throw new BadRequestException('Nenhum arquivo enviado');
     }

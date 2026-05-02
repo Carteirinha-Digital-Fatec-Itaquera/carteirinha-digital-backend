@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { StudentEntity } from '../entities/student.entity';
 import { ViewStudentDTO } from '../dto/view-student.dto';
 import { CreateStudentDTO } from '../dto/create-student.dto';
+import { PhotoStatus } from '@prisma/client';
 
 @Injectable()
 export class StudentMapper {
@@ -21,6 +22,7 @@ export class StudentMapper {
     new Date(student.birthDate),
     student.dueDate ? new Date(student.dueDate) : new Date(), // ← fallback
     student.password,
+    student.photoStatus
     );
   }
 
@@ -37,6 +39,7 @@ export class StudentMapper {
       student.photo || '',
       student.birthDate,
       student.dueDate,
+      student.photoStatus
     );
   }
 

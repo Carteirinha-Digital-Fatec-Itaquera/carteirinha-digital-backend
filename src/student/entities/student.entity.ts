@@ -1,3 +1,5 @@
+import { PhotoStatus } from "@prisma/client";
+
 export class StudentEntity {
   constructor(
     ra: string,
@@ -12,7 +14,11 @@ export class StudentEntity {
     birthDate: Date,
     dueDate: Date,
     password: string,
+
+    photoStatus?: PhotoStatus,
+    
     lastLogin?: Date |null
+
   ) {
     this.ra = ra;
     this.course = course;
@@ -27,6 +33,7 @@ export class StudentEntity {
     this.dueDate = dueDate;
     this.password = password;
     this.lastLogin = lastLogin
+    this.photoStatus = photoStatus
   }
   ra: string;
   course: string;
@@ -41,4 +48,5 @@ export class StudentEntity {
   dueDate: Date;
   password: string;
   lastLogin?: Date|null
+  photoStatus?: PhotoStatus
 }

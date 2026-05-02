@@ -7,6 +7,7 @@ import { PhotoStatus } from '@prisma/client';
 
 import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
+import { error } from 'console';
 
 
 //Para rodas as seeds realizar o comando npm run prisma:seed ou se prefirir manualmente npx prisma db seed
@@ -43,6 +44,9 @@ async function main() {
     const passwordHash = await hashService.hashContent("123456789")
     const dueDateGeral = new Date("2030-12-12")
 
+    try{
+
+    
 
     const estudante = await prisma.student.upsert({
         where: { email: emailEstudante },
@@ -66,6 +70,7 @@ async function main() {
             // lastLogin: new Date()
         },
     })
+    console.log(estudante)
 
 
   const secretaria =await prisma.secretary.upsert({
@@ -81,10 +86,13 @@ async function main() {
     }
   })
 
-
-
   console.log(` Seed finalizado! Estudante configurado: ${estudante.email}`)
   console.log(` Seed finalizado! Secretaria configurado: ${secretaria.email}`)
+  }catch(error){
+    console.log(error)
+  }
+
+  
 }
 
 main()

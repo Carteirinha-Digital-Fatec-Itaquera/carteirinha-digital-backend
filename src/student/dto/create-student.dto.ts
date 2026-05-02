@@ -1,3 +1,4 @@
+import { PhotoStatus } from '@prisma/client';
 import { IsDate, IsDateString, IsEmail, IsEmpty, IsNotEmpty, Matches, IsOptional } from 'class-validator';
 
 
@@ -38,4 +39,6 @@ export class CreateStudentDTO {
   password: string;
 
   lastLogin?:Date |null
+
+  photoStatus?: PhotoStatus
 }
