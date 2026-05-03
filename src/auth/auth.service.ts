@@ -138,10 +138,10 @@ export class AuthService {
     
 
     //para build
-    const resetUrl = `http://localhost:4173/ResetPasswordScreen?token=${token}&id=${user.ra || user.id}&type=${userType}`;
+    //const resetUrl = `http://localhost:4173/ResetPasswordScreen?token=${token}&id=${user.ra || user.id}&type=${userType}`;
     
     //para dev
-    // const resetUrl = `http://localhost:5173/ResetPasswordScreen?token=${token}&id=${user.ra || user.id}&type=${userType}`;
+    const resetUrl = `http://localhost:5173/reset-password?token=${token}&id=${user.ra || user.id}&type=${userType}`;
     await this.mailService.sendResetPasswordEmail(user.email, user.name, resetUrl);
     return { message: 'E-mail enviado com sucesso.' };
   }
