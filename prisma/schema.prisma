@@ -1,54 +1,42 @@
 generator client {
-  provider = "prisma-client-js"
-  moduleFormat= "cjs"
-  output   = "../node_modules/.prisma/client"
-
+  provider     = "prisma-client-js"
+  output       = "../node_modules/.prisma/client"
+  moduleFormat = "cjs"
 }
 
 datasource db {
   provider = "postgresql"
-
-}
-enum PhotoStatus {
-  PENDING
-  APPROVED
-  REJECTED
 }
 
 model Student {
-  ra        String   @id
-  course    String
-  status    String
-  name      String
-  admission String
-  email     String   @unique
-  cpf       String   @unique
-  qrcode    String?   @unique
-  photo     String?
-  birthDate DateTime
-  dueDate   DateTime
-  password  String
-
-  lastLogin DateTime? 
-
-  photoStatus     PhotoStatus   @default(PENDING)
-  approvedBy      String?       
+  ra              String      @id
+  course          String
+  status          String
+  name            String
+  admission       String
+  email           String      @unique
+  cpf             String      @unique
+  qrcode          String?     @unique
+  photo           String?
+  birthDate       DateTime
+  dueDate         DateTime
+  password        String
+  lastLogin       DateTime?
   approvedAt      DateTime?
+  approvedBy      String?
+  photoStatus     PhotoStatus @default(PENDING)
   rejectionReason String?
 }
 
-
 model Secretary {
-  id Int @id @default(autoincrement())
-  name String 
-  email String @unique
-  dueDate DateTime //retirar valor
-  password String
+  id        Int       @id @default(autoincrement())
+  name      String
+  email     String    @unique
+  dueDate   DateTime
+  password  String
   birthDate DateTime
-  lastLogin DateTime? 
+  lastLogin DateTime?
 }
-
-
 
 model VerificationCode {
   id        Int      @id @default(autoincrement())
@@ -57,4 +45,10 @@ model VerificationCode {
   expiresAt DateTime
   createdAt DateTime @default(now())
   used      Boolean  @default(false)
+}
+
+enum PhotoStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
