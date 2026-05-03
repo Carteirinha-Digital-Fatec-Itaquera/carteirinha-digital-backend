@@ -60,7 +60,7 @@ export class PrismaStudentRepository implements StudentRepository {
         admission: student.admission,
         email: student.email,
         cpf: student.cpf,
-        photo: null,
+        photo: student.photo,
         birthDate: student.birthDate,
         dueDate: student.dueDate,
         qrcode: student.qrcode, 
