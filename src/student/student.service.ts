@@ -137,7 +137,7 @@ export class StudentService {
           'Já existe um registro com esses dados, verifique email, RG ou CPF'
         );
       }
-    }
+    }''
     throw error;
   }
 }
