@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CreateStudentDTO } from './dto/create-student.dto';
 import { StudentService } from './student.service';
@@ -6,6 +6,8 @@ import { StudentMapper } from './mapper/student.mapper';
 import { ViewStudentDTO } from './dto/view-student.dto';
 import { UploadService } from '../upload/upload.service';
 import { UpdateStudentDto } from './dto/update-student.dto';
+
+
 
 @Controller('estudantes')
 export class StudentController {
@@ -48,7 +50,7 @@ export class StudentController {
     return await this.service.deleteStudent(ra);
   }
 
-  @Put('atualizar/:ra')
+ @Put('atualizar/:ra')
 async updateStudent(
   @Param('ra') ra: string,
   @Body() student: UpdateStudentDto
@@ -58,6 +60,7 @@ async updateStudent(
     ...existing,
     ...student,
     ra,
+    photo: existing.photo, // ← preserve a foto existente
     birthDate: student.birthDate ?? existing.birthDate,
     dueDate: student.dueDate ?? existing.dueDate,
   } as any);
@@ -85,4 +88,10 @@ async updateStudent(
   async getPhotoStatus(@Param('ra') ra: string) {
     return this.service.getPhotoStatus(ra);
   }
+
+
+  @Patch('remover-foto/:ra')
+  async removePhoto(@Param('ra') ra: string) {
+  return this.service.removePhoto(ra);
+}
 }
