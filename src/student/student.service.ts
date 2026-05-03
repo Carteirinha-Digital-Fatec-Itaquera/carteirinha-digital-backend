@@ -90,21 +90,27 @@ export class StudentService {
 
   async createStudent(student: CreateStudentDTO) {
   try {
+    console.log('admission recebido:', student.admission);
+    console.log('birthDate recebido:', student.birthDate);
+
     const rawPassword = this.generateInitialPassword(student.birthDate);
     const passwordHash = await this.hashService.hashContent(rawPassword);
 
     ValidarCpf(student.cpf);
     const token = randomUUID();
 
-    // Calcula dueDate automaticamente: 5 anos a partir do admission
-    const admissionYear = parseInt(student.admission.toString().substring(0, 4));
-    const admissionSemester = student.admission.toString().length === 5
-      ? parseInt(student.admission.toString().substring(4, 5))
+    // Trata os dois formatos: 20251 ou 2025-01-01
+    const admissionStr = student.admission.toString().replace(/-/g, '');
+    const admissionYear = parseInt(admissionStr.substring(0, 4));
+    const admissionSemester = admissionStr.length === 5
+      ? parseInt(admissionStr.substring(4, 5))
       : 1;
-    const admissionMonth = admissionSemester === 2 ? 7 : 1; // 1º sem = janeiro, 2º sem = julho
+    const admissionMonth = admissionSemester === 2 ? 7 : 1;
     const dueDate = new Date(admissionYear + 5, admissionMonth - 1, 1)
       .toISOString()
       .split('T')[0];
+
+    console.log('dueDate calculado:', dueDate);
 
     const entity = this.mapper.toEntity({
       ...student,
@@ -113,6 +119,14 @@ export class StudentService {
       lastLogin: null,
     });
     entity.qrcode = token;
+
+    console.log('entity criada:', {
+  ra: entity.ra,
+  qrcode: entity.qrcode,
+  password: entity.password ? 'ok' : 'NULO',
+  birthDate: entity.birthDate,
+  dueDate: entity.dueDate,
+});
 
     return await this.repository.create(entity);
 
@@ -128,14 +142,24 @@ export class StudentService {
   }
 }
 
+
   async updateStudents(student: Partial<StudentEntity> & { ra: string }) {
   const result = await this.repository.findByRa(student.ra);
+  console.log('photo no result:', result?.photo);
+  console.log('photo no student:', student.photo);
 
   if (result == null) {
     throw new NotFoundException('Estudante não encontrado');
   }
 
   const updated = { ...result, ...student };
+  console.log('photo no updated:', updated.photo);
+  
+  if (student.photo === null || student.photo === undefined) {
+  updated.photo = result.photo;
+  }
+
+ console.log('photo no updated após fix:', updated.photo);
 
   if (updated.cpf) ValidarCpf(updated.cpf);
 
@@ -151,15 +175,15 @@ export class StudentService {
 
   // Se status não é "Em curso", força carteirinha vencida
   if (updated.status?.trim().toLowerCase() !== 'em curso' && updated.status?.trim().toLowerCase() !== 'ativo') {
-    updated.dueDate = new Date('2000-01-01');
-  } else if (result.status !== 'Em curso' && updated.status === 'Em curso') {
-    const admissionYear = parseInt(updated.admission.toString().substring(0, 4));
-    const admissionSemester = updated.admission.toString().length === 5
-      ? parseInt(updated.admission.toString().substring(4, 5))
-      : 1;
-    const admissionMonth = admissionSemester === 2 ? 7 : 1;
-    updated.dueDate = new Date(admissionYear + 5, admissionMonth - 1, 1);
-  }
+  updated.dueDate = new Date('2000-01-01');
+} else {
+  const admissionYear = parseInt(updated.admission.toString().substring(0, 4));
+  const admissionSemester = updated.admission.toString().length === 5
+    ? parseInt(updated.admission.toString().substring(4, 5))
+    : 1;
+  const admissionMonth = admissionSemester === 2 ? 7 : 1;
+  updated.dueDate = new Date(admissionYear + 5, admissionMonth - 1, 1);
+}
 
   return await this.repository.update(updated as StudentEntity);
   }
@@ -253,4 +277,23 @@ export class StudentService {
       },
     });
   }
+
+  async removePhoto(ra: string) {
+  const student = await this.prisma.student.findUnique({ where: { ra } });
+
+  if (!student) {
+    throw new NotFoundException('Estudante não encontrado');
+  }
+
+  return this.prisma.student.update({
+    where: { ra },
+    data: {
+      photo: null,
+      photoStatus: 'PENDING',
+      approvedAt: null,
+      approvedBy: null,
+      rejectionReason: null,
+    },
+  });
+}
 }
