@@ -21,7 +21,7 @@ export class MailService {
     const htmlBody = `
       <div style="font-family: Arial, sans-serif; max-width: 600px;">
         <h2>Olá, ${userName}!</h2>
-        <p>Recebemos uma solicitação para redefinir a senha da sua Carteirinha Digital.</p>
+        <p>Recebemos uma solicitação para redefinir a sua senha. </p>
         <p>Clique no botão abaixo para prosseguir:</p>
         <a href="${resetLink}" 
            style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">

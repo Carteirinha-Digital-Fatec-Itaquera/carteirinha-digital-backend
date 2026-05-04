@@ -8,6 +8,7 @@ import ValidarCpf from '../../src/utils/validadorCpf';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { HashContentService } from '../../src/utils/hashContentService';
+import { UploadService } from '../upload/upload.service';
 
 import { PrismaService } from 'src/database/prisma.service'; // Adicione
 
@@ -17,7 +18,8 @@ export class StudentService {
     private readonly mapper: StudentMapper,
     private readonly repository: StudentRepository,
     private readonly hashService: HashContentService ,
-    private readonly prisma: PrismaService, // Adicione
+    private readonly prisma: PrismaService,
+    private readonly uploadService: UploadService,
   ) {}
   
   async getStudents(query?: string): Promise<StudentEntity[]> {
@@ -134,7 +136,7 @@ export class StudentService {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === 'P2002') {
         throw new BadRequestException(
-          'Já existe um registro com esses dados, verifique email, RG ou CPF'
+          'Já existe um registro com esses dados, verifique e-mail, RA ou CPF'
         );
       }
     }''
@@ -189,14 +191,21 @@ export class StudentService {
   }
 
 
-  async deleteStudent(ra: string) {
-    const result = await this.repository.findByRa(ra);
+ async deleteStudent(ra: string) {
+  const result = await this.repository.findByRa(ra);
 
-    if(result == null) {
-      throw new NotFoundException('Estudante não encontrado');
-    }
-    return await this.repository.delete(ra);
+  if (result == null) {
+    throw new NotFoundException('Estudante não encontrado');
   }
+
+  // Deleta foto do Cloudinary se existir
+  if (result.photo) {
+    await this.uploadService.deletePhoto(result.photo);
+  }
+
+  return await this.repository.delete(ra);
+} 
+
   async updateLastLoginStudent(ra: string) {
     return await this.repository.updateLastLogin(ra);
   } 
@@ -261,28 +270,39 @@ export class StudentService {
   }
 
   async approvePhoto(ra: string, status: string, rejectionReason: string | null, secretaryId: string) {
-    const student = await this.prisma.student.findUnique({ where: { ra } });
-    
-    if (!student) {
-      throw new NotFoundException('Estudante não encontrado');
-    }
-
-    return this.prisma.student.update({
-      where: { ra },
-      data: {
-        photoStatus: status === 'APPROVED' ? 'APPROVED' : 'REJECTED',
-        approvedBy: secretaryId,
-        approvedAt: status === 'APPROVED' ? new Date() : null,
-        rejectionReason: rejectionReason,
-      },
-    });
+  const student = await this.prisma.student.findUnique({ where: { ra } });
+  
+  if (!student) {
+    throw new NotFoundException('Estudante não encontrado');
   }
 
-  async removePhoto(ra: string) {
+  // Se reprovada, deleta do Cloudinary
+  if (status !== 'APPROVED' && student.photo) {
+    await this.uploadService.deletePhoto(student.photo);
+  }
+
+  return this.prisma.student.update({
+    where: { ra },
+    data: {
+      photo: status === 'APPROVED' ? student.photo : null,
+      photoStatus: status === 'APPROVED' ? 'APPROVED' : 'REJECTED',
+      approvedBy: secretaryId,
+      approvedAt: status === 'APPROVED' ? new Date() : null,
+      rejectionReason: rejectionReason,
+    },
+  });
+}
+
+async removePhoto(ra: string) {
   const student = await this.prisma.student.findUnique({ where: { ra } });
 
   if (!student) {
     throw new NotFoundException('Estudante não encontrado');
+  }
+
+  // Deleta do Cloudinary
+  if (student.photo) {
+    await this.uploadService.deletePhoto(student.photo);
   }
 
   return this.prisma.student.update({
@@ -296,4 +316,5 @@ export class StudentService {
     },
   });
 }
+
 }
