@@ -18,14 +18,20 @@ async function bootstrap() {
 
 
   app.useGlobalPipes(new ValidationPipe());
+  const port = process.env.PORT || 3000;
+  
+  // Usar '0.0.0.0' permite que o container receba conexões externas
+  await app.listen(port, '0.0.0.0');
+  
+  console.log(`🚀 Backend rodando na porta ${port}`);
   
   // Definimos a porta em uma variável para ficar limpo
-  const PORT = process.env.PORT ?? 3000;
+  // const PORT = process.env.PORT ?? 3000;
 
-  await app.listen(PORT, '0.0.0.0');
+  // await app.listen(PORT, '0.0.0.0');
 
-  console.log(`\n🚀 Backend da Carteirinha Digital rodando!`);
-  console.log(`🏠 Local: http://localhost:${PORT}`);
-  console.log(`🌐 Rede (seu IP): http://192.168.1.106:${PORT}`);
+  // console.log(`\n🚀 Backend da Carteirinha Digital rodando!`);
+  // console.log(`🏠 Local: http://localhost:${PORT}`);
+  // console.log(`🌐 Rede (seu IP): http://192.168.1.106:${PORT}`);
 }
 void bootstrap();
