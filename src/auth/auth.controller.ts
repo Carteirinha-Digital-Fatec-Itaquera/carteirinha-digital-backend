@@ -68,7 +68,7 @@ export class AuthController {
   
     return {
       message: results.firstLogin ? "Troca de senha obrigatória" : "Login realizado",
-      mustChangePassword: results.firstLogin,
+      mustChangePassword: results.mustChangePassword,
       token: results.accessToken,
     };
   }

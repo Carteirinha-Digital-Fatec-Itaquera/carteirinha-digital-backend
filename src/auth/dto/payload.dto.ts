@@ -1,9 +1,6 @@
-
-
-
-export interface TokenPayload{
-    sub:number|string
-    // email:string
-    role: string
-    firstLogin: boolean
+export interface TokenPayload {
+  sub: string | number;
+  role: string;
+  firstLogin: boolean;
+  isExpired?: boolean;
 }

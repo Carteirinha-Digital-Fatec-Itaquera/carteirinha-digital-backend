@@ -27,32 +27,24 @@ export class AuthService {
     const student = await this.studentService.getStudentByEmail(email);
     const messageError = 'O e-mail ou a senha estão errados';
 
-    if (!student) {
-      throw new UnauthorizedException(messageError);
-    }
+    if (!student) throw new UnauthorizedException(messageError);
 
-    // Verifica se existe senha no banco para evitar erro no compareHash
     if (!student.password) {
       throw new ConflictException('A senha desta conta ainda não foi definida');
     }
 
-    // Compara o hash
     const isValidPassword = await this.hashService.compareHash(student.password, pass);
-    
-    if (!isValidPassword) {
-      // Se a senha não bate, o erro é Unauthorized (401)
-      throw new UnauthorizedException(messageError);
-    }
+    if (!isValidPassword) throw new UnauthorizedException(messageError);
 
     const isFirstLogin = student.lastLogin === null;
-    if (!isFirstLogin) {
-      await this.setLoginTimestampStudent(student.ra);
-    }
+
+    // FIX: atualiza o timestamp sempre (antes era !isFirstLogin, causando bug)
+    await this.setLoginTimestampStudent(student.ra);
 
     const payload: TokenPayload = {
       sub: student.ra,
       role: 'student',
-      firstLogin: isFirstLogin
+      firstLogin: isFirstLogin,
     };
 
     const token = await this.jwtService.signAsync(payload);
@@ -63,53 +55,54 @@ export class AuthService {
     const secretary = await this.secretaryService.getSecretaryByEmail(email);
     const messageError = 'O e-mail ou a senha estão errados';
 
-    if (!secretary) {
-      throw new UnauthorizedException(messageError);
-    }
+    if (!secretary) throw new UnauthorizedException(messageError);
 
     if (!secretary.password) {
       throw new ConflictException('A senha desta conta ainda não foi definida');
     }
 
     const isValidPassword = await this.hashService.compareHash(secretary.password, pass);
-    
-    if (!isValidPassword) {
-      // Se a senha está errada, lançamos 401 e não 409
-      throw new UnauthorizedException(messageError);
-    }
+    if (!isValidPassword) throw new UnauthorizedException(messageError);
 
+    const isExpired = new Date() > new Date(secretary.dueDate);
     const isFirstLogin = secretary.lastLogin === null;
 
-    if (!isFirstLogin) {
-      await this.setLoginTimestamp(secretary.id);
-    }
+    // FIX: atualiza o timestamp sempre (antes era !isFirstLogin, causando bug)
+    await this.setLoginTimestamp(secretary.id);
 
     const payload: TokenPayload = {
       sub: secretary.id,
       role: 'secretary',
-      firstLogin: isFirstLogin
+      firstLogin: isFirstLogin,
+      isExpired, // FIX: incluído no token JWT
     };
 
     const token = await this.jwtService.signAsync(payload);
-    return { accessToken: token, firstLogin: isFirstLogin };
+    return { accessToken: token, firstLogin: isFirstLogin, mustChangePassword: isExpired };
   }
 
-  async changePassword(newPassword: string, valuesSearch: number | string, userType: 'student' | 'secretary'): Promise<void> {
+  async changePassword(
+    newPassword: string,
+    valuesSearch: number | string,
+    userType: 'student' | 'secretary',
+  ): Promise<void> {
     try {
       const hashedPassword = await this.hashService.hashContent(newPassword);
+
       if (userType === 'student') {
         await Promise.all([
           this.studentService.updateStudentPassword(String(valuesSearch), hashedPassword),
-          this.studentService.updateLastLoginStudent(String(valuesSearch))
+          this.studentService.updateLastLoginStudent(String(valuesSearch)),
         ]);
       } else {
         const idNumeric = Number(valuesSearch);
         if (isNaN(idNumeric)) {
-          throw new Error("ID de secretária inválido para conversão numérica");
+          throw new Error('ID de secretária inválido para conversão numérica');
         }
         await Promise.all([
           this.secretaryService.updateSecretaryPassword(idNumeric, hashedPassword),
-          this.secretaryService.updateLastLogin(idNumeric)
+          this.secretaryService.updateLastLogin(idNumeric),
+          this.secretaryService.updateDueDate(idNumeric),
         ]);
       }
     } catch (error) {
@@ -120,12 +113,13 @@ export class AuthService {
 
   async sendForgotPasswordEmail(email: string, userType: 'student' | 'secretary') {
     let user;
+
     if (userType === 'student') {
       user = await this.studentService.getStudentByEmail(email);
     } else if (userType === 'secretary') {
       user = await this.secretaryService.getSecretaryByEmail(email);
     }
-    
+
     if (!user) {
       return { message: 'Se o e-mail estiver cadastrado, você receberá um link em breve.' };
     }
@@ -133,21 +127,27 @@ export class AuthService {
     const secret = process.env.JWT_SECRET + user.password;
     const token = await this.jwtService.signAsync(
       { sub: user.ra || user.id, role: userType },
-      { secret, expiresIn: '15h' }
+      { secret, expiresIn: '15h' },
     );
-    
 
-    //para build
-    //const resetUrl = `http://localhost:4173/ResetPasswordScreen?token=${token}&id=${user.ra || user.id}&type=${userType}`;
-    
-    //para dev
+    // para dev
     const resetUrl = `http://localhost:5173/reset-password?token=${token}&id=${user.ra || user.id}&type=${userType}`;
+
+    // para build (descomentar quando necessário)
+    // const resetUrl = `http://localhost:4173/ResetPasswordScreen?token=${token}&id=${user.ra || user.id}&type=${userType}`;
+
     await this.mailService.sendResetPasswordEmail(user.email, user.name, resetUrl);
     return { message: 'E-mail enviado com sucesso.' };
   }
 
-  async resetPasswordWithToken(token: string, id: string | number, userType: 'student' | 'secretary', newPass: string) {
+  async resetPasswordWithToken(
+    token: string,
+    id: string | number,
+    userType: 'student' | 'secretary',
+    newPass: string,
+  ) {
     let user;
+
     if (userType === 'student') {
       user = await this.studentService.getStudentByRa(String(id));
     } else if (userType === 'secretary') {
@@ -161,7 +161,7 @@ export class AuthService {
       await this.jwtService.verifyAsync(token, { secret });
       await this.changePassword(newPass, id, userType);
       return { message: 'Senha redefinida com sucesso!' };
-    } catch (e) {
+    } catch {
       throw new UnauthorizedException('Link expirado ou já utilizado.');
     }
   }
@@ -184,18 +184,13 @@ export class AuthService {
 
   async sendVerificationCode(email: string) {
     const student = await this.studentService.getStudentByEmail(email);
-    if (!student) {
-      throw new UnauthorizedException('Usuário não encontrado');
-    }
+    if (!student) throw new UnauthorizedException('Usuário não encontrado');
     return this.verificationService.sendCode(email);
   }
 
   async verifyCodeAndLogin(email: string, code: string) {
     const isValid = await this.verificationService.verifyCode(email, code);
-
-    if (!isValid) {
-      throw new UnauthorizedException('Código inválido ou expirado');
-    }
+    if (!isValid) throw new UnauthorizedException('Código inválido ou expirado');
 
     const student = await this.studentService.getStudentByEmail(email);
 
@@ -203,6 +198,7 @@ export class AuthService {
       ra: student.ra,
       email: student.email,
     };
+
     const token = await this.jwtService.signAsync(payload);
 
     return {
