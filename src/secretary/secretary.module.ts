@@ -13,7 +13,8 @@ import { StudentEntity } from 'src/student/entities/student.entity';
 import { StudentMapper } from 'src/student/mapper/student.mapper';
 import { StudentRepository } from 'src/student/repository/student.repository';
 import { PrismaStudentRepository } from 'src/student/repository/prisma/prisma.student.repository';
-
+import { UploadModule } from '../upload/upload.module';
+import { UploadService } from '../upload/upload.service';
 
 // @Module({
 //   imports: [DatabaseModule, UtilsModule], 
@@ -21,12 +22,12 @@ import { PrismaStudentRepository } from 'src/student/repository/prisma/prisma.st
 // import { StudentModule } from 'src/student/student.module';
 
 @Module({
-  imports: [DatabaseModule, UtilsModule],
+  imports: [UploadModule, DatabaseModule, UtilsModule],
   controllers: [SecretaryController],
   providers: [
+    UploadService, // ← adicione
     StudentService,
     StudentMapper,
-
     SecretaryService, 
     SecretaryMapper,
     PrismaService,

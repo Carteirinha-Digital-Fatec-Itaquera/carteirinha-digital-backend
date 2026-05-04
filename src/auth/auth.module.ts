@@ -15,6 +15,9 @@ import { UtilsModule } from 'src/utils/utilsModule';
 import { VerificationModule } from '../verification/verification.module';
 import { VerificationService } from '../verification/verification.service';
 import { MailModule } from '../mail/mail.module';
+import { UploadModule } from '../upload/upload.module';
+import { UploadService } from '../upload/upload.service';
+
 
 import { AuthGuard } from './auth.guard';
 @Module({
@@ -26,14 +29,15 @@ import { AuthGuard } from './auth.guard';
     UtilsModule,
     VerificationModule,
     MailModule,
+    UploadModule,
   ],
   controllers: [AuthController],
   providers: [
     AuthService,
     AuthGuard,
+    UploadService,
     StudentService,
     StudentMapper,
-    
     SecretaryService,
     SecretaryMapper,
     PrismaService,
