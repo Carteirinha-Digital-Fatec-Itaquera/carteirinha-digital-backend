@@ -53,8 +53,6 @@ async updateSecretary(
     return await this.service.deleteSecretary(id);
   }
 
-
-
   @Post('upload-alunos')
   @UseInterceptors(FileInterceptor('file'))
   async uploadAlunos(@UploadedFile() file: any) {  
