@@ -26,28 +26,49 @@ export class SecretaryService {
     private readonly studentService: StudentService,
   ) {}
 
+  private normalizeStatus(status: string): string {
+    const map: Record<string, string> = {
+      'ativo': 'Em curso',
+      'em curso': 'Em curso',
+      'cursando': 'Em curso',
+      'trancado': 'Trancado',
+      'concluido': 'Concluído',
+      'concluído': 'Concluído',
+      'desistente': 'Desistente',
+      'evadido': 'Desistente',
+      'cancelado': 'Desistente',
+    };
+    return map[status?.trim().toLowerCase()] ?? status;
+  }
+
+  async updateDueDate(id: number): Promise<void> {
+    const newDueDate = new Date();
+    newDueDate.setFullYear(newDueDate.getFullYear() + 1);
+    await this.repository.updateDueDate(id, newDueDate);
+  }
+
   async updateSecretaryFromDto(id: number, dto: UpdateSecretaryDto) {
-  const existing = await this.repository.findById(id);
+    const existing = await this.repository.findById(id);
 
-  if (!existing) {
-    throw new NotFoundException('Secretaria não encontrada');
+    if (!existing) {
+      throw new NotFoundException('Secretaria não encontrada');
+    }
+
+    const updated = {
+      ...existing,
+      ...dto,
+      id,
+      birthDate: dto.birthDate ? new Date(dto.birthDate) : existing.birthDate,
+      dueDate: dto.dueDate ? new Date(dto.dueDate) : existing.dueDate,
+    };
+
+    await this.repository.update(updated as SecretaryEntity);
+
+    if (dto.password) {
+      const hashed = await this.hashService.hashContent(dto.password);
+      await this.repository.updatePassword(id, hashed);
+    }
   }
-
-  const updated = {
-    ...existing,
-    ...dto,
-    id,
-    birthDate: dto.birthDate ? new Date(dto.birthDate) : existing.birthDate,
-    dueDate: dto.dueDate ? new Date(dto.dueDate) : existing.dueDate,
-  };
-
-  await this.repository.update(updated as SecretaryEntity);
-
-  if (dto.password) {
-    const hashed = await this.hashService.hashContent(dto.password);
-    await this.repository.updatePassword(id, hashed);
-  }
-}
 
   async getSecretary(): Promise<SecretaryEntity[]> {
     return await this.repository.findAll();
@@ -78,20 +99,16 @@ export class SecretaryService {
     try {
       const birthDate = new Date(secretary.birthDate);
       
-      // PRIORIDADE: 
-      // 1. Se veio senha no formulário (secretary.password), usamos ela.
-      // 2. Se não veio, geramos a inicial baseada na data de nascimento.
       const passwordToHash = secretary.password 
         ? secretary.password 
         : this.generateInitialPassword(birthDate);
 
-      // Gera o HASH da senha escolhida
       const hashedPassword = await this.hashService.hashContent(passwordToHash);
       
       const entity = this.mapper.toEntity({
         ...secretary,
         birthDate: birthDate,
-        password: hashedPassword, // Sobe o hash da senha do formulário
+        password: hashedPassword,
         lastLogin: null
       });
 
@@ -127,8 +144,6 @@ export class SecretaryService {
   }
 
   async updateSecretaryPassword(id: number, newPassword: string) {
-    // Certifique-se que o "newPassword" que chega aqui já seja um HASH 
-    // ou faça o hash aqui se preferir centralizar.
     return await this.repository.updatePassword(id, newPassword);
   }
 
@@ -140,139 +155,74 @@ export class SecretaryService {
     return `${day}${month}${year}`;
   }
 
-
-  async processarAlunosTXT(buffer: Buffer) {
-  const texto = buffer.toString('utf-8');
-  const linhas = texto.split('\n').filter(linha => linha.trim());
-  
-  if (linhas.length === 0) {
-    throw new BadRequestException('Arquivo vazio');
-  }
-
-  const dadosLinhas = linhas.slice(1); // pula o cabeçalho
-  
-  const resultados = {
-    total: dadosLinhas.length,
-    sucesso: 0,
-    erros: [] as { linha: number; ra: string; erro: string }[],
-  };
-
-  for (let i = 0; i < dadosLinhas.length; i++) {
-    const linha = dadosLinhas[i];
-    const colunas = linha.split(';').map(c => c.trim());
+  async processarAlunosCSV(buffer: Buffer) {
+    const records: any[] = [];
     
-    try {
-      if (colunas.length < 8) {
-        throw new Error('Formato inválido. Esperado: ra;course;status;name;admission;email;cpf;birthDate');
-      }
+    const parser = parse(buffer, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+    });
 
-      const ra = colunas[0];
-      const course = colunas[1];
-      const status = colunas[2];
-      const name = colunas[3];
-      const admission = colunas[4];
-      const email = colunas[5];
-      const cpf = colunas[6];
-      const birthDate = new Date(colunas[7]);
-
-      if (isNaN(birthDate.getTime())) {
-        throw new Error(`Data de nascimento inválida: ${colunas[7]}`);
-      }
-
-      await this.studentService.createStudent({
-        ra,
-        course,
-        status,
-        name,
-        admission,
-        email,
-        cpf,
-        birthDate,
-        password: '', // será gerado automaticamente a partir da birthDate
-      });
-      resultados.sucesso++;
-      
-    } catch (error) {
-      resultados.erros.push({
-        linha: i + 2,
-        ra: colunas[0] || 'N/A',
-        erro: error.message,
-      });
+    for await (const record of parser) {
+      records.push(record);
     }
-  }
 
-  return resultados;
-}
-async processarAlunosCSV(buffer: Buffer) {
-  const records: any[] = [];
-  
-  const parser = parse(buffer, {
-    columns: true,
-    skip_empty_lines: true,
-    trim: true,
-  });
-
-  for await (const record of parser) {
-    records.push(record);
-  }
-
-  if (records.length === 0) {
-    throw new BadRequestException('Arquivo vazio ou formato inválido');
-  }
-
-  const resultados = {
-    total: records.length,
-    sucesso: 0,
-    erros: [] as { linha: number; ra: string; erro: string }[],
-  };
-
-  for (let i = 0; i < records.length; i++) {
-    const aluno = records[i];
-    
-    try {
-      if (!aluno.ra || !aluno.name || !aluno.email || !aluno.cpf || !aluno.birthDate) {
-        throw new Error('Campos obrigatórios faltando: ra, name, email, cpf, birthDate');
-      }
-
-      await this.studentService.createStudent({
-        ra: aluno.ra,
-        course: aluno.course,
-        status: aluno.status,
-        name: aluno.name,
-        admission: aluno.admission,
-        email: aluno.email,
-        cpf: aluno.cpf,
-        birthDate: new Date(aluno.birthDate),
-        password: '',
-      });
-      resultados.sucesso++;
-      
-    } catch (error) {
-      resultados.erros.push({
-        linha: i + 2,
-        ra: aluno.ra || 'N/A',
-        erro: error.message,
-      });
-    }
-  }
-
-  return resultados;
-}
-  
-async processarAlunosPDF(buffer: Buffer) {
-  try {
-    const data = await pdfParse(buffer);
-    const texto = data.text;
-
-    // Divide por linhas e filtra vazias
-    const linhas = texto.split('\n').filter((linha: string) => linha.trim());
-
-    if (linhas.length === 0) {
+    if (records.length === 0) {
       throw new BadRequestException('Arquivo vazio ou formato inválido');
     }
 
-    const dadosLinhas = linhas.slice(1); // pula o cabeçalho
+    const resultados = {
+      total: records.length,
+      sucesso: 0,
+      erros: [] as { linha: number; ra: string; erro: string }[],
+    };
 
+    for (let i = 0; i < records.length; i++) {
+      const aluno = records[i];
+      
+      try {
+        if (!aluno.ra || !aluno.name || !aluno.email || !aluno.cpf || !aluno.birthDate) {
+          throw new Error('Campos obrigatórios faltando: ra, name, email, cpf, birthDate');
+        }
+
+        const status = this.normalizeStatus(aluno.status);
+
+        await this.studentService.createStudent({
+          ra: aluno.ra,
+          course: aluno.course,
+          status,
+          name: aluno.name,
+          admission: aluno.admission,
+          email: aluno.email,
+          cpf: aluno.cpf,
+          birthDate: new Date(aluno.birthDate),
+          password: '',
+        });
+        resultados.sucesso++;
+        
+      } catch (error) {
+        resultados.erros.push({
+          linha: i + 2,
+          ra: aluno.ra || 'N/A',
+          erro: error.message,
+        });
+      }
+    }
+
+    return resultados;
+  }
+
+  async processarAlunosTXT(buffer: Buffer) {
+    const texto = buffer.toString('utf-8');
+    const linhas = texto.split('\n').filter(linha => linha.trim());
+    
+    if (linhas.length === 0) {
+      throw new BadRequestException('Arquivo vazio');
+    }
+
+    const dadosLinhas = linhas.slice(1);
+    
     const resultados = {
       total: dadosLinhas.length,
       sucesso: 0,
@@ -281,8 +231,8 @@ async processarAlunosPDF(buffer: Buffer) {
 
     for (let i = 0; i < dadosLinhas.length; i++) {
       const linha = dadosLinhas[i];
-      const colunas = linha.split(';').map((c: string) => c.trim());
-
+      const colunas = linha.split(';').map(c => c.trim());
+      
       try {
         if (colunas.length < 8) {
           throw new Error('Formato inválido. Esperado: ra;course;status;name;admission;email;cpf;birthDate');
@@ -290,7 +240,7 @@ async processarAlunosPDF(buffer: Buffer) {
 
         const ra = colunas[0];
         const course = colunas[1];
-        const status = colunas[2];
+        const status = this.normalizeStatus(colunas[2]);
         const name = colunas[3];
         const admission = colunas[4];
         const email = colunas[5];
@@ -313,7 +263,7 @@ async processarAlunosPDF(buffer: Buffer) {
           password: '',
         });
         resultados.sucesso++;
-
+        
       } catch (error) {
         resultados.erros.push({
           linha: i + 2,
@@ -324,10 +274,76 @@ async processarAlunosPDF(buffer: Buffer) {
     }
 
     return resultados;
-
-  } catch (error) {
-    console.error('Erro ao processar PDF:', error);
-    throw new BadRequestException('Erro ao processar arquivo PDF: ' + error.message);
   }
-}
+
+  async processarAlunosPDF(buffer: Buffer) {
+    try {
+      const data = await pdfParse(buffer);
+      const texto = data.text;
+
+      const linhas = texto.split('\n').filter((linha: string) => linha.trim());
+
+      if (linhas.length === 0) {
+        throw new BadRequestException('Arquivo vazio ou formato inválido');
+      }
+
+      const dadosLinhas = linhas.slice(1);
+
+      const resultados = {
+        total: dadosLinhas.length,
+        sucesso: 0,
+        erros: [] as { linha: number; ra: string; erro: string }[],
+      };
+
+      for (let i = 0; i < dadosLinhas.length; i++) {
+        const linha = dadosLinhas[i];
+        const colunas = linha.split(';').map((c: string) => c.trim());
+
+        try {
+          if (colunas.length < 8) {
+            throw new Error('Formato inválido. Esperado: ra;course;status;name;admission;email;cpf;birthDate');
+          }
+
+          const ra = colunas[0];
+          const course = colunas[1];
+          const status = this.normalizeStatus(colunas[2]);
+          const name = colunas[3];
+          const admission = colunas[4];
+          const email = colunas[5];
+          const cpf = colunas[6];
+          const birthDate = new Date(colunas[7]);
+
+          if (isNaN(birthDate.getTime())) {
+            throw new Error(`Data de nascimento inválida: ${colunas[7]}`);
+          }
+
+          await this.studentService.createStudent({
+            ra,
+            course,
+            status,
+            name,
+            admission,
+            email,
+            cpf,
+            birthDate,
+            password: '',
+          });
+          resultados.sucesso++;
+
+        } catch (error) {
+          resultados.erros.push({
+            linha: i + 2,
+            ra: colunas[0] || 'N/A',
+            erro: error.message,
+          });
+        }
+      }
+
+      return resultados;
+
+    } catch (error) {
+      console.error('Erro ao processar PDF:', error);
+      throw new BadRequestException('Erro ao processar arquivo PDF: ' + error.message);
+    }
+  }
 }

@@ -23,6 +23,13 @@ export class PrismaSecretaryRepository implements SecretaryRepository {
     });
   }
 
+  async updateDueDate(id: number, dueDate: Date): Promise<void> {
+    await this.prisma.secretary.update({
+      where: { id },
+      data: { dueDate },
+      });
+  }
+
   async create(secretary: SecretaryEntity): Promise<void> {
     // Calcula o dueDate para exatamente 1 ano a partir de hoje
     const oneYearFromNow = new Date();
