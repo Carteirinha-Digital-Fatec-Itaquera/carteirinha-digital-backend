@@ -9,7 +9,7 @@
     "prisma:seed": "npx prisma db seed",
     "prisma:init": "npx prisma generate && npx prisma migrate dev",
     "prisma:db": "npx prisma generate && npx prisma db push",
-    "build": "nest build",
+    "build": "prisma generate && nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
