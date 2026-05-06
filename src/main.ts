@@ -9,7 +9,7 @@ async function bootstrap() {
     origin: [
       'http://localhost:5173',
       'http://localhost:4173',
-      'https://carteirinha-digital-front-end-secretaria-iryl-en8w51c7s.vercel.app/p',
+      'https://carteirinha-digital-front-end-secretaria-iryl-en8w51c7s.vercel.app',
     ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
