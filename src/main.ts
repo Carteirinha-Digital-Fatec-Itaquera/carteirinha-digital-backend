@@ -6,22 +6,18 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.enableCors({
-    origin: '*', 
+    origin: [
+      'http://localhost:5173',
+      'http://localhost:4173',
+      'https://carteirinha-digital-front-end-secre.vercel.app',
+    ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });
-  
-  // app.useGlobalPipes(new ValidationPipe());
-  
-  // console.log(`\nlink de acesso: \nhttp://localhost:3000/secretaria/criar`)
-  // await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
-
 
   app.useGlobalPipes(new ValidationPipe());
-  
-  // Definimos a porta em uma variável para ficar limpo
-  const PORT = process.env.PORT ?? 3000;
 
+  const PORT = process.env.PORT ?? 3000;
   await app.listen(PORT, '0.0.0.0');
 
   console.log(`\n🚀 Backend da Carteirinha Digital rodando!`);
