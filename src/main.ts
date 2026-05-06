@@ -19,6 +19,7 @@ async function bootstrap() {
 
   const PORT = process.env.PORT || 3000;
 
+  // O host '0.0.0.0' é essencial para que o container Docker aceite conexões externas (Render/Cloud)
   await app.listen(PORT, '0.0.0.0');
 
   console.log(`🚀 Backend da Carteirinha Digital rodando na porta ${PORT}`);
