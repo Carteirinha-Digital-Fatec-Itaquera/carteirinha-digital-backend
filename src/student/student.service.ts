@@ -317,4 +317,9 @@ async removePhoto(ra: string) {
   });
 }
 
+async getStudentLogs() {
+  return this.prisma.studentLog.findMany({
+    orderBy: { deletedAt: 'desc' },
+  });
+}
 }
