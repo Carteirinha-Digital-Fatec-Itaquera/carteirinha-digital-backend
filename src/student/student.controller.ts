@@ -6,7 +6,8 @@ import { StudentMapper } from './mapper/student.mapper';
 import { ViewStudentDTO } from './dto/view-student.dto';
 import { UploadService } from '../upload/upload.service';
 import { UpdateStudentDto } from './dto/update-student.dto';
-
+import { Res } from '@nestjs/common';
+import type{ Response } from 'express';
 
 
 @Controller('estudantes')
@@ -16,6 +17,20 @@ export class StudentController {
     private readonly service: StudentService,
     private readonly uploadService: UploadService,
   ) {}
+
+  @Get('historico-excluidos')
+async downloadHistorico(@Res() res: Response) {
+  const logs = await this.service.getStudentLogs();
+
+  const header = 'RA,Nome,Email,CPF,Curso,Admissão,Status,Data Exclusão\n';
+  const rows = logs.map((l) =>
+    `${l.ra},${l.name},${l.email},${l.cpf},${l.course},${l.admission},${l.status},${l.deletedAt.toISOString()}`
+  ).join('\n');
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename=historico-alunos.csv');
+  res.send(header + rows);
+}
 
   @Get('listar-todos')
     async getStudents(@Query('query') query?: string): Promise<ViewStudentDTO[]> {

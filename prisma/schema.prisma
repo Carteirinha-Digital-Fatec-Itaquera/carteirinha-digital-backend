@@ -28,6 +28,21 @@ model Student {
   rejectionReason String?
 }
 
+model StudentLog {
+  id              Int       @id @default(autoincrement())
+  ra              String
+  course          String
+  status          String
+  name            String
+  admission       String
+  email           String
+  cpf             String
+  birthDate       DateTime
+  dueDate         DateTime
+  deletedAt       DateTime  @default(now())
+  deletionReason  String    @default("Prazo de 5 anos após admissão encerrado")
+}
+
 model Secretary {
   id        Int       @id @default(autoincrement())
   name      String
