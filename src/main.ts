@@ -7,6 +7,7 @@ async function bootstrap() {
 
   app.enableCors({
     origin: [
+      '*',
       'http://localhost:5173',
       'http://localhost:4173',
       'https://carteirinha-digital-front-end-secre-azure.vercel.app',
