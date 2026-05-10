@@ -1,36 +1,23 @@
 import { Injectable } from '@nestjs/common';
-import * as nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
 @Injectable()
 export class MailService {
-  private transporter;
+  private resend: Resend;
 
   constructor() {
-    this.transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-      tls: {
-        rejectUnauthorized: false,
-      },
-      family: 4,
-    } as any);
+    this.resend = new Resend(process.env.RESEND_API_KEY);
   }
 
   async sendVerificationCode(email: string, code: string) {
     try {
-      await this.transporter.sendMail({
-        from: `"Carteirinha Digital - Fatec" <${process.env.EMAIL_USER}>`,
+      await this.resend.emails.send({
+        from: 'Carteirinha Digital <onboarding@resend.dev>',
         to: email,
         subject: 'Código de Verificação - Carteirinha Digital Fatec',
         html: `
           <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 16px; overflow: hidden;">
             <div style="background-color: #CC092F; padding: 25px; text-align: center;">
-              <div style="font-size: 40px;">🎓</div>
               <h1 style="color: white; margin: 10px 0 5px 0; font-size: 24px;">Carteirinha Digital</h1>
               <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 14px;">Fatec Itaquera</p>
             </div>
