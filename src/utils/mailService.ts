@@ -1,18 +1,26 @@
 import { Injectable } from '@nestjs/common';
-import { Resend } from 'resend';
+import * as nodemailer from 'nodemailer';
 
 @Injectable()
 export class MailService {
-  private resend: Resend;
+  private transporter;
 
   constructor() {
-    this.resend = new Resend(process.env.RESEND_API_KEY);
+    this.transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.MAIL_USER,
+        pass: process.env.MAIL_PASS,
+      },
+    } as any);
   }
 
   async sendVerificationCode(email: string, code: string) {
     try {
-      await this.resend.emails.send({
-        from: 'Carteirinha Digital <onboarding@resend.dev>',
+      await this.transporter.sendMail({
+        from: `"Carteirinha Digital" <${process.env.MAIL_USER}>`,
         to: email,
         subject: 'Código de verificação',
         html: `
@@ -35,15 +43,14 @@ export class MailService {
 
   async sendResetPasswordEmail(email: string, userName: string, resetLink: string) {
     try {
-      await this.resend.emails.send({
-        from: 'Carteirinha Digital <onboarding@resend.dev>',
+      await this.transporter.sendMail({
+        from: `"Carteirinha Digital" <${process.env.MAIL_USER}>`,
         to: email,
         subject: 'Recuperação de Senha',
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px;">
             <h2>Olá, ${userName}!</h2>
             <p>Recebemos uma solicitação para redefinir a sua senha.</p>
-            <p>Clique no botão abaixo para prosseguir:</p>
             <a href="${resetLink}" 
                style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
                Redefinir Minha Senha
