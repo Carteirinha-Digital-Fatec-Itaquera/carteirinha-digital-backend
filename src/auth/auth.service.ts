@@ -52,17 +52,6 @@ export class AuthService {
     return { accessToken: token, firstLogin: isFirstLogin };
   }
 
-  async sendVerificationCodeSecretary(email: string) {
-  if (!email.endsWith('@cps.sp.gov.br')) {
-    throw new BadRequestException('Apenas e-mails com domínio @cps.sp.gov.br são permitidos.');
-  }
-  return this.verificationService.sendCode(email);
-  }
-
-  async verifyCodeSecretary(email: string, code: string): Promise<boolean> {
-  return this.verificationService.verifyCode(email, code);
-  }
-
   async signInSecretary(email: string, pass: string) {
     const secretary = await this.secretaryService.getSecretaryByEmail(email);
     const messageError = 'O e-mail ou a senha estão errados';
