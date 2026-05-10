@@ -1,8 +1,8 @@
 [phases.setup]
-nixPkgs = ["nodejs_24"]
+nixPkgs = ["nodejs_22"]
 
 [phases.install]
-cmds = ["npm install"]
+cmds = ["npm install --ignore-engines"]
 
 [phases.build]
 cmds = ["npx prisma generate && npx nest build"]
