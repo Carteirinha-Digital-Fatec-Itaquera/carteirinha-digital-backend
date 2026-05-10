@@ -1,19 +1,21 @@
 import { Injectable } from '@nestjs/common';
-import * as SibApiV3Sdk from '@getbrevo/brevo';
+import * as Brevo from '@getbrevo/brevo';
 
 @Injectable()
 export class MailService {
-  private apiInstance: any;
+  private apiInstance: Brevo.TransactionalEmailsApi;
 
   constructor() {
-    const apiKey = SibApiV3Sdk.ApiClient.instance.authentications['api-key'];
-    apiKey.apiKey = process.env.BREVO_API_KEY;
-    this.apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+    this.apiInstance = new Brevo.TransactionalEmailsApi();
+    this.apiInstance.setApiKey(
+      Brevo.TransactionalEmailsApiApiKeys.apiKey,
+      process.env.BREVO_API_KEY ?? '',
+    );
   }
 
   async sendResetPasswordEmail(email: string, userName: string, resetLink: string) {
     try {
-      const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+      const sendSmtpEmail = new Brevo.SendSmtpEmail();
       sendSmtpEmail.subject = 'Recuperação de Senha';
       sendSmtpEmail.to = [{ email }];
       sendSmtpEmail.sender = { name: 'Carteirinha Digital', email: 'carteirinha.digital.fatec@gmail.com' };
