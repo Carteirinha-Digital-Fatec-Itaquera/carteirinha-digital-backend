@@ -1,0 +1,8 @@
+[phases.install]
+cmds = ["npm install"]
+
+[phases.build]
+cmds = ["npx prisma generate && npx nest build"]
+
+[start]
+cmd = "node dist/src/main.js"
