@@ -5,7 +5,13 @@ import * as nodemailer from 'nodemailer';
 export class MailService {
   private transporter;
 
-  constructor() {
+
+    constructor() {
+  console.log('MAIL_USER:', process.env.MAIL_USER);
+  console.log('MAIL_PASS length:', process.env.MAIL_PASS?.length);
+  console.log('MAIL_PASS raw:', process.env.MAIL_PASS);
+
+
     this.transporter = nodemailer.createTransport({
       host: process.env.MAIL_HOST, // Ex: smtp.gmail.com
       port: Number(process.env.MAIL_PORT),
@@ -16,6 +22,29 @@ export class MailService {
       },
     });
   }
+
+  async sendVerificationCode(email: string, code: string) {
+  try {
+    await this.transporter.sendMail({
+      from: '"Carteirinha Digital" <no-reply@suaapp.com>',
+      to: email,
+      subject: 'Código de verificação',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px;">
+          <h2>Código de verificação</h2>
+          <p>Use o código abaixo para confirmar seu cadastro:</p>
+          <h1 style="letter-spacing: 8px; color: #2a9d8f;">${code}</h1>
+          <p>Este código é válido por <strong>10 minutos</strong>.</p>
+          <hr />
+          <small>Se você não solicitou isso, ignore este e-mail.</small>
+        </div>
+      `,
+    });
+  } catch (error) {
+    console.error('❌ Erro:', error);
+    throw new Error(`Não foi possível enviar o email: ${error.message}`);
+  }
+}
 
   async sendResetPasswordEmail(email: string, userName: string,resetLink: string) {
     const htmlBody = `
