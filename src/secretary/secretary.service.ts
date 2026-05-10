@@ -96,6 +96,9 @@ export class SecretaryService {
   }
 
   async createSecretary(secretary: CreateSecretaryDTO) {
+    if (!secretary.email.endsWith('@cps.sp.gov.br')) {
+    throw new BadRequestException('Apenas e-mails com domínio @cps.sp.gov.br são permitidos.');
+  }
     try {
       const birthDate = new Date(secretary.birthDate);
       

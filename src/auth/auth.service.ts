@@ -3,6 +3,7 @@ import {
   Injectable,
   InternalServerErrorException,
   UnauthorizedException,
+  BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { SecretaryService } from '../../src/secretary/secretary.service';
@@ -49,6 +50,17 @@ export class AuthService {
 
     const token = await this.jwtService.signAsync(payload);
     return { accessToken: token, firstLogin: isFirstLogin };
+  }
+
+  async sendVerificationCodeSecretary(email: string) {
+  if (!email.endsWith('@cps.sp.gov.br')) {
+    throw new BadRequestException('Apenas e-mails com domínio @cps.sp.gov.br são permitidos.');
+  }
+  return this.verificationService.sendCode(email);
+  }
+
+  async verifyCodeSecretary(email: string, code: string): Promise<boolean> {
+  return this.verificationService.verifyCode(email, code);
   }
 
   async signInSecretary(email: string, pass: string) {

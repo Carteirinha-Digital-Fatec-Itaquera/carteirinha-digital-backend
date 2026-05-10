@@ -26,6 +26,18 @@ export class AuthController {
   ) {}
 
   @HttpCode(HttpStatus.OK)
+@Post('enviar-codigo-secretaria')
+async sendVerificationCodeSecretary(@Body() body: { email: string }) {
+  return this.authService.sendVerificationCodeSecretary(body.email);
+}
+
+@HttpCode(HttpStatus.OK)
+@Post('verificar-codigo-secretaria')
+async verifyCodeSecretary(@Body() body: { email: string; code: string }) {
+  return this.authService.verifyCodeSecretary(body.email, body.code);
+}
+
+  @HttpCode(HttpStatus.OK)
   @Post('login')
   async signInStudent(@Body() authDTO: AuthDTO): Promise<TokenDTO> {
 
