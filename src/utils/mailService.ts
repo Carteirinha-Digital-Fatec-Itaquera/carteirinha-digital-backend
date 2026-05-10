@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-const SibApiV3Sdk = require('@getbrevo/brevo');
+import * as SibApiV3Sdk from '@getbrevo/brevo';
 
 @Injectable()
 export class MailService {
