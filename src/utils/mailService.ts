@@ -1,21 +1,25 @@
 import { Injectable } from '@nestjs/common';
-import * as Brevo from '@getbrevo/brevo';
+import {
+  TransactionalEmailsApi,
+  TransactionalEmailsApiApiKeys,
+  SendSmtpEmail,
+} from '@getbrevo/brevo';
 
 @Injectable()
 export class MailService {
-  private apiInstance: Brevo.TransactionalEmailsApi;
+  private apiInstance: TransactionalEmailsApi;
 
   constructor() {
-    this.apiInstance = new Brevo.TransactionalEmailsApi();
+    this.apiInstance = new TransactionalEmailsApi();
     this.apiInstance.setApiKey(
-      Brevo.TransactionalEmailsApiApiKeys.apiKey,
+      TransactionalEmailsApiApiKeys.apiKey,
       process.env.BREVO_API_KEY ?? '',
     );
   }
 
   async sendResetPasswordEmail(email: string, userName: string, resetLink: string) {
     try {
-      const sendSmtpEmail = new Brevo.SendSmtpEmail();
+      const sendSmtpEmail = new SendSmtpEmail();
       sendSmtpEmail.subject = 'Recuperação de Senha';
       sendSmtpEmail.to = [{ email }];
       sendSmtpEmail.sender = { name: 'Carteirinha Digital', email: 'carteirinha.digital.fatec@gmail.com' };
@@ -32,7 +36,6 @@ export class MailService {
           <small>Se você não solicitou isso, ignore este e-mail.</small>
         </div>
       `;
-
       await this.apiInstance.sendTransacEmail(sendSmtpEmail);
       console.log(`✅ Email de recuperação enviado para: ${email}`);
     } catch (error) {
