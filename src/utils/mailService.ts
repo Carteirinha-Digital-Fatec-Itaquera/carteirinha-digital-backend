@@ -17,7 +17,7 @@ export class MailService {
       await this.client.transactionalEmails.sendTransacEmail({
         subject: 'Recuperação de Senha',
         to: [{ email }],
-        sender: { name: 'Carteirinha Digital', email: 'carteirinha.digital.fatec@gmail.com' },
+        sender: { name: 'Carteirinha Digital', email: 'wwluiza.09@gmail.com' },
         htmlContent: `
           <div style="font-family: Arial, sans-serif; max-width: 600px;">
             <h2>Olá, ${userName}!</h2>
