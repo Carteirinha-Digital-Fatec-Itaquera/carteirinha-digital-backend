@@ -11,6 +11,7 @@ async function bootstrap() {
     'http://localhost:4173',
     'https://carteirinha-digital-front-end-secre.vercel.app',
     'https://carteirinha-digital-front-end-secre-topaz.vercel.app',
+    'https://carteirinha-digital-front-end-aluno.vercel.app'
   ],
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
   credentials: true,
