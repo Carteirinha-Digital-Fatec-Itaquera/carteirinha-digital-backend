@@ -1,46 +1,37 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
-
-// const brevoModule = require('@getbrevo/brevo').default ?? require('@getbrevo/brevo');
-// import { Brevo } from 'node_modules/@getbrevo/brevo/dist/esm/index.mjs';
-import * as Brevo from '@getbrevo/brevo'
-
+import { Injectable } from '@nestjs/common';
+import { Brevo, BrevoClient, BrevoEnvironment } from '@getbrevo/brevo';
 
 @Injectable()
 export class MailService {
-  private apiInstance: Brevo.TransactionalEmailsApi;
+  private client: BrevoClient;
 
   constructor() {
-    this.apiInstance = new Brevo.TransactionalEmailsApi();
-    this.apiInstance.setApiKey(
-      Brevo.TransactionalEmailsApiApiKeys.apiKey,
-      process.env.BREVO_API_KEY ?? '',
-    );
+    this.client = new BrevoClient({
+      apiKey: process.env.BREVO_API_KEY ?? '',
+      environment: BrevoEnvironment.Default,
+    });
   }
 
   async sendResetPasswordEmail(email: string, userName: string, resetLink: string) {
     try {
-      const sendSmtpEmail = new Brevo.SendSmtpEmail();
-      sendSmtpEmail.subject = 'Recuperação de Senha';
-      sendSmtpEmail.to = [{ email }];
-      sendSmtpEmail.sender = {
-        name: 'Carteirinha Digital',
-        email: 'carteirinha.digital.fatec@gmail.com',
-      };
-      sendSmtpEmail.htmlContent = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px;">
-          <h2>Olá, ${userName}!</h2>
-          <p>Recebemos uma solicitação para redefinir a sua senha.</p>
-          <a href="${resetLink}"
-             style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
-             Redefinir Minha Senha
-          </a>
-          <p>Este link é válido por apenas 15 minutos.</p>
-          <hr />
-          <small>Se você não solicitou isso, ignore este e-mail.</small>
-        </div>
-      `;
-
-      await this.apiInstance.sendTransacEmail(sendSmtpEmail);
+      await this.client.transactionalEmails.sendTransacEmail({
+        subject: 'Recuperação de Senha',
+        to: [{ email }],
+        sender: { name: 'Carteirinha Digital', email: 'carteirinha.digital.fatec@gmail.com' },
+        htmlContent: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px;">
+            <h2>Olá, ${userName}!</h2>
+            <p>Recebemos uma solicitação para redefinir a sua senha.</p>
+            <a href="${resetLink}" 
+               style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+               Redefinir Minha Senha
+            </a>
+            <p>Este link é válido por apenas 15 minutos.</p>
+            <hr />
+            <small>Se você não solicitou isso, ignore este e-mail.</small>
+          </div>
+        `,
+      });
       console.log(`✅ Email de recuperação enviado para: ${email}`);
     } catch (error: any) {
       console.error('❌ Erro:', error);
@@ -48,55 +39,3 @@ export class MailService {
     }
   }
 }
-
-
-// import { Injectable } from '@nestjs/common';
-
-// // const Brevo = require('@getbrevo/brevo') 
-// // import * as Brevo from '@getbrevo/brevo';
-// const brevoModule = require('@getbrevo/brevo').default ?? require('@getbrevo/brevo');
-
-
-
-// @Injectable()
-// export class MailService {
-//   // private apiInstance: Brevo.TransactionalEmailsApi;
-//   private apiInstance: any;
-
-
-//   constructor() {
-//     this.apiInstance = new brevoModule.TransactionalEmailsApi();
-//     this.apiInstance.setApiKey(
-//       brevoModule.TransactionalEmailsApiApiKeys.apiKey,
-//       process.env.BREVO_API_KEY ?? '',
-//     );
-//   }
-
-//   async sendResetPasswordEmail(email: string, userName: string, resetLink: string) {
-//     try {
-//       const sendSmtpEmail = new brevoModule.SendSmtpEmail();
-//       sendSmtpEmail.subject = 'Recuperação de Senha';
-//       sendSmtpEmail.to = [{ email }];
-//       sendSmtpEmail.sender = { name: 'Carteirinha Digital', email: 'carteirinha.digital.fatec@gmail.com' };
-//       sendSmtpEmail.htmlContent = `
-//         <div style="font-family: Arial, sans-serif; max-width: 600px;">
-//           <h2>Olá, ${userName}!</h2>
-//           <p>Recebemos uma solicitação para redefinir a sua senha.</p>
-//           <a href="${resetLink}" 
-//              style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
-//              Redefinir Minha Senha
-//           </a>
-//           <p>Este link é válido por apenas 15 minutos.</p>
-//           <hr />
-//           <small>Se você não solicitou isso, ignore este e-mail.</small>
-//         </div>
-//       `;
-
-//       await this.apiInstance.sendTransacEmail(sendSmtpEmail);
-//       console.log(`✅ Email de recuperação enviado para: ${email}`);
-//     } catch (error:any) {
-//       console.error('❌ Erro:', error);
-//       throw new Error(`Não foi possível enviar o email: ${error.message}`);
-//     }
-//   }
-// }
