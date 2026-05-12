@@ -13,6 +13,7 @@ import { SecretaryRepository } from './repository/secretary.repository';
 import { SecretaryEntity } from './entities/secretary.entity';
 import { HashContentService } from '../../src/utils/hashContentService';
 import { UpdateSecretaryDto } from './dto/update-secretary.dto';
+import { MailService } from '../mail/mail.service';
 
 const pdfParse = require('pdf-parse');
 
@@ -24,6 +25,7 @@ export class SecretaryService {
     private readonly hashService: HashContentService,
     private readonly prisma: PrismaService,
     private readonly studentService: StudentService,
+    private readonly mailService: MailService,
   ) {}
 
   private normalizeStatus(status: string): string {
@@ -97,29 +99,78 @@ export class SecretaryService {
 
   async createSecretary(secretary: CreateSecretaryDTO) {
     if (!secretary.email.endsWith('@cps.sp.gov.br')) {
-    throw new BadRequestException('Apenas e-mails com domínio @cps.sp.gov.br são permitidos.');
+      throw new BadRequestException('Apenas e-mails com domínio @cps.sp.gov.br são permitidos.');
+    }
+
+    const existing = await this.repository.findByEmail(secretary.email);
+    if (existing) {
+      throw new BadRequestException('E-mail já cadastrado.');
+    }
+
+    // Gera código de 6 dígitos
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos
+
+    // Invalida códigos anteriores do mesmo e-mail
+    await this.prisma.verificationCode.updateMany({
+      where: { email: secretary.email, used: false },
+      data: { used: true },
+    });
+
+    // Salva o código
+    await this.prisma.verificationCode.create({
+      data: {
+        email: secretary.email,
+        code,
+        expiresAt,
+      },
+    });
+
+    // Salva os dados temporariamente na sessão via retorno — 
+    // o front deve guardar e reenviar no /confirmar
+    await this.mailService.sendVerificationCode(secretary.email, code);
+
+    return { message: 'Código de verificação enviado para o e-mail.' };
   }
+
+  async confirmSecretary(email: string, code: string, secretary: CreateSecretaryDTO) {
+    const verification = await this.prisma.verificationCode.findFirst({
+      where: {
+        email,
+        code,
+        used: false,
+        expiresAt: { gt: new Date() },
+      },
+    });
+
+    if (!verification) {
+      throw new BadRequestException('Código inválido ou expirado.');
+    }
+
+    // Marca como usado
+    await this.prisma.verificationCode.update({
+      where: { id: verification.id },
+      data: { used: true },
+    });
+
     try {
       const birthDate = new Date(secretary.birthDate);
-      
-      const passwordToHash = secretary.password 
-        ? secretary.password 
+      const passwordToHash = secretary.password
+        ? secretary.password
         : this.generateInitialPassword(birthDate);
 
       const hashedPassword = await this.hashService.hashContent(passwordToHash);
-      
+
       const entity = this.mapper.toEntity({
         ...secretary,
-        birthDate: birthDate,
+        birthDate,
         password: hashedPassword,
-        lastLogin: null
+        lastLogin: null,
       });
 
-      console.log(`Secretaria criada: ${entity.email} | Senha utilizada: ${passwordToHash}`);
-      
+      console.log(`Secretaria criada: ${entity.email}`);
       return await this.repository.create(entity);
     } catch (error) {
-      console.error('Erro ao criar secretaria:', error);
       throw new InternalServerErrorException(`Erro ao criar secretaria: ${error.message}`);
     }
   }

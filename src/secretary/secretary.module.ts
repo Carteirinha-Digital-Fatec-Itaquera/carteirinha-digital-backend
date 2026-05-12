@@ -7,28 +7,22 @@ import { PrismaService } from '../database/prisma.service';
 import { SecretaryRepository } from './repository/secretary.repository';
 import { PrismaSecretaryRepository } from './repository/prisma/prisma.secretary.repository';
 import { UtilsModule } from '../../src/utils/utilsModule';
-import { StudentModule } from 'src/student/student.module';
 import { StudentService } from 'src/student/student.service';
-import { StudentEntity } from 'src/student/entities/student.entity';
 import { StudentMapper } from 'src/student/mapper/student.mapper';
 import { StudentRepository } from 'src/student/repository/student.repository';
 import { PrismaStudentRepository } from 'src/student/repository/prisma/prisma.student.repository';
 import { UploadModule } from '../upload/upload.module';
 import { UploadService } from '../upload/upload.service';
-
-// @Module({
-//   imports: [DatabaseModule, UtilsModule], 
-// import { DatabaseModule } from 'src/database/database.module';
-// import { StudentModule } from 'src/student/student.module';
+import { MailModule } from '../mail/mail.module';
 
 @Module({
-  imports: [UploadModule, DatabaseModule, UtilsModule],
+  imports: [UploadModule, DatabaseModule, UtilsModule, MailModule],
   controllers: [SecretaryController],
   providers: [
-    UploadService, // ← adicione
+    UploadService,
     StudentService,
     StudentMapper,
-    SecretaryService, 
+    SecretaryService,
     SecretaryMapper,
     PrismaService,
     {

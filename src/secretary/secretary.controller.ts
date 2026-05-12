@@ -30,23 +30,26 @@ export class SecretaryController {
   async getSecretaryByEmail(@Param('email') email: string): Promise<ViewSecretaryDTO> {
     return this.mapper.toDTO(await this.service.getSecretaryByEmail(email));
   }
-  // async getSecretaryById(@Param('id') id: string): Promise<ViewSecretaryDTO> {
-  //   const data = await this.service.getSecretaryById(id);
-  //   return this.mapper.toDTO(data);
-  // }
 
   @Post('criar')
   async createSecretary(@Body() secretary: CreateSecretaryDTO) {
     return await this.service.createSecretary(secretary);
   }
 
+  @Post('confirmar-cadastro')
+  async confirmSecretary(
+    @Body() body: { email: string; code: string; secretary: CreateSecretaryDTO }
+  ) {
+    return await this.service.confirmSecretary(body.email, body.code, body.secretary);
+  }
+
   @Put('atualizar/:id')
-async updateSecretary(
-  @Param('id', ParseIntPipe) id: number,
-  @Body() secretary: UpdateSecretaryDto
-) {
-  return await this.service.updateSecretaryFromDto(id, secretary);
-}
+  async updateSecretary(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() secretary: UpdateSecretaryDto
+  ) {
+    return await this.service.updateSecretaryFromDto(id, secretary);
+  }
 
   @Delete('deletar/:id')
   async deleteSecretary(@Param('id', ParseIntPipe) id: number) {
@@ -97,6 +100,4 @@ async updateSecretary(
     
     return this.studentService.approvePhoto(ra, body.status, body.rejectionReason || null, 'secretaria');
   }
-
-  
 }
