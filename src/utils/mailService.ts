@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Brevo, BrevoClient, BrevoEnvironment } from '@getbrevo/brevo';
 
+
 @Injectable()
 export class MailService {
   private client: BrevoClient;
@@ -33,7 +34,7 @@ export class MailService {
         `,
       });
       console.log(`✅ Email de recuperação enviado para: ${email}`);
-    } catch (error) {
+    } catch (error:any) {
       console.error('❌ Erro:', error);
       throw new Error(`Não foi possível enviar o email: ${error.message}`);
     }
