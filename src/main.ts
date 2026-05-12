@@ -9,7 +9,6 @@ async function bootstrap() {
   origin: [
     'http://localhost:5173',
     'http://localhost:4173',
-    'https://carteirinha-digital-front-end-secre.vercel.app',
     'https://carteirinha-digital-front-end-secre-topaz.vercel.app',
     'https://carteirinha-digital-front-end-aluno.vercel.app'
   ],
