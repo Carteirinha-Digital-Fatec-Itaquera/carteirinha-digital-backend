@@ -16,10 +16,11 @@ export class StudentMapper {
     student.name,
     student.admission,
     student.email,
-    student.cpf,
+    student.cpf || '',
     null,
     null,
-    new Date(student.birthDate),
+    null,
+    // new Date(student.birthDate),
     student.dueDate ? new Date(student.dueDate) : new Date(), // ← fallback
     student.password,
     student.photoStatus
@@ -34,10 +35,10 @@ export class StudentMapper {
       student.name,
       student.admission,
       student.email,
-      student.cpf,
+      student.cpf || '',
       student.qrcode || '',
       student.photo || '',
-      student.birthDate,
+      student.birthDate ?? new Date(),
       student.dueDate,
       student.photoStatus
     );

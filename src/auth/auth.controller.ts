@@ -8,7 +8,7 @@ import { StudentService } from 'src/student/student.service';
 import { SecretaryService } from 'src/secretary/secretary.service';
 import { PasswordDTO } from './dto/resetPassword.dto';
 import { BadRequestException } from '@nestjs/common';
-
+import { FirstAccessSetupDTO } from './dto/firstAccessSetup.dto';
 import { JwtService } from '@nestjs/jwt';
 import { TokenPayload } from './dto/payload.dto';
 
@@ -40,9 +40,6 @@ export class AuthController {
         token: results.accessToken,
       }
     }
-    
-    
-    
     return new TokenDTO(results.accessToken);
   }
 
@@ -80,27 +77,6 @@ export class AuthController {
     @Request()req:any,
     @Body() passwordDTO: PasswordDTO
   ): Promise <void>{
-
-    // let userId:string|number
-    // let userType: 'student'|'secretary'
-    
-    // if(req.user){
-    //   userId = req.user.sub
-    //   userType = req.user.role
-    //   console.log(`\n\n\n${userId}\n\n\n ${userType}`)
-    // }else if(passwordDTO.token){
-    //   try{
-    //     const decoded = await this.jwtService.verifyAsync<TokenPayload>(passwordDTO.token)
-    //     userId = decoded.sub
-    //     userType = decoded.role as 'student'|'secretary'
-    //   }catch(error){
-    //     console.log(error)
-    //     throw new UnauthorizedException('Token de recuperação invalido ou expirado')
-    //   }
-    // }
-    // else {
-    //   throw new BadRequestException('Identificação do usuário não encontrada');
-    // }
     const userId = req.user.sub
     const userType = req.user.role as 'student' |'secretary'
     // console.log(`\n\n\nesse é seu id: ${userId} \n\n\n${userType}`)
@@ -109,7 +85,34 @@ export class AuthController {
       userId,
       userType
     )
+
   } 
+
+
+  @UseGuards(AuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Post('first-access-setup')
+  async firstAccessSetup(
+    @Request() req: any,
+    @Body() setupDTO: FirstAccessSetupDTO
+  ): Promise<void> {
+    const userId = req.user.sub; 
+    const userType = req.user.role as 'student' | 'secretary';
+
+    if (userType !== 'student') {
+      throw new BadRequestException('Apenas estudantes podem realizar essa configuração inicial');
+    }
+
+    await this.authService.setupFirstAccess(
+      userId,
+      setupDTO.cpf,
+      setupDTO.birthDate,
+      setupDTO.newPassword
+    );
+  }
+
+
+
 
   @Post('forgot-password')
   async forgot(@Body() body: { email: string, type: 'student' | 'secretary' }) {

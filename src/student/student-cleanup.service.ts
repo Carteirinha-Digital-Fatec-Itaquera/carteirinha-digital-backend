@@ -37,8 +37,8 @@ export class StudentCleanupService {
         name: s.name,
         admission: s.admission,
         email: s.email,
-        cpf: s.cpf,
-        birthDate: s.birthDate,
+        cpf: s.cpf||'',
+        birthDate: s.birthDate || '',
         dueDate: s.dueDate,
       })),
     });

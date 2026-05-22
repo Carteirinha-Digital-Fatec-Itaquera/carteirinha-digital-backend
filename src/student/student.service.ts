@@ -95,13 +95,14 @@ export class StudentService {
     console.log('admission recebido:', student.admission);
     console.log('birthDate recebido:', student.birthDate);
 
-    const rawPassword = this.generateInitialPassword(student.birthDate);
-    const passwordHash = await this.hashService.hashContent(rawPassword);
+    // const rawPassword = this.generateInitialPassword(student.ra);
 
-    ValidarCpf(student.cpf);
+
+    const passwordHash = await this.hashService.hashContent(String(student.ra));
+
+    // ValidarCpf(student.cpf);
     const token = randomUUID();
 
-    // Trata os dois formatos: 20251 ou 2025-01-01
     const admissionStr = student.admission.toString().replace(/-/g, '');
     const admissionYear = parseInt(admissionStr.substring(0, 4));
     const admissionSemester = admissionStr.length === 5
@@ -146,48 +147,47 @@ export class StudentService {
 
 
   async updateStudents(student: Partial<StudentEntity> & { ra: string }) {
-  const result = await this.repository.findByRa(student.ra);
-  console.log('photo no result:', result?.photo);
-  console.log('photo no student:', student.photo);
+    const result = await this.repository.findByRa(student.ra);
+    console.log('photo no result:', result?.photo);
+    console.log('photo no student:', student.photo);
 
-  if (result == null) {
-    throw new NotFoundException('Estudante não encontrado');
-  }
+    if (result == null) {
+      throw new NotFoundException('Estudante não encontrado');
+    }
 
-  const updated = { ...result, ...student };
-  console.log('photo no updated:', updated.photo);
-  
-  if (student.photo === null || student.photo === undefined) {
-  updated.photo = result.photo;
-  }
+    const updated = { ...result, ...student };
+    console.log('photo no updated:', updated.photo);
+    
+    if (student.photo === null || student.photo === undefined) {
+      updated.photo = result.photo;
+    }
 
- console.log('photo no updated após fix:', updated.photo);
 
-  if (updated.cpf) ValidarCpf(updated.cpf);
+    console.log('photo no updated após fix:', updated.photo);
 
-  // Recalcula dueDate sempre que admission mudar
-  if (student.admission && student.admission !== result.admission) {
-    const admissionYear = parseInt(updated.admission.toString().substring(0, 4));
-    const admissionSemester = updated.admission.toString().length === 5
-      ? parseInt(updated.admission.toString().substring(4, 5))
-      : 1;
-    const admissionMonth = admissionSemester === 2 ? 7 : 1;
-    updated.dueDate = new Date(admissionYear + 5, admissionMonth - 1, 1);
-  }
+    if (updated.cpf) ValidarCpf(updated.cpf);
 
-  // Se status não é "Em curso", força carteirinha vencida
-  if (updated.status?.trim().toLowerCase() !== 'em curso' && updated.status?.trim().toLowerCase() !== 'ativo') {
-  updated.dueDate = new Date('2000-01-01');
-} else {
-  const admissionYear = parseInt(updated.admission.toString().substring(0, 4));
-  const admissionSemester = updated.admission.toString().length === 5
-    ? parseInt(updated.admission.toString().substring(4, 5))
-    : 1;
-  const admissionMonth = admissionSemester === 2 ? 7 : 1;
-  updated.dueDate = new Date(admissionYear + 5, admissionMonth - 1, 1);
-}
+    if (student.admission && student.admission !== result.admission) {
+      const admissionYear = parseInt(updated.admission.toString().substring(0, 4));
+      const admissionSemester = updated.admission.toString().length === 5
+        ? parseInt(updated.admission.toString().substring(4, 5))
+        : 1;
+      const admissionMonth = admissionSemester === 2 ? 7 : 1;
+      updated.dueDate = new Date(admissionYear + 5, admissionMonth - 1, 1);
+    }
 
-  return await this.repository.update(updated as StudentEntity);
+    if (updated.status?.trim().toLowerCase() !== 'em curso' && updated.status?.trim().toLowerCase() !== 'ativo') {
+      updated.dueDate = new Date('2000-01-01');
+    } else {
+      const admissionYear = parseInt(updated.admission.toString().substring(0, 4));
+      const admissionSemester = updated.admission.toString().length === 5
+        ? parseInt(updated.admission.toString().substring(4, 5))
+        : 1;
+      const admissionMonth = admissionSemester === 2 ? 7 : 1;
+      updated.dueDate = new Date(admissionYear + 5, admissionMonth - 1, 1);
+    }
+
+    return await this.repository.update(updated as StudentEntity);
   }
 
 
@@ -214,14 +214,14 @@ export class StudentService {
     return await this.repository.updatePassword(ra, newPassword)
   }
 
-  private generateInitialPassword(birthDate: Date): string {
-    const date = new Date(birthDate);
-    const day = String(date.getUTCDate()).padStart(2, '0');
-    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const year = String(date.getUTCFullYear());
+  // private generateInitialPassword(birthDate: Date|any): string {
+  //   const date = new Date(birthDate);
+  //   const day = String(date.getUTCDate()).padStart(2, '0');
+  //   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  //   const year = String(date.getUTCFullYear());
     
-    return `${day}${month}${year}`;
-  }
+  //   return `${day}${month}${year}`;
+  // }
 
   // ========== NOVOS MÉTODOS DE FOTO ==========
 

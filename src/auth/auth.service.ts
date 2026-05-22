@@ -13,6 +13,8 @@ import { TokenPayload } from './dto/payload.dto';
 import { MailService } from 'src/utils/mailService';
 import { VerificationService } from '../verification/verification.service';
 
+import { NotFoundException } from '@nestjs/common';
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -138,6 +140,49 @@ export class AuthService {
     await this.mailService.sendResetPasswordEmail(user.email, user.name, resetUrl);
     return { message: 'E-mail enviado com sucesso.' };
   }
+
+
+  async setupFirstAccess(
+    ra: string,
+    cpf: string,
+    birthDate: string,
+    newPassword: string
+  ): Promise<void> {
+    try {
+      const hashedPassword = await this.hashService.hashContent(newPassword);
+
+      const day = birthDate.substring(0, 2);
+      const month = birthDate.substring(2, 4);
+      const year = birthDate.substring(4, 8);
+      const formattedBirthDate = new Date(`${year}-${month}-${day}T12:00:00Z`);
+
+
+      // console.log(`\n\n${birthDate}\n\n\n`)
+      
+      await Promise.all([
+        this.studentService.updateStudentPassword(ra, hashedPassword),
+        this.studentService.updateStudents({
+          ra: ra,
+          cpf: cpf,
+          birthDate: formattedBirthDate
+        }),
+        this.studentService.updateLastLoginStudent(ra),
+      ]);
+      
+    } catch (error) {
+      console.error('Erro na transação de primeiro acesso do aluno:', error);
+      
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        throw error;
+      }
+      
+      throw new InternalServerErrorException(
+        'Não foi possível concluir as atualizações cadastrais do primeiro acesso.'
+      );
+    }
+  }
+
+
 
   async resetPasswordWithToken(
     token: string,

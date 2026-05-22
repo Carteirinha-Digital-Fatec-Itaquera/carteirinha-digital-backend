@@ -11,7 +11,7 @@ export class StudentEntity {
     cpf: string,
     qrcode: string | null,
     photo: string | null,
-    birthDate: Date,
+    birthDate: Date | null,
     dueDate: Date,
     password: string,
 
@@ -44,7 +44,7 @@ export class StudentEntity {
   cpf: string;
   qrcode: string | null;
   photo: string | null;
-  birthDate: Date;
+  birthDate: Date | null;
   dueDate: Date;
   password: string;
   lastLogin?: Date|null

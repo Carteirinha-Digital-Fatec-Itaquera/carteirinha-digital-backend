@@ -8,11 +8,11 @@ export class ViewStudentDTO {
     name: string,
     admission: string,
     email: string,
-    cpf: string,
+    cpf: string|null,
     qrcode: string,
     photo: string,
-    birthDate: Date,
     dueDate: Date,
+    birthDate?: Date | null,
     photoStatus?: PhotoStatus
   ) {
     this.ra = ra;
@@ -24,7 +24,7 @@ export class ViewStudentDTO {
     this.cpf = cpf;
     this.photo = photo;
     this.qrcode = qrcode;
-    this.birthDate = birthDate;
+    this.birthDate = birthDate || null;
     this.dueDate = dueDate;
     this.photoStatus = photoStatus
   }
@@ -35,11 +35,11 @@ export class ViewStudentDTO {
   name: string;
   admission: string;
   email: string;
-  cpf: string;
+  cpf: string|null;
   qrcode: string;
   photo: string;
-  birthDate: Date;
   dueDate: Date;
+  birthDate?: Date | null;
   photoStatus?: PhotoStatus
 
 }

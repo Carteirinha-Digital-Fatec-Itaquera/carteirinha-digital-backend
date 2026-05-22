@@ -22,15 +22,15 @@ export class CreateStudentDTO {
   @IsEmail(undefined, { message: 'O campo e-mail está inválido' })
   email: string;
 
-  @IsNotEmpty({ message: 'O campo CPF é obrigatório' })
-  @Matches(/^\d{3}\.\d{3}\.\d{3}-\d{2}$/, {
-    message: 'CPF deve estar no formato 000.000.000-00',
-  })
-  cpf: string;
+  // @IsNotEmpty({ message: 'O campo CPF é obrigatório' })
+  // @Matches(/^\d{3}\.\d{3}\.\d{3}-\d{2}$/, {
+  //   message: 'CPF deve estar no formato 000.000.000-00',
+  // })
+  cpf: string|null;
 
-  @IsNotEmpty({ message: 'O campo data de nascimento é obrigatório' })
-  @IsDateString({}, { message: "O formato da data de nascimento está inválido" })
-  birthDate: Date;
+  // @IsNotEmpty({ message: 'O campo data de nascimento é obrigatório' })
+  // @IsDateString({}, { message: "O formato da data de nascimento está inválido" })
+  birthDate: Date |null;
 
   @IsOptional()
   dueDate?: string;

@@ -15,10 +15,10 @@ model Student {
   name            String
   admission       String
   email           String      @unique
-  cpf             String      @unique
+  cpf             String?      @unique
   qrcode          String?     @unique
   photo           String?
-  birthDate       DateTime
+  birthDate       DateTime?
   dueDate         DateTime
   password        String
   lastLogin       DateTime?
