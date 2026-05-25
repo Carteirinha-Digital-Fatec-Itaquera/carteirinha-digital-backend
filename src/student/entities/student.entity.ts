@@ -8,7 +8,7 @@ export class StudentEntity {
     name: string,
     admission: string,
     email: string,
-    cpf: string,
+    cpf: string|null,
     qrcode: string | null,
     photo: string | null,
     birthDate: Date | null,
@@ -26,7 +26,7 @@ export class StudentEntity {
     this.name = name;
     this.admission = admission;
     this.email = email;
-    this.cpf = cpf;
+    this.cpf = cpf ;
     this.photo = photo;
     this.qrcode = qrcode;
     this.birthDate = birthDate;
@@ -41,7 +41,7 @@ export class StudentEntity {
   name: string;
   admission: string;
   email: string;
-  cpf: string;
+  cpf: string|null;
   qrcode: string | null;
   photo: string | null;
   birthDate: Date | null;
