@@ -24,8 +24,8 @@ export class ViewStudentDTO {
     this.cpf = cpf;
     this.photo = photo;
     this.qrcode = qrcode;
-    this.birthDate = birthDate || null;
     this.dueDate = dueDate;
+    this.birthDate = birthDate || null;
     this.photoStatus = photoStatus
   }
 

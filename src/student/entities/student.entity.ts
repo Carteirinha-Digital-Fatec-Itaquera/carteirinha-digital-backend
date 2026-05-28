@@ -14,9 +14,7 @@ export class StudentEntity {
     birthDate: Date | null,
     dueDate: Date,
     password: string,
-
     photoStatus?: PhotoStatus,
-    
     lastLogin?: Date |null
 
   ) {

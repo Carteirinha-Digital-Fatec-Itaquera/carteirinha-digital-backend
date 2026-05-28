@@ -51,7 +51,10 @@ async downloadHistorico(@Res() res: Response) {
 
   @Get('verificar/:qrcode')
   async verificarTokenQrcode(@Param('qrcode') qrcode: string): Promise<ViewStudentDTO>{
-    return this.mapper.toDTO(await this.service.validarTokenQrcode(qrcode))
+    const studentEntity = await this.service.validarTokenQrcode(qrcode)
+    const dtoOutput = this.mapper.toDTO(studentEntity)
+    console.log("=== PAYLOAD ENVIADO PARA O FRONTEND ===", dtoOutput);console.log("=== PAYLOAD ENVIADO PARA O FRONTEND ===", dtoOutput);
+    return dtoOutput
   }
 
 
