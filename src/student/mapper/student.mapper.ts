@@ -39,8 +39,8 @@ export class StudentMapper {
       student.cpf || '',
       student.qrcode || '',
       student.photo || '',
-      student.birthDate ?? new Date(),
       student.dueDate,
+      student.birthDate ?? new Date(),
       student.photoStatus
     );
   }
