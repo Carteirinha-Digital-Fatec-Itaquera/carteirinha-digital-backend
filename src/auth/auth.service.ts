@@ -42,7 +42,9 @@ export class AuthService {
     const isFirstLogin = student.lastLogin === null;
 
     // FIX: atualiza o timestamp sempre (antes era !isFirstLogin, causando bug)
-    await this.setLoginTimestampStudent(student.ra);
+    if(student.lastLogin){
+      await this.setLoginTimestampStudent(student.ra);
+    }
 
     const payload: TokenPayload = {
       sub: student.ra,
@@ -148,6 +150,7 @@ export class AuthService {
     birthDate: string,
     newPassword: string
   ): Promise<void> {
+    const student = await this.studentService.getStudentByRa(ra);
     try {
       const hashedPassword = await this.hashService.hashContent(newPassword);
 
@@ -158,7 +161,8 @@ export class AuthService {
 
 
       // console.log(`\n\n${birthDate}\n\n\n`)
-      
+      await this.setLoginTimestampStudent(student.ra);
+
       await Promise.all([
         this.studentService.updateStudentPassword(ra, hashedPassword),
         this.studentService.updateStudents({
