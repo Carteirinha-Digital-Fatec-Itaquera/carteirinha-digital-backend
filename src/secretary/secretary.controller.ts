@@ -1,10 +1,25 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put ,Patch, UseInterceptors, UploadedFile, BadRequestException} from '@nestjs/common';
+import { 
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Post,
+  Put,
+  Patch,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException
+} from '@nestjs/common';
+
 import { FileInterceptor } from '@nestjs/platform-express';
+
 import { CreateSecretaryDTO } from './dto/create-secretary.dto';
 import { SecretaryService } from './secretary.service';
 import { SecretaryMapper } from './mapper/secretary.mapper';
 import { ViewSecretaryDTO } from './dto/view-secretary.dto';
-import { StudentService } from '../student/student.service'; 
+import { StudentService } from '../student/student.service';
 import { UpdateSecretaryDto } from './dto/update-secretary.dto';
 
 @Controller('secretaria')
@@ -12,7 +27,7 @@ export class SecretaryController {
   constructor(
     private readonly mapper: SecretaryMapper,
     private readonly service: SecretaryService,
-    private readonly studentService: StudentService, 
+    private readonly studentService: StudentService,
   ) {}
 
   @Get('listar-todos')
@@ -22,25 +37,44 @@ export class SecretaryController {
   }
 
   @Get('encontrar-por-id/:id')
-  async getSecretaryById(@Param('id', ParseIntPipe) id: number): Promise<ViewSecretaryDTO> {
-    return this.mapper.toDTO(await this.service.getSecretaryById(id));
+  async getSecretaryById(
+    @Param('id', ParseIntPipe) id: number
+  ): Promise<ViewSecretaryDTO> {
+    return this.mapper.toDTO(
+      await this.service.getSecretaryById(id)
+    );
   }
 
   @Get('encontrar-por-email/:email')
-  async getSecretaryByEmail(@Param('email') email: string): Promise<ViewSecretaryDTO> {
-    return this.mapper.toDTO(await this.service.getSecretaryByEmail(email));
+  async getSecretaryByEmail(
+    @Param('email') email: string
+  ): Promise<ViewSecretaryDTO> {
+    return this.mapper.toDTO(
+      await this.service.getSecretaryByEmail(email)
+    );
   }
 
   @Post('criar')
-  async createSecretary(@Body() secretary: CreateSecretaryDTO) {
+  async createSecretary(
+    @Body() secretary: CreateSecretaryDTO
+  ) {
     return await this.service.createSecretary(secretary);
   }
 
   @Post('confirmar-cadastro')
   async confirmSecretary(
-    @Body() body: { email: string; code: string; secretary: CreateSecretaryDTO }
+    @Body()
+    body: {
+      email: string;
+      code: string;
+      secretary: CreateSecretaryDTO;
+    }
   ) {
-    return await this.service.confirmSecretary(body.email, body.code, body.secretary);
+    return await this.service.confirmSecretary(
+      body.email,
+      body.code,
+      body.secretary,
+    );
   }
 
   @Put('atualizar/:id')
@@ -48,38 +82,64 @@ export class SecretaryController {
     @Param('id', ParseIntPipe) id: number,
     @Body() secretary: UpdateSecretaryDto
   ) {
-    return await this.service.updateSecretaryFromDto(id, secretary);
+    return await this.service.updateSecretaryFromDto(
+      id,
+      secretary,
+    );
   }
 
   @Delete('deletar/:id')
-  async deleteSecretary(@Param('id', ParseIntPipe) id: number) {
+  async deleteSecretary(
+    @Param('id', ParseIntPipe) id: number
+  ) {
     return await this.service.deleteSecretary(id);
   }
 
   @Post('upload-alunos')
   @UseInterceptors(FileInterceptor('file'))
-  async uploadAlunos(@UploadedFile() file: any) {  
+  async uploadAlunos(@UploadedFile() file: any) {
+
     if (!file) {
-      throw new BadRequestException('Arquivo não enviado');
+      throw new BadRequestException(
+        'Arquivo não enviado'
+      );
     }
 
-    const nomeArquivo = file.originalname.toLowerCase();
-    
+    const nomeArquivo =
+      file.originalname.toLowerCase();
+
+    // NOVO SUPORTE XLSX/XLS
+    if (
+      nomeArquivo.endsWith('.xlsx') ||
+      nomeArquivo.endsWith('.xls')
+    ) {
+      return this.service.processarAlunosXLSX(
+        file.buffer
+      );
+    }
+
     if (nomeArquivo.endsWith('.csv')) {
-      return this.service.processarAlunosCSV(file.buffer);
-    } 
-    
-    if (nomeArquivo.endsWith('.txt')) {
-      return this.service.processarAlunosTXT(file.buffer);
+      return this.service.processarAlunosCSV(
+        file.buffer
+      );
     }
-    
-    if (nomeArquivo.endsWith('.pdf')) {
-      return this.service.processarAlunosPDF(file.buffer);
-    }
-    
-    throw new BadRequestException('Formato não suportado. Use CSV, TXT ou PDF');
-  }
 
+    if (nomeArquivo.endsWith('.txt')) {
+      return this.service.processarAlunosTXT(
+        file.buffer
+      );
+    }
+
+    if (nomeArquivo.endsWith('.pdf')) {
+      return this.service.processarAlunosPDF(
+        file.buffer
+      );
+    }
+
+    throw new BadRequestException(
+      'Formato não suportado. Use XLSX, CSV, TXT ou PDF'
+    );
+  }
 
   @Get('fotos-pendentes')
   async getPendingPhotos() {
@@ -89,15 +149,26 @@ export class SecretaryController {
   @Patch('aprovar-foto/:ra')
   async approvePhoto(
     @Param('ra') ra: string,
-    @Body() body: { status: string; rejectionReason?: string }
+    @Body()
+    body: {
+      status: string;
+      rejectionReason?: string;
+    }
   ) {
     console.log('RA recebido:', ra);
     console.log('Body recebido:', body);
-    
+
     if (!body || !body.status) {
-      throw new BadRequestException('Status é obrigatório');
+      throw new BadRequestException(
+        'Status é obrigatório'
+      );
     }
-    
-    return this.studentService.approvePhoto(ra, body.status, body.rejectionReason || null, 'secretaria');
+
+    return this.studentService.approvePhoto(
+      ra,
+      body.status,
+      body.rejectionReason || null,
+      'secretaria',
+    );
   }
 }
