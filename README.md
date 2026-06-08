@@ -10,7 +10,7 @@ API REST desenvolvida com NestJS para o sistema de Carteirinha Digital da Fatec 
 - PostgreSQL (Neon)
 - JWT para autenticação
 - Cloudinary para armazenamento de fotos
-- Nodemailer para envio de e-mails
+- Brevo (API) para envio de e-mails
 
 ## 📋 Pré-requisitos
 
