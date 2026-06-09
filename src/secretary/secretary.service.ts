@@ -432,7 +432,7 @@ export class SecretaryService {
           );
         }
 
-        const cpfRaw = row['CPF'] ?? row['cpf'] ?? null;
+        const cpfRaw = records[i]['CPF'] ?? records[i]['cpf'] ?? null;
         const cpf = cpfRaw ? String(cpfRaw).trim() : null;
 
         const birthDate =
@@ -506,8 +506,8 @@ export class SecretaryService {
           );
         }
 
-        const cpfRaw = row['CPF'] ?? row['cpf'] ?? null;
-        const cpf = cpfRaw ? String(cpfRaw).trim() : null;
+        const cpfRaw = (row['CPF'] ?? row['cpf'] ?? '') as string;
+        const cpf = cpfRaw.trim() !== '' ? cpfRaw.trim() : null;
 
         const birthDate =
           row['birthDate'] ??
