@@ -363,11 +363,8 @@ export class SecretaryService {
           );
         }
 
-        const cpf = String(
-          row['CPF'] ??
-          row['cpf'] ??
-          '000.000.000-00',
-        ).trim();
+        const cpfRaw = row['CPF'] ?? row['cpf'] ?? null;
+        const cpf = cpfRaw ? String(cpfRaw).trim() : null;
 
         const birthDate =
           row['birthDate'] ??
@@ -435,11 +432,8 @@ export class SecretaryService {
           );
         }
 
-        const cpf = String(
-          records[i]['CPF'] ??
-          records[i]['cpf'] ??
-          '000.000.000-00',
-        ).trim();
+        const cpfRaw = row['CPF'] ?? row['cpf'] ?? null;
+        const cpf = cpfRaw ? String(cpfRaw).trim() : null;
 
         const birthDate =
           records[i]['birthDate'] ??
@@ -512,10 +506,8 @@ export class SecretaryService {
           );
         }
 
-        const cpf =
-          row['CPF'] ??
-          row['cpf'] ??
-          '000.000.000-00';
+        const cpfRaw = row['CPF'] ?? row['cpf'] ?? null;
+        const cpf = cpfRaw ? String(cpfRaw).trim() : null;
 
         const birthDate =
           row['birthDate'] ??
