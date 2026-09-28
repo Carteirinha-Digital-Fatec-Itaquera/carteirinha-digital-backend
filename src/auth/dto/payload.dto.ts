@@ -1,6 +1,10 @@
+export type UserRole = 'student' | 'secretary';
+
 export interface TokenPayload {
   sub: string | number;
-  role: string;
-  firstLogin: boolean;
+  role: UserRole;
+  accountId?: string;
+  email?: string;
+  firstLogin?: boolean;
   isExpired?: boolean;
 }

@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt'; // <-- ADICIONA
+import { JwtModule } from '@nestjs/jwt';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { StudentService } from 'src/student/student.service';
@@ -17,14 +17,20 @@ import { VerificationService } from '../verification/verification.service';
 import { MailModule } from '../mail/mail.module';
 import { UploadModule } from '../upload/upload.module';
 import { UploadService } from '../upload/upload.service';
-
-
 import { AuthGuard } from './auth.guard';
+import { RolesGuard } from './roles.guard';
+import { loadAuthSecrets } from './auth.config';
+
 @Module({
   imports: [
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'supa_secret_passwordXD',
-      signOptions: { expiresIn: '1h' },
+    JwtModule.registerAsync({
+      useFactory: () => {
+        const { jwtSecret } = loadAuthSecrets();
+        return {
+          secret: jwtSecret,
+          signOptions: { expiresIn: '1h' },
+        };
+      },
     }),
     UtilsModule,
     VerificationModule,
@@ -35,6 +41,7 @@ import { AuthGuard } from './auth.guard';
   providers: [
     AuthService,
     AuthGuard,
+    RolesGuard,
     UploadService,
     StudentService,
     StudentMapper,
@@ -51,5 +58,6 @@ import { AuthGuard } from './auth.guard';
       useClass: PrismaSecretaryRepository,
     },
   ],
+  exports: [AuthGuard, RolesGuard, JwtModule],
 })
 export class AuthModule {}
