@@ -1,13 +1,22 @@
 import { loadAuthSecrets } from './auth.config';
 
 describe('loadAuthSecrets', () => {
-  it('requires JWT_SECRET and ATTENDANCE_QR_SECRET', () => {
-    expect(() => loadAuthSecrets({})).toThrow(
-      'JWT_SECRET, ATTENDANCE_QR_SECRET',
-    );
+  it('requires JWT_SECRET', () => {
+    expect(() => loadAuthSecrets({})).toThrow('JWT_SECRET');
   });
 
-  it('returns distinct configured secrets', () => {
+  it('falls back attendanceQrSecret to JWT_SECRET if ATTENDANCE_QR_SECRET is missing', () => {
+    expect(
+      loadAuthSecrets({
+        JWT_SECRET: 'login-secret',
+      }),
+    ).toEqual({
+      jwtSecret: 'login-secret',
+      attendanceQrSecret: 'login-secret',
+    });
+  });
+
+  it('returns distinct configured secrets when both are provided', () => {
     expect(
       loadAuthSecrets({
         JWT_SECRET: 'login-secret',

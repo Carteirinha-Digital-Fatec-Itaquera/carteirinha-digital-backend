@@ -6,18 +6,17 @@ export interface AuthSecrets {
 export function loadAuthSecrets(
   env: NodeJS.ProcessEnv = process.env,
 ): AuthSecrets {
-  const missing = ['JWT_SECRET', 'ATTENDANCE_QR_SECRET'].filter(
-    (key) => !env[key]?.trim(),
-  );
-
-  if (missing.length > 0) {
+  const jwtSecret = env.JWT_SECRET?.trim();
+  if (!jwtSecret) {
     throw new Error(
-      `Missing required authentication environment variable(s): ${missing.join(', ')}`,
+      'Missing required authentication environment variable(s): JWT_SECRET',
     );
   }
 
+  const attendanceQrSecret = env.ATTENDANCE_QR_SECRET?.trim() || jwtSecret;
+
   return {
-    jwtSecret: env.JWT_SECRET!.trim(),
-    attendanceQrSecret: env.ATTENDANCE_QR_SECRET!.trim(),
+    jwtSecret,
+    attendanceQrSecret,
   };
 }
