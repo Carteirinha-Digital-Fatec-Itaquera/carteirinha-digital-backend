@@ -1,0 +1,47 @@
+{
+  "scanRequest": {
+    "qrToken": "JWT_PRESENCA_FICTICIO"
+  },
+  "scanSuccess": {
+    "success": true,
+    "type": "CHECK_IN",
+    "eventTitle": "Arquitetura de Software na Prática",
+    "timestamp": "2026-10-05T18:55:10.000Z",
+    "status": "CHECKED_IN",
+    "message": "Entrada registrada com sucesso"
+  },
+  "scanDuplicate": {
+    "success": false,
+    "code": "ALREADY_CHECKED_IN",
+    "message": "Entrada já registrada anteriormente",
+    "timestamp": "2026-10-05T18:55:12.000Z"
+  },
+  "attendances": [
+    {
+      "id": "44444444-4444-4444-8444-444444444444",
+      "eventId": "11111111-1111-4111-8111-111111111111",
+      "eventTitle": "Arquitetura de Software na Prática",
+      "studentRa": "RA-EXEMPLO-001",
+      "studentName": "Pessoa Exemplo",
+      "studentCourse": "DSM",
+      "checkInAt": "2026-10-05T18:55:10.000Z",
+      "checkOutAt": "2026-10-05T21:02:00.000Z",
+      "status": "CONFIRMED"
+    }
+  ],
+  "myAttendances": [
+    {
+      "id": "44444444-4444-4444-8444-444444444444",
+      "eventId": "11111111-1111-4111-8111-111111111111",
+      "eventTitle": "Arquitetura de Software na Prática",
+      "checkInAt": "2026-10-05T18:55:10.000Z",
+      "checkOutAt": "2026-10-05T21:02:00.000Z",
+      "status": "CONFIRMED"
+    }
+  ],
+  "summary": {
+    "checkedInCount": 1,
+    "checkedOutCount": 1,
+    "confirmedCount": 1
+  }
+}
