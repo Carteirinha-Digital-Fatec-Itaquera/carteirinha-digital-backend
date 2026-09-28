@@ -9,7 +9,7 @@
     "prisma:seed": "npx prisma db seed",
     "prisma:init": "npx prisma generate && npx prisma migrate dev",
     "prisma:db": "npx prisma generate && npx prisma db push",
-    "build": "prisma generate && nest build",
+    "build": "prisma generate && nest build && node -e \"const fs=require('fs');const path=require('path');const src=path.join('dist','src','main.js');const dst=path.join('dist','main.js');if(fs.existsSync(src)&&!fs.existsSync(dst)){fs.writeFileSync(dst, 'require(\\'./src/main.js\\');\\n');}\"",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -55,7 +55,8 @@
     "rxjs": "^7.8.1",
     "sharp": "^0.34.5",
     "uuid": "^13.0.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "prisma": "^7.1.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -79,7 +80,6 @@
     "globals": "^16.0.0",
     "jest": "^30.0.0",
     "prettier": "^3.4.2",
-    "prisma": "^7.1.0",
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
