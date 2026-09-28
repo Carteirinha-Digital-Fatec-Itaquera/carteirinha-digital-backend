@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { SecretaryModule } from './secretary/secretary.module';
 import { DatabaseModule } from './database/database.module';
 import { VerificationModule } from './verification/verification.module';
+import { EventModule } from './event/event.module';
 import { ServeStaticModule } from '@nestjs/serve-static'; // 👈 Importe isso
 import { join } from 'path';
 
@@ -15,6 +16,7 @@ import { join } from 'path';
     SecretaryModule, 
     DatabaseModule, 
     VerificationModule,
+    EventModule,
 
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'uploads'),
