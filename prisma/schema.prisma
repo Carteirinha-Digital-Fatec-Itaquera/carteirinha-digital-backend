@@ -9,14 +9,15 @@ datasource db {
 }
 
 model Student {
-  ra              String      @id
+  ra              String        @id
+  accountId       String        @unique @default(dbgenerated("(gen_random_uuid())::text"))
   course          String
   status          String
   name            String
   admission       String
-  email           String      @unique
-  cpf             String?      @unique
-  qrcode          String?     @unique
+  email           String        @unique
+  cpf             String?       @unique
+  qrcode          String?       @unique
   photo           String?
   birthDate       DateTime?
   dueDate         DateTime
@@ -24,23 +25,25 @@ model Student {
   lastLogin       DateTime?
   approvedAt      DateTime?
   approvedBy      String?
-  photoStatus     PhotoStatus @default(PENDING)
+  photoStatus     PhotoStatus   @default(PENDING)
   rejectionReason String?
+  attendances     Attendance[]
+  certificates    Certificate[]
 }
 
 model StudentLog {
-  id              Int       @id @default(autoincrement())
-  ra              String
-  course          String
-  status          String
-  name            String
-  admission       String
-  email           String
-  cpf             String
-  birthDate       DateTime
-  dueDate         DateTime
-  deletedAt       DateTime  @default(now())
-  deletionReason  String    @default("Prazo de 5 anos após admissão encerrado")
+  id             Int      @id @default(autoincrement())
+  ra             String
+  course         String
+  status         String
+  name           String
+  admission      String
+  email          String
+  cpf            String
+  birthDate      DateTime
+  dueDate        DateTime
+  deletedAt      DateTime @default(now())
+  deletionReason String   @default("Prazo de 5 anos após admissão encerrado")
 }
 
 model Secretary {
@@ -51,6 +54,86 @@ model Secretary {
   password  String
   birthDate DateTime
   lastLogin DateTime?
+  events    Event[]
+}
+
+model Event {
+  id                 String            @id @default(uuid())
+  title              String
+  description        String?
+  speaker            String
+  location           String
+  startsAt           DateTime
+  endsAt             DateTime
+  workloadMinutes    Int
+  status             EventStatus       @default(SCHEDULED)
+  certificateEnabled Boolean           @default(true)
+  createdById        Int?
+  createdBy          Secretary?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  checkpoints        EventCheckpoint[]
+  attendances        Attendance[]
+  certificates       Certificate[]
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([createdById])
+}
+
+model EventCheckpoint {
+  id        String         @id @default(uuid())
+  eventId   String
+  event     Event          @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  type      CheckpointType
+  isOpen    Boolean        @default(false)
+  openedAt  DateTime?
+  closedAt  DateTime?
+  version   Int            @default(1)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([eventId, type])
+}
+
+model Attendance {
+  id               String           @id @default(uuid())
+  eventId          String
+  event            Event            @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  studentRa        String
+  studentName      String
+  studentCourse    String
+  studentAccountId String
+  studentRefRa     String?
+  student          Student?         @relation(fields: [studentRefRa], references: [ra], onDelete: SetNull)
+  checkInAt        DateTime?
+  checkOutAt       DateTime?
+  status           AttendanceStatus @default(CHECKED_IN)
+  certificate      Certificate?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@unique([eventId, studentRa])
+  @@index([studentRefRa, studentAccountId])
+}
+
+model Certificate {
+  id               String     @id @default(uuid())
+  eventId          String
+  event            Event      @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  studentRa        String
+  studentAccountId String
+  studentRefRa     String?
+  student          Student?   @relation(fields: [studentRefRa], references: [ra], onDelete: SetNull)
+  attendanceId     String     @unique
+  attendance       Attendance @relation(fields: [attendanceId], references: [id], onDelete: Restrict)
+  verificationCode String     @unique
+  payloadSnapshot  Json
+  issuedAt         DateTime   @default(now())
+  revokedAt        DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  @@unique([eventId, studentRa])
+  @@index([studentRefRa, studentAccountId])
 }
 
 model VerificationCode {
@@ -66,4 +149,21 @@ enum PhotoStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum EventStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum CheckpointType {
+  CHECK_IN
+  CHECK_OUT
+}
+
+enum AttendanceStatus {
+  CHECKED_IN
+  CONFIRMED
 }
