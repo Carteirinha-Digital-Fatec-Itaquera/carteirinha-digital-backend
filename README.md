@@ -2,6 +2,10 @@
 
 API REST desenvolvida com NestJS para o sistema de Carteirinha Digital da Fatec Itaquera.
 
+## Contratos de API
+
+O contrato canônico V1 de eventos, presença, checkpoints e certificados está em [docs/contracts/v1-events-spec.md](docs/contracts/v1-events-spec.md). Os tipos de transporte ficam em `src/contracts/v1-events.types.ts` e os exemplos JSON em `docs/contracts/fixtures/`.
+
 ## 🚀 Tecnologias
 
 - Node.js 22+
