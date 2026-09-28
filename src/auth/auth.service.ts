@@ -39,6 +39,10 @@ export class AuthService {
     const isValidPassword = await this.hashService.compareHash(student.password, pass);
     if (!isValidPassword) throw new UnauthorizedException(messageError);
 
+    if (!student.accountId) {
+      throw new UnauthorizedException('Identidade da conta do aluno inválida');
+    }
+
     const isFirstLogin = student.lastLogin === null;
 
     // FIX: atualiza o timestamp sempre (antes era !isFirstLogin, causando bug)
@@ -49,6 +53,7 @@ export class AuthService {
     const payload: TokenPayload = {
       sub: student.ra,
       role: 'student',
+      accountId: student.accountId,
       firstLogin: isFirstLogin,
     };
 
@@ -242,8 +247,14 @@ export class AuthService {
 
     const student = await this.studentService.getStudentByEmail(email);
 
-    const payload = {
-      ra: student.ra,
+    if (!student.accountId) {
+      throw new UnauthorizedException('Identidade da conta do aluno inválida');
+    }
+
+    const payload: TokenPayload = {
+      sub: student.ra,
+      role: 'student',
+      accountId: student.accountId,
       email: student.email,
     };
 

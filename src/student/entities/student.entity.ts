@@ -34,6 +34,7 @@ export class StudentEntity {
     this.photoStatus = photoStatus
   }
   ra: string;
+  accountId?: string;
   course: string;
   status: string;
   name: string;
