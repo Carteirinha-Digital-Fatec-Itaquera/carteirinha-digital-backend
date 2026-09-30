@@ -13,7 +13,12 @@ export function loadAuthSecrets(
     );
   }
 
-  const attendanceQrSecret = env.ATTENDANCE_QR_SECRET?.trim() || jwtSecret;
+  const attendanceQrSecret = env.ATTENDANCE_QR_SECRET?.trim();
+  if (!attendanceQrSecret || attendanceQrSecret === jwtSecret) {
+    throw new Error(
+      'ATTENDANCE_QR_SECRET must be configured and distinct from JWT_SECRET',
+    );
+  }
 
   return {
     jwtSecret,

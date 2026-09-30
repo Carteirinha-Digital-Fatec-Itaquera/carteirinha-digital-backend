@@ -238,3 +238,16 @@ Certificado só é emitido uma vez por `Attendance` confirmada e evento com `cer
 | Backend: banco, auth, controllers                       | Modelo acima e rotas                     | #23, #28, #24, #25, #26, #27                        |
 
 O teste local da #22 valida parse e estrutura das três fixtures, invariantes entre IDs/status/checkpoints, ausência de PII no QR e no retorno público, unicidade das 15 rotas e compilação dos tipos TypeScript. Isto prova coerência interna do contrato; não prova integração real com os frontends, que ainda não consomem as novas APIs. Dev B e Dev C devem revisar a especificação e registrar aprovação no PR antes de tratá-la como congelada. Mudança posterior exige revisão explícita dos consumidores.
+
+
+## Implementação Attendance — issue #26
+
+As quatro rotas de presença foram implementadas em `src/attendance/`. O scan usa `checkpoint` do JWT QR e autentica a conta por `sub` + `accountId`, com Student existente e status `Ativo` ou `Em curso` (sem distinção de maiúsculas/espaços nas extremidades). O corpo aceita somente `qrToken`.
+
+Códigos estáveis de erro do scan: `QR_EXPIRED` (400), `INVALID_QR_TOKEN` (400), `QR_VERSION_MISMATCH` (400), `CHECKPOINT_CLOSED` (400), `CHECK_IN_REQUIRED` (400), `EVENT_CANCELLED` (409), `RA_REUSE_HISTORY_CONFLICT` (409). Conta ausente, inativa ou com outro accountId retorna 401. Evento ausente retorna 404. As respostas de sucesso/duplicidade mantêm a união `AttendanceScanResponse` canônica acima; o `timestamp` da duplicidade é da tentativa, não substitui os horários originais consultados em `/attendances/me`.
+
+`JWT_SECRET` e `ATTENDANCE_QR_SECRET` devem ser configurados, não vazios e distintos. O fallback anterior do segredo QR para o segredo de login foi removido. O emissor existente e o validador usam a mesma configuração. Algoritmo do QR: HS256.
+
+Elegibilidade para a #27 é persistida por `Attendance.status = CONFIRMED` e `Event.certificateEnabled = true`. Não há emissão nem geração de PDF no scan; desabilitar certificados não impede a presença. As consultas da Secretaria usam snapshots históricos `studentRa`, `studentName`, `studentCourse`, conforme V1, mesmo após exclusão do aluno.
+
+A transação bloqueia a conta, serializa o par evento/RA com advisory lock transacional e mantém locks compartilhados de checkpoint/evento até gravar. A expiração é conferida novamente após a espera. A chave única `(eventId, studentRa)` continua sendo a restrição persistente; duplicatas do módulo não sobrescrevem os horários originais.
