@@ -5,15 +5,15 @@ describe('loadAuthSecrets', () => {
     expect(() => loadAuthSecrets({})).toThrow('JWT_SECRET');
   });
 
-  it('falls back attendanceQrSecret to JWT_SECRET if ATTENDANCE_QR_SECRET is missing', () => {
-    expect(
-      loadAuthSecrets({
-        JWT_SECRET: 'login-secret',
-      }),
-    ).toEqual({
-      jwtSecret: 'login-secret',
-      attendanceQrSecret: 'login-secret',
-    });
+  it('requires an independent QR secret', () => {
+    for (const value of [undefined, '', 'login-secret']) {
+      expect(() =>
+        loadAuthSecrets({
+          JWT_SECRET: 'login-secret',
+          ATTENDANCE_QR_SECRET: value,
+        }),
+      ).toThrow('ATTENDANCE_QR_SECRET');
+    }
   });
 
   it('returns distinct configured secrets when both are provided', () => {

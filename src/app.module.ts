@@ -5,27 +5,29 @@ import { AuthModule } from './auth/auth.module';
 import { SecretaryModule } from './secretary/secretary.module';
 import { DatabaseModule } from './database/database.module';
 import { VerificationModule } from './verification/verification.module';
+import { AttendanceModule } from './attendance/attendance.module';
 import { EventModule } from './event/event.module';
 import { ServeStaticModule } from '@nestjs/serve-static'; // 👈 Importe isso
 import { join } from 'path';
 
 @Module({
   imports: [
-    StudentModule, 
-    AuthModule, 
-    SecretaryModule, 
-    DatabaseModule, 
+    StudentModule,
+    AuthModule,
+    SecretaryModule,
+    DatabaseModule,
     VerificationModule,
     EventModule,
+    AttendanceModule,
 
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'uploads'),
-      serveRoot: '/uploads/', 
+      serveRoot: '/uploads/',
     }),
-    
+
     MailerModule.forRoot({
       transport: {
-        host: 'smtp.gmail.com',  // ou 'smtp.office365.com' para Outlook
+        host: 'smtp.gmail.com', // ou 'smtp.office365.com' para Outlook
         port: 587,
         secure: false,
         auth: {

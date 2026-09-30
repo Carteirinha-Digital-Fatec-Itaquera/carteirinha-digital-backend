@@ -21,7 +21,9 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "test:issue23": "tsx prisma/verify-issue23.ts"
+    "test:issue23": "tsx prisma/verify-issue23.ts",
+    "test:attendance": "jest --runInBand src/attendance/attendance.service.spec.ts src/attendance/attendance.controller.spec.ts",
+    "test:attendance:integration": "node scripts/test-attendance-integration.cjs"
   },
   "dependencies": {
     "@getbrevo/brevo": "^5.0.4",
