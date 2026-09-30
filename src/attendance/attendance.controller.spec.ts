@@ -11,6 +11,8 @@ import {
 } from './attendance.controller';
 import { AttendanceService } from './attendance.service';
 
+import { AttendanceQrReferenceService } from './attendance-qr-reference.service';
+
 const id = '11111111-1111-4111-8111-111111111111';
 describe('Attendance HTTP authorization and DTO', () => {
   let app: INestApplication;
@@ -22,6 +24,9 @@ describe('Attendance HTTP authorization and DTO', () => {
     findByEvent: jest.fn(),
     summary: jest.fn(),
   };
+  const qrRefService = {
+    resolveReference: jest.fn(),
+  };
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       imports: [JwtModule.register({ secret: 'http-test' })],
@@ -30,6 +35,7 @@ describe('Attendance HTTP authorization and DTO', () => {
         AuthGuard,
         RolesGuard,
         { provide: AttendanceService, useValue: service },
+        { provide: AttendanceQrReferenceService, useValue: qrRefService },
       ],
     }).compile();
     app = module.createNestApplication();
@@ -44,6 +50,23 @@ describe('Attendance HTTP authorization and DTO', () => {
     jest.clearAllMocks();
     service.findMine.mockResolvedValue([]);
     service.scan.mockResolvedValue({ success: true });
+    qrRefService.resolveReference.mockResolvedValue({
+      id: 'ref-1',
+      referenceHash: 'hash-1',
+      checkpointId: 'cp-1',
+      checkpointVersion: 1,
+      jwtToken: 'mock-jwt-token',
+      expiresAt: new Date(Date.now() + 20000),
+      checkpoint: {
+        type: 'CHECK_IN',
+        event: {
+          id,
+          title: 'Palestra Teste',
+          speaker: 'Palestrante',
+          location: 'Sala 1',
+        },
+      },
+    });
   });
   afterAll(async () => {
     await app.close();
@@ -137,5 +160,94 @@ describe('Attendance HTTP authorization and DTO', () => {
       .get('/events/invalid/attendances')
       .auth(secretary, { type: 'bearer' })
       .expect(400);
+  });
+
+  describe('GET /attendances/qr/:reference', () => {
+    it('requires student authentication and returns 401/403 otherwise', async () => {
+      await request(app.getHttpServer() as Server)
+        .get('/attendances/qr/valid-ref-1234567890')
+        .expect(401);
+
+      await request(app.getHttpServer() as Server)
+        .get('/attendances/qr/valid-ref-1234567890')
+        .auth(secretary, { type: 'bearer' })
+        .expect(403);
+    });
+
+    it('returns event preview without registering attendance', async () => {
+      const response = await request(app.getHttpServer() as Server)
+        .get('/attendances/qr/valid-ref-1234567890')
+        .auth(student, { type: 'bearer' })
+        .expect(200)
+        .expect('Cache-Control', 'no-store');
+
+      expect(qrRefService.resolveReference).toHaveBeenCalledWith(
+        'valid-ref-1234567890',
+      );
+      expect(service.scan).not.toHaveBeenCalled();
+      expect(response.body).toEqual({
+        event: {
+          id,
+          title: 'Palestra Teste',
+          speaker: 'Palestrante',
+          location: 'Sala 1',
+        },
+        checkpoint: {
+          type: 'CHECK_IN',
+        },
+        expiresAt: expect.any(String),
+        serverTime: expect.any(String),
+      });
+    });
+  });
+
+  describe('POST /attendances/scan-reference', () => {
+    it('requires student authentication', async () => {
+      await request(app.getHttpServer() as Server)
+        .post('/attendances/scan-reference')
+        .send({ qrReference: 'valid-ref-1234567890' })
+        .expect(401);
+
+      await request(app.getHttpServer() as Server)
+        .post('/attendances/scan-reference')
+        .auth(secretary, { type: 'bearer' })
+        .send({ qrReference: 'valid-ref-1234567890' })
+        .expect(403);
+    });
+
+    it('rejects invalid qrReference DTO format', async () => {
+      await request(app.getHttpServer() as Server)
+        .post('/attendances/scan-reference')
+        .auth(student, { type: 'bearer' })
+        .send({ qrReference: 'short' })
+        .expect(400);
+
+      await request(app.getHttpServer() as Server)
+        .post('/attendances/scan-reference')
+        .auth(student, { type: 'bearer' })
+        .send({})
+        .expect(400);
+    });
+
+    it('resolves reference and delegates to attendanceService.scan with stored jwtToken', async () => {
+      await request(app.getHttpServer() as Server)
+        .post('/attendances/scan-reference')
+        .auth(student, { type: 'bearer' })
+        .send({ qrReference: 'valid-ref-1234567890' })
+        .expect(200)
+        .expect('Cache-Control', 'no-store');
+
+      expect(qrRefService.resolveReference).toHaveBeenCalledWith(
+        'valid-ref-1234567890',
+      );
+      expect(service.scan).toHaveBeenCalledWith(
+        'mock-jwt-token',
+        expect.objectContaining({
+          sub: '001',
+          accountId: 'account',
+          role: 'student',
+        }),
+      );
+    });
   });
 });

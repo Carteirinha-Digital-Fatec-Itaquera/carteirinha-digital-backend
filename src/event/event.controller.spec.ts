@@ -254,6 +254,7 @@ describe('EventController authorization and validation', () => {
       eventId: '11111111-1111-4111-8111-111111111111',
       checkpoint: CheckpointType.CHECK_IN,
       checkpointVersion: 2,
+      checkpointId: 'checkpoint-id',
     });
   });
 });

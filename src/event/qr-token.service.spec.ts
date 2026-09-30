@@ -79,4 +79,38 @@ describe('QrTokenService', () => {
 
     expect(response.expiresAt).toBe(new Date(payload.exp * 1000).toISOString());
   });
+
+  it('gera qrUrl e serverTime quando AttendanceQrReferenceService e checkpointId são fornecidos', async () => {
+    const jwt = new JwtService();
+    const mockRefService = {
+      createReference: jest.fn().mockResolvedValue({
+        reference: 'short-ref-1234567890',
+        expiresAt: new Date(),
+      }),
+      buildQrUrl: jest
+        .fn()
+        .mockReturnValue(
+          'https://carteirinha-digital-front-end-aluno.vercel.app/p/short-ref-1234567890',
+        ),
+    };
+    const service = new QrTokenService(jwt, mockRefService as any);
+
+    const response = await service.generate({
+      eventId: 'event-id',
+      checkpoint: CheckpointType.CHECK_IN,
+      checkpointVersion: 2,
+      checkpointId: 'checkpoint-id',
+    });
+
+    expect(response.qrUrl).toBe(
+      'https://carteirinha-digital-front-end-aluno.vercel.app/p/short-ref-1234567890',
+    );
+    expect(typeof response.serverTime).toBe('string');
+    expect(mockRefService.createReference).toHaveBeenCalledWith({
+      checkpointId: 'checkpoint-id',
+      checkpointVersion: 2,
+      jwtToken: response.qrToken,
+      expiresAt: expect.any(Date),
+    });
+  });
 });

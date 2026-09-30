@@ -19,6 +19,9 @@ import {
   EventAttendanceController,
 } from './attendance.controller';
 import { AttendanceService } from './attendance.service';
+import { AttendanceQrReferenceService } from './attendance-qr-reference.service';
+import { CertificateService } from '../certificate/certificate.service';
+import { PdfGeneratorService } from '../certificate/pdf-generator.service';
 
 const url = process.env.ATTENDANCE_TEST_DATABASE_URL;
 const integration = url ? describe : describe.skip;
@@ -72,6 +75,9 @@ integration('Attendance with real PostgreSQL and backend QR', () => {
         AuthGuard,
         RolesGuard,
         AttendanceService,
+        AttendanceQrReferenceService,
+        CertificateService,
+        PdfGeneratorService,
         EventService,
         CheckpointService,
         QrTokenService,
@@ -417,5 +423,84 @@ integration('Attendance with real PostgreSQL and backend QR', () => {
     expect(attendance.status).toBe('CONFIRMED');
     expect(attendance.event.certificateEnabled).toBe(false);
     expect(await prisma.certificate.count({ where: { eventId } })).toBe(0);
+  });
+
+  it('geração de QR retorna qrUrl curta, serverTime e permite prévia e scan por referência para múltiplos alunos', async () => {
+    await checkpoint('check-in', 'open').expect(200);
+
+    const qrResponse = await http()
+      .get(`/events/${eventId}/checkpoints/check-in/qr`)
+      .auth(secretaryToken, { type: 'bearer' })
+      .expect(200);
+
+    expect(qrResponse.body).toHaveProperty('qrUrl');
+    expect(qrResponse.body).toHaveProperty('serverTime');
+    const qrUrl = (qrResponse.body as { qrUrl: string }).qrUrl;
+    expect(qrUrl).toMatch(/\/p\/[A-Za-z0-9_-]{22}$/);
+    const reference = qrUrl.split('/p/')[1];
+
+    // 1. Prévia autenticada do aluno: retorna evento sem registrar presença
+    const preview = await http()
+      .get(`/attendances/qr/${reference}`)
+      .auth(studentToken, { type: 'bearer' })
+      .expect(200)
+      .expect('Cache-Control', 'no-store');
+
+    expect(preview.body.event.id).toBe(eventId);
+    expect(preview.body.checkpoint.type).toBe('CHECK_IN');
+    expect(await prisma.attendance.count({ where: { eventId } })).toBe(0);
+
+    // 2. Confirmação por scan-reference: registra presença
+    const scanResult = await http()
+      .post('/attendances/scan-reference')
+      .auth(studentToken, { type: 'bearer' })
+      .send({ qrReference: reference })
+      .expect(200);
+
+    expect(scanResult.body).toMatchObject({
+      success: true,
+      type: 'CHECK_IN',
+      status: 'CHECKED_IN',
+    });
+    expect(
+      await prisma.attendance.count({ where: { eventId, studentRa: ra } }),
+    ).toBe(1);
+
+    // 3. O mesmo QR deve funcionar para múltiplos alunos (não é consumido globalmente)
+    const secondStudentRa = 'issue37-' + randomUUID();
+    const secondStudent = await prisma.student.create({
+      data: {
+        ra: secondStudentRa,
+        name: 'Segundo Aluno',
+        course: 'DSM',
+        status: 'Ativo',
+        admission: '20261',
+        email: randomUUID() + '@example.test',
+        password: 'unused',
+        dueDate: new Date('2030-01-01'),
+      },
+    });
+    const secondStudentToken = jwt.sign({
+      sub: secondStudentRa,
+      accountId: secondStudent.accountId,
+      role: 'student',
+    });
+
+    const secondScanResult = await http()
+      .post('/attendances/scan-reference')
+      .auth(secondStudentToken, { type: 'bearer' })
+      .send({ qrReference: reference })
+      .expect(200);
+
+    expect(secondScanResult.body).toMatchObject({
+      success: true,
+      type: 'CHECK_IN',
+      status: 'CHECKED_IN',
+    });
+    expect(
+      await prisma.attendance.count({
+        where: { eventId, studentRa: secondStudentRa },
+      }),
+    ).toBe(1);
   });
 });
