@@ -10,7 +10,7 @@ import { randomUUID } from 'crypto';
 import { HashContentService } from '../../src/utils/hashContentService';
 import { UploadService } from '../upload/upload.service';
 
-import { PrismaService } from 'src/database/prisma.service'; // Adicione
+import { PrismaService } from '../database/prisma.service';
 
 @Injectable()
 export class StudentService {
