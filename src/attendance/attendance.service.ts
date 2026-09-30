@@ -25,6 +25,7 @@ import type {
   AttendanceView,
   MyAttendanceView,
 } from './dto/view-attendance.dto';
+import { CertificateService } from '../certificate/certificate.service';
 
 type ActiveStudent = Pick<
   Student,
@@ -53,6 +54,7 @@ export class AttendanceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly certificateService: CertificateService,
   ) {
     this.qrSecret = loadAuthSecrets().attendanceQrSecret;
   }
@@ -162,14 +164,19 @@ export class AttendanceService {
             message: 'Não é possível registrar saída sem entrada prévia',
           });
         }
-        if (previous.checkOutAt)
+        if (previous.checkOutAt) {
+          if (event.certificateEnabled) {
+            await this.certificateService.issueCertificate(previous.id, tx);
+          }
           return this.duplicate('ALREADY_CHECKED_OUT', now);
+        }
         await tx.attendance.update({
           where,
           data: { checkOutAt: now, status: 'CONFIRMED' },
         });
-        // CONFIRMED + Event.certificateEnabled habilita a elegibilidade persistida
-        // para a #27. Emissão/PDF não são executados dentro desta transação.
+        if (event.certificateEnabled) {
+          await this.certificateService.issueCertificate(previous.id, tx);
+        }
         return {
           success: true,
           type: 'CHECK_OUT',

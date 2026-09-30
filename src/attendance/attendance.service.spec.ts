@@ -4,6 +4,7 @@ import { HttpException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../database/prisma.service';
 import { AttendanceService } from './attendance.service';
+import { CertificateService } from '../certificate/certificate.service';
 
 const eventId = '11111111-1111-4111-8111-111111111111';
 const student = {
@@ -22,9 +23,15 @@ const user = {
 describe('AttendanceService', () => {
   const jwt = new JwtService();
   let service: AttendanceService;
+  let certificateService: { issueCertificate: jest.Mock };
   let state: {
     student: typeof student | null;
-    event: { id: string; title: string; status: string } | null;
+    event: {
+      id: string;
+      title: string;
+      status: string;
+      certificateEnabled?: boolean;
+    } | null;
     checkpoint: { isOpen: boolean; version: number };
     attendance: Partial<Attendance> | null;
   };
@@ -98,7 +105,14 @@ describe('AttendanceService', () => {
     );
     tx.attendance.create.mockResolvedValue({});
     tx.attendance.update.mockResolvedValue({});
-    service = new AttendanceService(prisma as unknown as PrismaService, jwt);
+    certificateService = {
+      issueCertificate: jest.fn().mockResolvedValue({ id: 'cert-1' }),
+    };
+    service = new AttendanceService(
+      prisma as unknown as PrismaService,
+      jwt,
+      certificateService as unknown as CertificateService,
+    );
   });
   it('creates check-in with authenticated identity, snapshots and server time', async () => {
     const before = Date.now();
@@ -149,20 +163,63 @@ describe('AttendanceService', () => {
       service.scan(token({ checkpoint: 'CHECK_OUT' }), user),
       'CHECK_IN_REQUIRED',
     ));
-  it('confirms checkout', async () => {
+  it('confirms checkout and issues certificate when event.certificateEnabled is true', async () => {
     state.attendance = {
+      id: 'att-123',
       studentRefRa: student.ra,
       studentAccountId: student.accountId,
       checkInAt: new Date(),
       checkOutAt: null,
     };
+    state.event!.certificateEnabled = true;
+
     await expect(
       service.scan(token({ checkpoint: 'CHECK_OUT' }), user),
     ).resolves.toMatchObject({ success: true, status: 'CONFIRMED' });
+
     expect(tx.attendance.update).toHaveBeenCalledWith({
       where: { eventId_studentRa: { eventId, studentRa: student.ra } },
       data: { status: 'CONFIRMED', checkOutAt: expect.any(Date) as Date },
     });
+    expect(certificateService.issueCertificate).toHaveBeenCalledWith(
+      'att-123',
+      tx,
+    );
+  });
+
+  it('confirms checkout without issuing certificate when event.certificateEnabled is false', async () => {
+    state.attendance = {
+      id: 'att-123',
+      studentRefRa: student.ra,
+      studentAccountId: student.accountId,
+      checkInAt: new Date(),
+      checkOutAt: null,
+    };
+    state.event!.certificateEnabled = false;
+
+    await expect(
+      service.scan(token({ checkpoint: 'CHECK_OUT' }), user),
+    ).resolves.toMatchObject({ success: true, status: 'CONFIRMED' });
+
+    expect(certificateService.issueCertificate).not.toHaveBeenCalled();
+  });
+
+  it('checkout error during certificate emission propagates and causes rollback', async () => {
+    state.attendance = {
+      id: 'att-123',
+      studentRefRa: student.ra,
+      studentAccountId: student.accountId,
+      checkInAt: new Date(),
+      checkOutAt: null,
+    };
+    state.event!.certificateEnabled = true;
+    certificateService.issueCertificate.mockRejectedValueOnce(
+      new Error('Erro de transação na emissão'),
+    );
+
+    await expect(
+      service.scan(token({ checkpoint: 'CHECK_OUT' }), user),
+    ).rejects.toThrow('Erro de transação na emissão');
   });
   it('rejects expiration', async () =>
     code(service.scan(token({ iat: 1, exp: 2 }), user), 'QR_EXPIRED'));
