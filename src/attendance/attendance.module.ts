@@ -8,11 +8,17 @@ import {
 import { AttendanceService } from './attendance.service';
 
 import { CertificateModule } from '../certificate/certificate.module';
+import { AttendanceQrReferenceService } from './attendance-qr-reference.service';
+import { AttendanceQrCleanupService } from './attendance-qr-cleanup.service';
 
 @Module({
   imports: [DatabaseModule, AuthModule, CertificateModule],
   controllers: [AttendanceController, EventAttendanceController],
-  providers: [AttendanceService],
-  exports: [AttendanceService],
+  providers: [
+    AttendanceService,
+    AttendanceQrReferenceService,
+    AttendanceQrCleanupService,
+  ],
+  exports: [AttendanceService, AttendanceQrReferenceService],
 })
 export class AttendanceModule {}
