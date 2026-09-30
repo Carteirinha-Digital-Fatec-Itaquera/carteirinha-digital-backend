@@ -80,18 +80,33 @@ model Event {
 }
 
 model EventCheckpoint {
-  id        String         @id @default(uuid())
-  eventId   String
-  event     Event          @relation(fields: [eventId], references: [id], onDelete: Restrict)
-  type      CheckpointType
-  isOpen    Boolean        @default(false)
-  openedAt  DateTime?
-  closedAt  DateTime?
-  version   Int            @default(1)
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  id           String                  @id @default(uuid())
+  eventId      String
+  event        Event                   @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  type         CheckpointType
+  isOpen       Boolean                 @default(false)
+  openedAt     DateTime?
+  closedAt     DateTime?
+  version      Int                     @default(1)
+  qrReferences AttendanceQrReference[]
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
 
   @@unique([eventId, type])
+}
+
+model AttendanceQrReference {
+  id                String          @id @default(uuid())
+  referenceHash     String          @unique
+  checkpointId      String
+  checkpoint        EventCheckpoint @relation(fields: [checkpointId], references: [id], onDelete: Cascade)
+  checkpointVersion Int
+  jwtToken          String
+  expiresAt         DateTime
+  createdAt         DateTime        @default(now())
+
+  @@index([expiresAt])
+  @@index([checkpointId, checkpointVersion])
 }
 
 model Attendance {
