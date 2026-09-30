@@ -8,7 +8,10 @@ async function bootstrap() {
   app.enableCors({
   origin: [
     'http://localhost:5173',
+    'http://localhost:5174',
     'http://localhost:4173',
+    'http://localhost:4174',
+    /^http:\/\/localhost:\d+$/,
     'https://carteirinha-digital-front-end-secre-topaz.vercel.app',
     'https://carteirinha-digital-front-end-aluno.vercel.app'
   ],
