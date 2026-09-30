@@ -6,8 +6,10 @@ import { EventController } from './event.controller';
 import { EventService } from './event.service';
 import { QrTokenService } from './qr-token.service';
 
+import { AttendanceModule } from '../attendance/attendance.module';
+
 @Module({
-  imports: [DatabaseModule, AuthModule],
+  imports: [DatabaseModule, AuthModule, AttendanceModule],
   controllers: [EventController],
   providers: [EventService, CheckpointService, QrTokenService],
   exports: [EventService, CheckpointService, QrTokenService],

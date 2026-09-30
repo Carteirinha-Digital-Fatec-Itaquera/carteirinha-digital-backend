@@ -89,6 +89,7 @@ export class EventController {
       eventId: id,
       checkpoint: checkpoint.type,
       checkpointVersion: checkpoint.version,
+      checkpointId: checkpoint.id,
     });
   }
 
