@@ -7,8 +7,10 @@ import {
 } from './attendance.controller';
 import { AttendanceService } from './attendance.service';
 
+import { CertificateModule } from '../certificate/certificate.module';
+
 @Module({
-  imports: [DatabaseModule, AuthModule],
+  imports: [DatabaseModule, AuthModule, CertificateModule],
   controllers: [AttendanceController, EventAttendanceController],
   providers: [AttendanceService],
   exports: [AttendanceService],

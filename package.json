@@ -23,7 +23,9 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:issue23": "tsx prisma/verify-issue23.ts",
     "test:attendance": "jest --runInBand src/attendance/attendance.service.spec.ts src/attendance/attendance.controller.spec.ts",
-    "test:attendance:integration": "node scripts/test-attendance-integration.cjs"
+    "test:attendance:integration": "node scripts/test-attendance-integration.cjs",
+    "test:certificates": "jest --runInBand src/certificate/certificate.service.spec.ts src/certificate/certificate.controller.spec.ts src/certificate/certificate-rate-limit.guard.spec.ts src/certificate/pdf-generator.service.spec.ts",
+    "test:certificates:integration": "node scripts/test-certificate-integration.cjs"
   },
   "dependencies": {
     "@getbrevo/brevo": "^5.0.4",
@@ -50,15 +52,17 @@
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pdf-parse": "^1.1.1",
+    "pdfkit": "^0.20.2",
     "picomatch": "^4.0.4",
+    "prisma": "^7.1.0",
+    "qrcode": "^1.5.4",
     "readdirp": "^4.1.2",
     "reflect-metadata": "^0.2.2",
     "resend": "^6.10.0",
     "rxjs": "^7.8.1",
     "sharp": "^0.34.5",
     "uuid": "^13.0.0",
-    "xlsx": "^0.18.5",
-    "prisma": "^7.1.0"
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -74,6 +78,8 @@
     "@types/node": "^22.10.7",
     "@types/nodemailer": "^8.0.0",
     "@types/passport-jwt": "^4.0.1",
+    "@types/pdfkit": "^0.17.6",
+    "@types/qrcode": "^1.5.6",
     "@types/supertest": "^6.0.2",
     "dotenv": "^17.2.3",
     "eslint": "^9.18.0",

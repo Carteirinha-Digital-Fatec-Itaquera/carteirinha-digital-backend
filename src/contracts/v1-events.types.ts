@@ -178,7 +178,7 @@ export type CertificateVerificationResponse =
   | CertificateVerificationRevoked;
 
 export interface ApiError {
-  statusCode: 400 | 401 | 403 | 404 | 409 | 500;
+  statusCode: 400 | 401 | 403 | 404 | 409 | 429 | 500;
   message: string;
   error: string;
   code?: string;
