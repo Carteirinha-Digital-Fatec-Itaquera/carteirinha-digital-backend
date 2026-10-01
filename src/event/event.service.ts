@@ -10,6 +10,7 @@ import { UserRole } from '../auth/dto/payload.dto';
 import { CreateEventDto } from './dto/create-event.dto';
 import { EventQueryDto } from './dto/event-query.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
+import { lockEventForMutation } from './event-mutation-lock';
 
 const eventInclude = {
   checkpoints: {
@@ -93,53 +94,157 @@ export class EventService {
     return event;
   }
 
-  async update(id: string, dto: UpdateEventDto) {
-    const current = await this.prisma.event.findUnique({
-      where: { id },
-      include: {
-        checkpoints: true,
-        _count: { select: { attendances: true } },
-      },
+  async cancel(id: string, reason: string, secretaryId: number) {
+    const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
+    if (trimmedReason.length < 3 || trimmedReason.length > 1000) {
+      throw new BadRequestException(
+        'Motivo do cancelamento deve ter entre 3 e 1000 caracteres',
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const { event, checkpoints } = await lockEventForMutation(tx, id);
+
+      if (event.status === EventStatus.CANCELLED) {
+        // Repetição preserva primeiro motivo, data e autor
+        // Mas saneia eventuais certificados válidos que ainda estejam sem revogação
+        await tx.certificate.updateMany({
+          where: {
+            eventId: id,
+            revokedAt: null,
+          },
+          data: {
+            revokedAt: new Date(),
+          },
+        });
+
+        const refreshed = await tx.event.findUnique({
+          where: { id },
+          include: eventInclude,
+        });
+        return refreshed!;
+      }
+
+      const now = new Date();
+
+      // Fecha checkpoints abertos e incrementa versões
+      const openCheckpoints = checkpoints.filter((cp) => cp.isOpen);
+      for (const cp of openCheckpoints) {
+        await tx.eventCheckpoint.updateMany({
+          where: {
+            id: cp.id,
+            isOpen: true,
+          },
+          data: {
+            isOpen: false,
+            closedAt: now,
+            version: { increment: 1 },
+          },
+        });
+      }
+
+      // Marca evento como cancelado e registra auditoria
+      await tx.event.update({
+        where: { id },
+        data: {
+          status: EventStatus.CANCELLED,
+          cancelReason: trimmedReason,
+          cancelledAt: now,
+          cancelledById: secretaryId,
+        },
+      });
+
+      // Revoga todos os certificados ativos do evento
+      await tx.certificate.updateMany({
+        where: {
+          eventId: id,
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: now,
+        },
+      });
+
+      const updated = await tx.event.findUnique({
+        where: { id },
+        include: eventInclude,
+      });
+      return updated!;
     });
+  }
 
-    if (!current) {
-      throw new NotFoundException('Evento não encontrado');
+  async update(id: string, dto: UpdateEventDto, secretaryId: number) {
+    if (dto.status === 'CANCELLED') {
+      const otherFields = { ...dto };
+      delete otherFields.status;
+      delete otherFields.cancelReason;
+      const hasOtherEdits = Object.values(otherFields).some(
+        (v) => v !== undefined,
+      );
+      if (hasOtherEdits) {
+        throw new BadRequestException(
+          'Não é permitido misturar cancelamento com atualização de campos do evento',
+        );
+      }
+      if (
+        !dto.cancelReason ||
+        typeof dto.cancelReason !== 'string' ||
+        dto.cancelReason.trim().length === 0
+      ) {
+        throw new BadRequestException(
+          'Motivo do cancelamento é obrigatório ao cancelar o evento',
+        );
+      }
+      return this.cancel(id, dto.cancelReason, secretaryId);
     }
 
-    if (current._count.attendances > 0) {
-      throw new ConflictException(
-        'Evento com presença registrada não pode ser alterado',
+    if (dto.cancelReason && dto.status !== 'CANCELLED') {
+      throw new BadRequestException(
+        'cancelReason só pode ser fornecido quando status for CANCELLED',
       );
     }
 
-    if (current.checkpoints.some((checkpoint) => checkpoint.isOpen)) {
-      throw new ConflictException(
-        'Evento com checkpoint aberto não pode ser alterado',
-      );
-    }
+    return this.prisma.$transaction(async (tx) => {
+      const { event, checkpoints } = await lockEventForMutation(tx, id);
 
-    if (current.status === 'CANCELLED') {
-      throw new ConflictException('Evento cancelado não pode ser alterado');
-    }
+      if (event.status === EventStatus.CANCELLED) {
+        throw new ConflictException('Evento cancelado não pode ser alterado');
+      }
 
-    const startsAt = dto.startsAt ? new Date(dto.startsAt) : current.startsAt;
-    const endsAt = dto.endsAt ? new Date(dto.endsAt) : current.endsAt;
-    this.assertDateRange(startsAt, endsAt);
+      if (checkpoints.some((checkpoint) => checkpoint.isOpen)) {
+        throw new ConflictException(
+          'Evento com checkpoint aberto não pode ser alterado',
+        );
+      }
 
-    return this.prisma.event.update({
-      where: { id },
-      data: {
-        title: dto.title,
-        description: dto.description,
-        speaker: dto.speaker,
-        location: dto.location,
-        startsAt: dto.startsAt ? startsAt : undefined,
-        endsAt: dto.endsAt ? endsAt : undefined,
-        workloadMinutes: dto.workloadMinutes,
-        certificateEnabled: dto.certificateEnabled,
-        status: dto.status,
-      },
-      include: eventInclude,
+      const attendanceCount = await tx.attendance.count({
+        where: { eventId: id },
+      });
+
+      if (attendanceCount > 0) {
+        throw new ConflictException(
+          'Evento com presença registrada não pode ser alterado',
+        );
+      }
+
+      const startsAt = dto.startsAt ? new Date(dto.startsAt) : event.startsAt;
+      const endsAt = dto.endsAt ? new Date(dto.endsAt) : event.endsAt;
+      this.assertDateRange(startsAt, endsAt);
+
+      return tx.event.update({
+        where: { id },
+        data: {
+          title: dto.title,
+          description: dto.description,
+          speaker: dto.speaker,
+          location: dto.location,
+          startsAt: dto.startsAt ? startsAt : undefined,
+          endsAt: dto.endsAt ? endsAt : undefined,
+          workloadMinutes: dto.workloadMinutes,
+          certificateEnabled: dto.certificateEnabled,
+        },
+        include: eventInclude,
+      });
     });
   }
 

@@ -69,9 +69,8 @@ export class AttendanceController {
     dto: ScanReferenceDto,
     @Request() request: { user: TokenPayload },
   ) {
-    const record = await this.attendanceQrReferenceService.resolveReference(
-      dto.qrReference,
-    );
+    const record =
+      await this.attendanceQrReferenceService.resolveReference(dto.qrReference);
     return this.attendance.scan(record.jwtToken, request.user);
   }
 

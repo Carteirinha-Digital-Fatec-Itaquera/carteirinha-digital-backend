@@ -13,63 +13,10 @@ export interface CreateReferenceParams {
 export class AttendanceQrReferenceService {
   private readonly studentAppUrl: string;
 
-  static validateConfiguredOrigin(rawUrl?: string): string {
-    const candidate =
-      rawUrl?.trim() ||
-      'https://carteirinha-digital-front-end-aluno.vercel.app';
-
-    let parsed: URL;
-    try {
-      parsed = new URL(candidate);
-    } catch {
-      throw new Error(`Origem inválida para STUDENT_APP_URL: ${candidate}`);
-    }
-
-    if (parsed.username || parsed.password) {
-      throw new Error('STUDENT_APP_URL não pode conter credenciais');
-    }
-
-    if (
-      (parsed.search && parsed.search !== '') ||
-      (parsed.hash && parsed.hash !== '')
-    ) {
-      throw new Error('STUDENT_APP_URL não pode conter query string ou hash');
-    }
-
-    const isProduction = process.env.NODE_ENV === 'production';
-    if (parsed.protocol === 'https:') {
-      // HTTPS sempre permitido
-    } else if (parsed.protocol === 'http:') {
-      if (isProduction) {
-        throw new Error('STUDENT_APP_URL deve usar HTTPS em produção');
-      }
-      const isLoopback = ['localhost', '127.0.0.1'].includes(parsed.hostname);
-      if (!isLoopback) {
-        throw new Error(
-          'STUDENT_APP_URL HTTP é permitido apenas em loopback (localhost/127.0.0.1) no desenvolvimento',
-        );
-      }
-      if (!parsed.port) {
-        throw new Error(
-          'STUDENT_APP_URL HTTP em desenvolvimento exige porta explícita',
-        );
-      }
-    } else {
-      throw new Error(
-        `Protocolo não autorizado em STUDENT_APP_URL: ${parsed.protocol}`,
-      );
-    }
-
-    return `${parsed.protocol}//${parsed.host}${parsed.pathname}`.replace(
-      /\/+$/,
-      '',
-    );
-  }
-
   constructor(private readonly prisma: PrismaService) {
-    this.studentAppUrl = AttendanceQrReferenceService.validateConfiguredOrigin(
-      process.env.STUDENT_APP_URL,
-    );
+    this.studentAppUrl =
+      process.env.STUDENT_APP_URL?.trim() ||
+      'https://carteirinha-digital-front-end-aluno.vercel.app';
   }
 
   hashReference(reference: string): string {
@@ -77,9 +24,6 @@ export class AttendanceQrReferenceService {
   }
 
   buildQrUrl(reference: string): string {
-    if (!reference || typeof reference !== 'string') {
-      throw new BadRequestException('Referência de QR inválida');
-    }
     const base = this.studentAppUrl.replace(/\/+$/, '');
     return `${base}/p/${reference}`;
   }

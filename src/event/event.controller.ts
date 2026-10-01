@@ -19,6 +19,7 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { CheckpointService } from './checkpoint.service';
 import { CheckpointTypePipe } from './checkpoint-type.pipe';
+import { CancelEventDto } from './dto/cancel-event.dto';
 import { CreateEventDto } from './dto/create-event.dto';
 import { EventQueryDto } from './dto/event-query.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
@@ -107,7 +108,20 @@ export class EventController {
   update(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: UpdateEventDto,
+    @Request() request: AuthenticatedRequest,
   ) {
-    return this.eventService.update(id, dto);
+    return this.eventService.update(id, dto, Number(request.user.sub));
+  }
+
+  @Post(':id/cancel')
+  @Roles('secretary')
+  @HttpCode(HttpStatus.OK)
+  @Header('Cache-Control', 'no-store')
+  cancel(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: CancelEventDto,
+    @Request() request: AuthenticatedRequest,
+  ) {
+    return this.eventService.cancel(id, dto.reason, Number(request.user.sub));
   }
 }
