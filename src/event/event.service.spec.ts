@@ -14,15 +14,22 @@ describe('EventService', () => {
       create: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
+      delete: jest.fn(),
+    },
+    attendanceQrReference: {
+      deleteMany: jest.fn(),
     },
     eventCheckpoint: {
       updateMany: jest.fn(),
+      deleteMany: jest.fn(),
     },
     certificate: {
       updateMany: jest.fn(),
+      deleteMany: jest.fn(),
     },
     attendance: {
       count: jest.fn(),
+      deleteMany: jest.fn(),
     },
   };
   const prisma = {
@@ -398,5 +405,49 @@ describe('EventService', () => {
         }),
       }),
     );
+  });
+
+  it('deletes an event and all related dependencies atomically', async () => {
+    tx.event.findUnique.mockResolvedValue({
+      id: 'event-id',
+      status: 'SCHEDULED',
+      checkpoints: [{ id: 'cp-1', isOpen: false }],
+    });
+    tx.event.delete.mockResolvedValue({ id: 'event-id' });
+
+    const result = await service.delete('event-id', 7);
+
+    expect(result).toEqual({
+      message: 'Evento excluído com sucesso',
+      id: 'event-id',
+    });
+    expect(tx.attendanceQrReference.deleteMany).toHaveBeenCalledWith({
+      where: { checkpoint: { eventId: 'event-id' } },
+    });
+    expect(tx.certificate.deleteMany).toHaveBeenCalledWith({
+      where: { eventId: 'event-id' },
+    });
+    expect(tx.attendance.deleteMany).toHaveBeenCalledWith({
+      where: { eventId: 'event-id' },
+    });
+    expect(tx.eventCheckpoint.deleteMany).toHaveBeenCalledWith({
+      where: { eventId: 'event-id' },
+    });
+    expect(tx.event.delete).toHaveBeenCalledWith({
+      where: { id: 'event-id' },
+    });
+  });
+
+  it('blocks deletion if event has an open checkpoint', async () => {
+    tx.event.findUnique.mockResolvedValue({
+      id: 'event-id',
+      status: 'IN_PROGRESS',
+      checkpoints: [{ id: 'cp-1', isOpen: true }],
+    });
+
+    await expect(service.delete('event-id', 7)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(tx.event.delete).not.toHaveBeenCalled();
   });
 });

@@ -248,6 +248,45 @@ export class EventService {
     });
   }
 
+  async delete(id: string, _secretaryId: number) {
+    return this.prisma.$transaction(async (tx) => {
+      const { checkpoints } = await lockEventForMutation(tx, id);
+
+      if (checkpoints.some((checkpoint) => checkpoint.isOpen)) {
+        throw new ConflictException(
+          'Evento com checkpoint aberto não pode ser excluído',
+        );
+      }
+
+      await tx.attendanceQrReference.deleteMany({
+        where: {
+          checkpoint: { eventId: id },
+        },
+      });
+
+      await tx.certificate.deleteMany({
+        where: { eventId: id },
+      });
+
+      await tx.attendance.deleteMany({
+        where: { eventId: id },
+      });
+
+      await tx.eventCheckpoint.deleteMany({
+        where: { eventId: id },
+      });
+
+      await tx.event.delete({
+        where: { id },
+      });
+
+      return {
+        message: 'Evento excluído com sucesso',
+        id,
+      };
+    });
+  }
+
   private assertDateRange(startsAt: Date, endsAt: Date) {
     if (
       Number.isNaN(startsAt.getTime()) ||

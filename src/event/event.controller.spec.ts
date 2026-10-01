@@ -23,6 +23,7 @@ describe('EventController authorization and validation', () => {
     findOne: jest.fn(),
     update: jest.fn(),
     cancel: jest.fn(),
+    delete: jest.fn(),
   };
 
   const checkpointService = {
@@ -298,6 +299,33 @@ describe('EventController authorization and validation', () => {
     expect(eventService.cancel).toHaveBeenCalledWith(
       '11111111-1111-4111-8111-111111111111',
       'Auditório fechado',
+      7,
+    );
+  });
+
+  it('DELETE /events/:id rejects students with 403', () =>
+    request(app.getHttpServer() as Server)
+      .delete('/events/11111111-1111-4111-8111-111111111111')
+      .set('Authorization', `Bearer ${studentToken}`)
+      .expect(403));
+
+  it('DELETE /events/:id allows secretary and invokes eventService.delete', async () => {
+    eventService.delete.mockResolvedValue({
+      message: 'Evento excluído com sucesso',
+      id: '11111111-1111-4111-8111-111111111111',
+    });
+
+    const response = await request(app.getHttpServer() as Server)
+      .delete('/events/11111111-1111-4111-8111-111111111111')
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      message: 'Evento excluído com sucesso',
+      id: '11111111-1111-4111-8111-111111111111',
+    });
+    expect(eventService.delete).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
       7,
     );
   });
