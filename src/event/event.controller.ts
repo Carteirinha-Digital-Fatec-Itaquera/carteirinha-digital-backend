@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   HttpCode,
@@ -123,5 +124,15 @@ export class EventController {
     @Request() request: AuthenticatedRequest,
   ) {
     return this.eventService.cancel(id, dto.reason, Number(request.user.sub));
+  }
+
+  @Delete(':id')
+  @Roles('secretary')
+  @HttpCode(HttpStatus.OK)
+  delete(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Request() request: AuthenticatedRequest,
+  ) {
+    return this.eventService.delete(id, Number(request.user.sub));
   }
 }
