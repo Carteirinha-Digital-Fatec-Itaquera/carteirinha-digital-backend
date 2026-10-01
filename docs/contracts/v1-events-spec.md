@@ -179,7 +179,7 @@ Certificado só é emitido uma vez por `Attendance` confirmada e evento com `cer
 
 **Request:** UUID e type, sem body; checkpoint precisa estar aberto. A Secretaria faz nova requisição a cada 15 s enquanto a tela estiver visível.
 
-**Response 200:** `events.mock.json#qrResponse`, `Cache-Control: no-store`. `expiresInSeconds=20`, `expiresAt` é UTC do servidor. O frontend nunca mostra token depois desse prazo; se renovação falhar, mostra estado de QR indisponível e tenta novamente. 400 para type inválido ou checkpoint fechado; 404 ausente; 401/403.
+**Response 200:** `events.mock.json#qrResponse`, `Cache-Control: no-store`. `expiresInSeconds=20`, `expiresAt` é UTC do servidor. Para links de câmera nativa, inclui `qrUrl` (URL canônica para `STUDENT_APP_URL/p/:reference`) e `serverTime` (ISO UTC do instante de emissão). O frontend nunca mostra token depois desse prazo; se renovação falhar, mostra estado de QR indisponível e tenta novamente. 400 para type inválido ou checkpoint fechado; 404 ausente; 401/403.
 
 ### 8. GET /events/:id/attendances
 

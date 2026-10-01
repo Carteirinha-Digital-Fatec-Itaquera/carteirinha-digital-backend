@@ -1,4 +1,8 @@
-import { Injectable, InternalServerErrorException, Optional } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Optional,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { CheckpointType } from '@prisma/client';
 import { randomUUID } from 'crypto';
@@ -54,14 +58,26 @@ export class QrTokenService {
     const expDate = new Date(decoded.exp * 1000);
     let qrUrl: string | undefined;
 
-    if (this.attendanceQrReferenceService && payload.checkpointId) {
-      const refResult = await this.attendanceQrReferenceService.createReference({
-        checkpointId: payload.checkpointId,
-        checkpointVersion: payload.checkpointVersion,
-        jwtToken: qrToken,
-        expiresAt: expDate,
-      });
+    if (payload.checkpointId) {
+      if (!this.attendanceQrReferenceService) {
+        throw new InternalServerErrorException(
+          'Serviço de referência de QR ausente para geração de link direto',
+        );
+      }
+      const refResult = await this.attendanceQrReferenceService.createReference(
+        {
+          checkpointId: payload.checkpointId,
+          checkpointVersion: payload.checkpointVersion,
+          jwtToken: qrToken,
+          expiresAt: expDate,
+        },
+      );
       qrUrl = this.attendanceQrReferenceService.buildQrUrl(refResult.reference);
+      if (!qrUrl) {
+        throw new InternalServerErrorException(
+          'Falha ao construir URL do QR Code',
+        );
+      }
     }
 
     return {

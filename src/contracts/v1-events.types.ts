@@ -70,6 +70,8 @@ export interface AttendanceQrResponse {
   expiresInSeconds: 20;
   expiresAt: IsoDateTime;
   checkpointVersion: number;
+  qrUrl?: string;
+  serverTime?: IsoDateTime;
 }
 
 export interface AttendanceScanRequest {
