@@ -349,12 +349,12 @@ describe('Contrato V1 de eventos', () => {
     const routes = [
       ...spec.matchAll(/^\|\s*(\d+)\s*\|\s*`([A-Z]+) ([^`]+)`\s*\|/gm),
     ];
-    expect(routes).toHaveLength(15);
+    expect(routes).toHaveLength(16);
     expect(routes.map((match) => Number(match[1]))).toEqual(
-      Array.from({ length: 15 }, (_, index) => index + 1),
+      Array.from({ length: 16 }, (_, index) => index + 1),
     );
     expect(new Set(routes.map((match) => `${match[2]} ${match[3]}`)).size).toBe(
-      15,
+      16,
     );
     for (const route of routes) {
       expect(spec).toContain(`### ${route[1]}. ${route[2]} ${route[3]}`);

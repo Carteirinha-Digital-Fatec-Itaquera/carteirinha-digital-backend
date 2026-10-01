@@ -9,8 +9,20 @@ import { EventService } from './event.service';
 
 describe('EventService', () => {
   const tx = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     event: {
       create: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    },
+    eventCheckpoint: {
+      updateMany: jest.fn(),
+    },
+    certificate: {
+      updateMany: jest.fn(),
+    },
+    attendance: {
+      count: jest.fn(),
     },
   };
   const prisma = {
@@ -101,44 +113,27 @@ describe('EventService', () => {
             { status: 'SCHEDULED' },
           ],
         },
-        orderBy: { startsAt: 'desc' },
       }),
     );
-
     jest.useRealTimers();
   });
 
-  it('builds a UTC day filter for secretary listing', async () => {
+  it('returns all events for secretary', async () => {
     prisma.event.findMany.mockResolvedValue([]);
 
-    await service.findAll({ date: '2026-10-05' }, 'secretary');
-
+    await service.findAll({}, 'secretary');
     expect(prisma.event.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: {
-          AND: [
-            {
-              startsAt: {
-                gte: new Date('2026-10-05T00:00:00.000Z'),
-                lt: new Date('2026-10-06T00:00:00.000Z'),
-              },
-            },
-          ],
-        },
+        where: undefined,
+        orderBy: { startsAt: 'desc' },
       }),
     );
   });
 
-  it('rejects a semantically invalid date filter', async () => {
-    await expect(
-      service.findAll({ date: '2026-02-30' }, 'secretary'),
-    ).rejects.toBeInstanceOf(BadRequestException);
-  });
-  it('hides cancelled event details from students', async () => {
+  it('hides cancelled event from student on findOne', async () => {
     prisma.event.findUnique.mockResolvedValue({
       id: 'event-id',
       status: 'CANCELLED',
-      checkpoints: [],
     });
 
     await expect(service.findOne('event-id', 'student')).rejects.toBeInstanceOf(
@@ -146,7 +141,16 @@ describe('EventService', () => {
     );
   });
 
-  it('returns 404 when event does not exist', async () => {
+  it('returns cancelled event for secretary', async () => {
+    const cancelledEvent = { id: 'event-id', status: 'CANCELLED' };
+    prisma.event.findUnique.mockResolvedValue(cancelledEvent);
+
+    await expect(service.findOne('event-id', 'secretary')).resolves.toEqual(
+      cancelledEvent,
+    );
+  });
+
+  it('throws NotFoundException when event is missing', async () => {
     prisma.event.findUnique.mockResolvedValue(null);
 
     await expect(
@@ -154,53 +158,238 @@ describe('EventService', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('blocks update after attendance exists', async () => {
-    prisma.event.findUnique.mockResolvedValue({
+  it('cancelRevokesAndClosesAtomically: closes open checkpoints, sets cancel metadata and revokes valid certificates', async () => {
+    const fixedNow = new Date('2026-10-01T15:00:00.000Z');
+    jest.useFakeTimers().setSystemTime(fixedNow);
+
+    const mockEvent = {
+      id: 'event-1',
+      status: 'IN_PROGRESS',
+      checkpoints: [
+        { id: 'cp-in', type: 'CHECK_IN', isOpen: true, version: 2 },
+        { id: 'cp-out', type: 'CHECK_OUT', isOpen: false, version: 1 },
+      ],
+    };
+    tx.event.findUnique.mockResolvedValueOnce(mockEvent).mockResolvedValueOnce({
+      ...mockEvent,
+      status: 'CANCELLED',
+      cancelReason: 'Auditório em obras',
+      cancelledAt: fixedNow,
+      cancelledById: 10,
+    });
+
+    const result = await service.cancel(
+      'event-1',
+      '  Auditório em obras  ',
+      10,
+    );
+
+    expect(prisma.$transaction).toHaveBeenCalled();
+    expect(tx.eventCheckpoint.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'cp-in',
+        isOpen: true,
+      },
+      data: {
+        isOpen: false,
+        closedAt: fixedNow,
+        version: { increment: 1 },
+      },
+    });
+    expect(tx.event.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'event-1' },
+        data: expect.objectContaining({
+          status: 'CANCELLED',
+          cancelReason: 'Auditório em obras',
+          cancelledAt: fixedNow,
+          cancelledById: 10,
+        }),
+      }),
+    );
+    expect(tx.certificate.updateMany).toHaveBeenCalledWith({
+      where: {
+        eventId: 'event-1',
+        revokedAt: null,
+      },
+      data: {
+        revokedAt: fixedNow,
+      },
+    });
+    expect(result.status).toBe('CANCELLED');
+
+    jest.useRealTimers();
+  });
+
+  it('cancellationRollbackPreservesOriginalState: fails transaction if certificate revocation throws', async () => {
+    tx.event.findUnique.mockResolvedValue({
+      id: 'event-1',
+      status: 'IN_PROGRESS',
+      checkpoints: [],
+    });
+    tx.certificate.updateMany.mockRejectedValueOnce(new Error('DB failure'));
+
+    await expect(
+      service.cancel('event-1', 'Motivo válido', 10),
+    ).rejects.toThrow('DB failure');
+  });
+
+  it('repeatPreservesFirstMetadata: repeated cancel preserves first reason, date and actor', async () => {
+    const originalDate = new Date('2026-09-25T10:00:00.000Z');
+    const existingCancelled = {
+      id: 'event-1',
+      status: 'CANCELLED',
+      cancelReason: 'Primeiro motivo gravado',
+      cancelledAt: originalDate,
+      cancelledById: 5,
+      checkpoints: [{ id: 'cp-1', isOpen: false, version: 3 }],
+    };
+    tx.event.findUnique.mockResolvedValue(existingCancelled);
+
+    const result = await service.cancel(
+      'event-1',
+      'Novo motivo que deve ser ignorado',
+      99,
+    );
+
+    expect(tx.event.update).not.toHaveBeenCalled();
+    expect(result.cancelReason).toBe('Primeiro motivo gravado');
+    expect(result.cancelledAt).toEqual(originalDate);
+    expect(result.cancelledById).toBe(5);
+    // Mas garante saneamento de certificados caso algum tenha ficado sem revogação
+    expect(tx.certificate.updateMany).toHaveBeenCalledWith({
+      where: {
+        eventId: 'event-1',
+        revokedAt: null,
+      },
+      data: expect.objectContaining({
+        revokedAt: expect.any(Date),
+      }),
+    });
+  });
+
+  it('legacyPatchUsesSameCancellation: PATCH with status CANCELLED delegates to cancel flow', async () => {
+    const fixedNow = new Date('2026-10-01T15:00:00.000Z');
+    jest.useFakeTimers().setSystemTime(fixedNow);
+
+    const mockEvent = {
+      id: 'event-1',
+      status: 'SCHEDULED',
+      checkpoints: [],
+    };
+    tx.event.findUnique.mockResolvedValueOnce(mockEvent).mockResolvedValueOnce({
+      ...mockEvent,
+      status: 'CANCELLED',
+      cancelReason: 'Motivo legado',
+      cancelledAt: fixedNow,
+      cancelledById: 7,
+    });
+
+    await service.update(
+      'event-1',
+      { status: 'CANCELLED', cancelReason: '  Motivo legado  ' },
+      7,
+    );
+
+    expect(tx.event.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'event-1' },
+        data: expect.objectContaining({
+          status: 'CANCELLED',
+          cancelReason: 'Motivo legado',
+          cancelledById: 7,
+        }),
+      }),
+    );
+
+    jest.useRealTimers();
+  });
+
+  it('mixedCancellationAndEditsRejected: rejects PATCH mixing cancellation with edits or missing reason', async () => {
+    await expect(
+      service.update(
+        'event-1',
+        { status: 'CANCELLED', cancelReason: 'Motivo', title: 'Novo Título' },
+        7,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    await expect(
+      service.update('event-1', { status: 'CANCELLED' }, 7),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    await expect(
+      service.update('event-1', { cancelReason: 'Apenas motivo' }, 7),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('editingRechecksAttendanceAfterLock: blocks update after lock if attendance exists', async () => {
+    tx.event.findUnique.mockResolvedValue({
       id: 'event-id',
       status: 'SCHEDULED',
       startsAt: new Date('2026-10-05T19:00:00.000Z'),
       endsAt: new Date('2026-10-05T21:00:00.000Z'),
       checkpoints: [],
-      _count: { attendances: 1 },
     });
+    tx.attendance.count.mockResolvedValue(1);
 
     await expect(
-      service.update('event-id', { title: 'Novo título' }),
+      service.update('event-id', { title: 'Novo título' }, 7),
     ).rejects.toBeInstanceOf(ConflictException);
-    expect(prisma.event.update).not.toHaveBeenCalled();
+    expect(tx.event.update).not.toHaveBeenCalled();
   });
 
   it('blocks update while any checkpoint is open', async () => {
-    prisma.event.findUnique.mockResolvedValue({
+    tx.event.findUnique.mockResolvedValue({
       id: 'event-id',
       status: 'SCHEDULED',
       startsAt: new Date('2026-10-05T19:00:00.000Z'),
       endsAt: new Date('2026-10-05T21:00:00.000Z'),
       checkpoints: [{ isOpen: true }],
-      _count: { attendances: 0 },
     });
+    tx.attendance.count.mockResolvedValue(0);
+
     await expect(
-      service.update('event-id', { title: 'Novo título' }),
+      service.update('event-id', { title: 'Novo título' }, 7),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('blocks update if event is cancelled', async () => {
+    tx.event.findUnique.mockResolvedValue({
+      id: 'event-id',
+      status: 'CANCELLED',
+      startsAt: new Date('2026-10-05T19:00:00.000Z'),
+      endsAt: new Date('2026-10-05T21:00:00.000Z'),
+      checkpoints: [{ isOpen: false }],
+    });
+    tx.attendance.count.mockResolvedValue(0);
+
+    await expect(
+      service.update('event-id', { title: 'Novo título' }, 7),
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('updates allowed event fields before attendance', async () => {
-    prisma.event.findUnique.mockResolvedValue({
+    tx.event.findUnique.mockResolvedValue({
       id: 'event-id',
       status: 'SCHEDULED',
       startsAt: new Date('2026-10-05T19:00:00.000Z'),
       endsAt: new Date('2026-10-05T21:00:00.000Z'),
       checkpoints: [{ isOpen: false }],
-      _count: { attendances: 0 },
     });
-    prisma.event.update.mockResolvedValue({ id: 'event-id' });
+    tx.attendance.count.mockResolvedValue(0);
+    tx.event.update.mockResolvedValue({ id: 'event-id' });
 
-    await service.update('event-id', {
-      title: 'Título atualizado',
-      endsAt: '2026-10-05T22:00:00.000Z',
-    });
+    await service.update(
+      'event-id',
+      {
+        title: 'Título atualizado',
+        endsAt: '2026-10-05T22:00:00.000Z',
+      },
+      7,
+    );
 
-    expect(prisma.event.update).toHaveBeenCalledWith(
+    expect(tx.event.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'event-id' },
         data: expect.objectContaining({

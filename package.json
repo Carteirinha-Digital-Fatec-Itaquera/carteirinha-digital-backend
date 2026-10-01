@@ -25,7 +25,8 @@
     "test:attendance": "jest --runInBand src/attendance/attendance.service.spec.ts src/attendance/attendance.controller.spec.ts",
     "test:attendance:integration": "node scripts/test-attendance-integration.cjs",
     "test:certificates": "jest --runInBand src/certificate/certificate.service.spec.ts src/certificate/certificate.controller.spec.ts src/certificate/certificate-rate-limit.guard.spec.ts src/certificate/pdf-generator.service.spec.ts",
-    "test:certificates:integration": "node scripts/test-certificate-integration.cjs"
+    "test:certificates:integration": "node scripts/test-certificate-integration.cjs",
+    "test:event-management:integration": "node scripts/test-event-management-integration.cjs"
   },
   "dependencies": {
     "@getbrevo/brevo": "^5.0.4",

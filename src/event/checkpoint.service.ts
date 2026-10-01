@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { CheckpointType, EventStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import { lockEventForMutation } from './event-mutation-lock';
 
 @Injectable()
 export class CheckpointService {
@@ -13,21 +14,15 @@ export class CheckpointService {
 
   async open(eventId: string, type: CheckpointType) {
     return this.prisma.$transaction(async (tx) => {
-      const event = await tx.event.findUnique({
-        where: { id: eventId },
-        include: { checkpoints: true },
-      });
+      const { event, checkpoints } = await lockEventForMutation(tx, eventId);
 
-      if (!event) {
-        throw new NotFoundException('Evento não encontrado');
-      }
       if (event.status === EventStatus.CANCELLED) {
         throw new ConflictException(
           'Evento cancelado não permite abertura de checkpoint',
         );
       }
 
-      const checkpoint = event.checkpoints.find((item) => item.type === type);
+      const checkpoint = checkpoints.find((item) => item.type === type);
       if (!checkpoint) {
         throw new NotFoundException('Checkpoint não encontrado');
       }
@@ -35,10 +30,10 @@ export class CheckpointService {
         throw new ConflictException('Checkpoint já está aberto');
       }
 
-      const checkIn = event.checkpoints.find(
+      const checkIn = checkpoints.find(
         (item) => item.type === CheckpointType.CHECK_IN,
       );
-      const checkOut = event.checkpoints.find(
+      const checkOut = checkpoints.find(
         (item) => item.type === CheckpointType.CHECK_OUT,
       );
       if (type === CheckpointType.CHECK_IN) {
@@ -99,21 +94,15 @@ export class CheckpointService {
 
   async close(eventId: string, type: CheckpointType) {
     return this.prisma.$transaction(async (tx) => {
-      const event = await tx.event.findUnique({
-        where: { id: eventId },
-        include: { checkpoints: true },
-      });
+      const { event, checkpoints } = await lockEventForMutation(tx, eventId);
 
-      if (!event) {
-        throw new NotFoundException('Evento não encontrado');
-      }
       if (event.status === EventStatus.CANCELLED) {
         throw new ConflictException(
           'Evento cancelado não permite alteração de checkpoint',
         );
       }
 
-      const checkpoint = event.checkpoints.find((item) => item.type === type);
+      const checkpoint = checkpoints.find((item) => item.type === type);
       if (!checkpoint) {
         throw new NotFoundException('Checkpoint não encontrado');
       }

@@ -47,14 +47,15 @@ model StudentLog {
 }
 
 model Secretary {
-  id        Int       @id @default(autoincrement())
-  name      String
-  email     String    @unique
-  dueDate   DateTime
-  password  String
-  birthDate DateTime
-  lastLogin DateTime?
-  events    Event[]
+  id              Int       @id @default(autoincrement())
+  name            String
+  email           String    @unique
+  dueDate         DateTime
+  password        String
+  birthDate       DateTime
+  lastLogin       DateTime?
+  events          Event[]   @relation("EventCreatedBy")
+  cancelledEvents Event[]   @relation("EventCancelledBy")
 }
 
 model Event {
@@ -69,7 +70,11 @@ model Event {
   status             EventStatus       @default(SCHEDULED)
   certificateEnabled Boolean           @default(true)
   createdById        Int?
-  createdBy          Secretary?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy          Secretary?        @relation("EventCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  cancelReason       String?
+  cancelledAt        DateTime?
+  cancelledById      Int?
+  cancelledBy        Secretary?        @relation("EventCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
   checkpoints        EventCheckpoint[]
   attendances        Attendance[]
   certificates       Certificate[]
@@ -77,6 +82,7 @@ model Event {
   updatedAt          DateTime          @updatedAt
 
   @@index([createdById])
+  @@index([cancelledById])
 }
 
 model EventCheckpoint {

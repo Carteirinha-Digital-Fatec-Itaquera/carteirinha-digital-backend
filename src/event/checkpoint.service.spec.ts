@@ -57,6 +57,7 @@ function createPrisma(eventOverrides: Partial<MockEvent> = {}) {
   };
 
   const tx = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     event: {
       findUnique: jest.fn().mockImplementation(() => state.event),
       update: jest
@@ -220,6 +221,17 @@ describe('CheckpointService', () => {
     });
     const checkOut = state.event.checkpoints[1];
     checkOut.openedAt = new Date();
+    const service = new CheckpointService(prisma);
+
+    await expect(
+      service.open('event-id', CheckpointType.CHECK_IN),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('checkpointCannotReopenCancelledEvent: bloqueia abertura em evento cancelado', async () => {
+    const { prisma } = createPrisma({
+      status: EventStatus.CANCELLED,
+    });
     const service = new CheckpointService(prisma);
 
     await expect(

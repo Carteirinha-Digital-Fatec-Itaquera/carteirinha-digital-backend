@@ -58,12 +58,7 @@ export class QrTokenService {
     const expDate = new Date(decoded.exp * 1000);
     let qrUrl: string | undefined;
 
-    if (payload.checkpointId) {
-      if (!this.attendanceQrReferenceService) {
-        throw new InternalServerErrorException(
-          'Serviço de referência de QR ausente para geração de link direto',
-        );
-      }
+    if (this.attendanceQrReferenceService && payload.checkpointId) {
       const refResult = await this.attendanceQrReferenceService.createReference(
         {
           checkpointId: payload.checkpointId,
@@ -73,11 +68,6 @@ export class QrTokenService {
         },
       );
       qrUrl = this.attendanceQrReferenceService.buildQrUrl(refResult.reference);
-      if (!qrUrl) {
-        throw new InternalServerErrorException(
-          'Falha ao construir URL do QR Code',
-        );
-      }
     }
 
     return {

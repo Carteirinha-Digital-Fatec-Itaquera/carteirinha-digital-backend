@@ -22,6 +22,7 @@ describe('EventController authorization and validation', () => {
     findAll: jest.fn(),
     findOne: jest.fn(),
     update: jest.fn(),
+    cancel: jest.fn(),
   };
 
   const checkpointService = {
@@ -256,5 +257,48 @@ describe('EventController authorization and validation', () => {
       checkpointVersion: 2,
       checkpointId: 'checkpoint-id',
     });
+  });
+
+  it('POST /events/:id/cancel returns 401 without token', () =>
+    request(app.getHttpServer() as Server)
+      .post('/events/11111111-1111-4111-8111-111111111111/cancel')
+      .send({ reason: 'Auditório fechado' })
+      .expect(401));
+
+  it('POST /events/:id/cancel returns 403 for student', () =>
+    request(app.getHttpServer() as Server)
+      .post('/events/11111111-1111-4111-8111-111111111111/cancel')
+      .set('Authorization', `Bearer ${studentToken}`)
+      .send({ reason: 'Auditório fechado' })
+      .expect(403));
+
+  it('POST /events/:id/cancel returns 400 for invalid reason', () =>
+    request(app.getHttpServer() as Server)
+      .post('/events/11111111-1111-4111-8111-111111111111/cancel')
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .send({ reason: 'ab' })
+      .expect(400));
+
+  it('POST /events/:id/cancel allows secretary, sets no-store and passes token secretaryId', async () => {
+    eventService.cancel.mockResolvedValue({
+      id: '11111111-1111-4111-8111-111111111111',
+      status: 'CANCELLED',
+      cancelReason: 'Auditório fechado',
+      cancelledAt: new Date().toISOString(),
+      cancelledById: 7,
+    });
+
+    const response = await request(app.getHttpServer() as Server)
+      .post('/events/11111111-1111-4111-8111-111111111111/cancel')
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .send({ reason: 'Auditório fechado' })
+      .expect(200);
+
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(eventService.cancel).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      'Auditório fechado',
+      7,
+    );
   });
 });

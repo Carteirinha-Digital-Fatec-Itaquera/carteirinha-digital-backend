@@ -16,6 +16,9 @@ export class ViewEventDto implements EventView {
   endsAt: IsoDateTime;
   workloadMinutes: number;
   status: EventStatus;
+  cancelReason: string | null;
+  cancelledAt: IsoDateTime | null;
+  cancelledById: number | null;
   certificateEnabled: boolean;
   checkpoints: CheckpointView[];
   createdAt: IsoDateTime;
