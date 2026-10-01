@@ -19,7 +19,9 @@ describe('AttendanceQrReferenceService', () => {
         findUnique: jest.fn(),
       },
     };
-    service = new AttendanceQrReferenceService(prisma as unknown as PrismaService);
+    service = new AttendanceQrReferenceService(
+      prisma as unknown as PrismaService,
+    );
   });
 
   describe('createReference', () => {
@@ -45,7 +47,9 @@ describe('AttendanceQrReferenceService', () => {
       expect(result.reference).toHaveLength(22);
       expect(result.expiresAt).toEqual(expiresAt);
 
-      const expectedHash = createHash('sha256').update(result.reference).digest('hex');
+      const expectedHash = createHash('sha256')
+        .update(result.reference)
+        .digest('hex');
       expect(prisma.attendanceQrReference.create).toHaveBeenCalledWith({
         data: {
           referenceHash: expectedHash,
@@ -62,9 +66,9 @@ describe('AttendanceQrReferenceService', () => {
     it('throws EXPIRED_OR_INVALID_QR if reference is not found in database', async () => {
       prisma.attendanceQrReference.findUnique.mockResolvedValue(null);
 
-      await expect(service.resolveReference('unknown-ref-1234567890')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.resolveReference('unknown-ref-1234567890'),
+      ).rejects.toThrow(BadRequestException);
 
       try {
         await service.resolveReference('unknown-ref-1234567890');
@@ -95,9 +99,9 @@ describe('AttendanceQrReferenceService', () => {
         },
       });
 
-      await expect(service.resolveReference('expired-ref-1234567890')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.resolveReference('expired-ref-1234567890'),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('throws CHECKPOINT_CLOSED if checkpoint is closed or version mismatch', async () => {
@@ -117,9 +121,9 @@ describe('AttendanceQrReferenceService', () => {
         },
       });
 
-      await expect(service.resolveReference('closed-ref-1234567890')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.resolveReference('closed-ref-1234567890'),
+      ).rejects.toThrow(BadRequestException);
 
       try {
         await service.resolveReference('closed-ref-1234567890');
@@ -166,7 +170,71 @@ describe('AttendanceQrReferenceService', () => {
   describe('buildQrUrl', () => {
     it('builds student app url with /p/<reference>', () => {
       const url = service.buildQrUrl('abc123xyz');
-      expect(url).toBe('https://carteirinha-digital-front-end-aluno.vercel.app/p/abc123xyz');
+      expect(url).toBe(
+        'https://carteirinha-digital-front-end-aluno.vercel.app/p/abc123xyz',
+      );
+    });
+
+    it('buildsAuthorizedStudentLink: constrói link autorizado para aluno sem query ou fragmento', () => {
+      const ref = 'a'.repeat(22);
+      const url = service.buildQrUrl(ref);
+      expect(url).toBe(
+        `https://carteirinha-digital-front-end-aluno.vercel.app/p/${ref}`,
+      );
+      const parsed = new URL(url);
+      expect(parsed.pathname).toBe(`/p/${ref}`);
+      expect(parsed.search).toBe('');
+      expect(parsed.hash).toBe('');
+      expect(parsed.username).toBe('');
+      expect(parsed.password).toBe('');
+    });
+
+    it('rejectsInvalidConfiguredOrigin: rejeita origens inválidas, com credenciais, query, hash ou HTTP externo', () => {
+      expect(() =>
+        AttendanceQrReferenceService.validateConfiguredOrigin(
+          'https://user:pass@example.com',
+        ),
+      ).toThrow();
+      expect(() =>
+        AttendanceQrReferenceService.validateConfiguredOrigin(
+          'https://example.com?query=1',
+        ),
+      ).toThrow();
+      expect(() =>
+        AttendanceQrReferenceService.validateConfiguredOrigin(
+          'https://example.com#fragment',
+        ),
+      ).toThrow();
+      expect(() =>
+        AttendanceQrReferenceService.validateConfiguredOrigin(
+          'javascript:alert(1)',
+        ),
+      ).toThrow();
+      expect(() =>
+        AttendanceQrReferenceService.validateConfiguredOrigin(
+          'http://external-insecure.com:3000',
+        ),
+      ).toThrow();
+
+      // Em desenvolvimento, HTTP em loopback com porta é aceito
+      const origEnv = process.env.NODE_ENV;
+      try {
+        process.env.NODE_ENV = 'development';
+        const loopback = AttendanceQrReferenceService.validateConfiguredOrigin(
+          'http://localhost:5173',
+        );
+        expect(loopback).toBe('http://localhost:5173');
+
+        // Em produção, HTTP mesmo em loopback é rejeitado
+        process.env.NODE_ENV = 'production';
+        expect(() =>
+          AttendanceQrReferenceService.validateConfiguredOrigin(
+            'http://localhost:5173',
+          ),
+        ).toThrow();
+      } finally {
+        process.env.NODE_ENV = origEnv;
+      }
     });
   });
 });

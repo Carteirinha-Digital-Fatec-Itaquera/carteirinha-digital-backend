@@ -1,6 +1,7 @@
 import { JwtService } from '@nestjs/jwt';
 import { CheckpointType } from '@prisma/client';
 import { QrTokenService } from './qr-token.service';
+import type { AttendanceQrReferenceService } from '../attendance/attendance-qr-reference.service';
 
 describe('QrTokenService', () => {
   const previousJwtSecret = process.env.JWT_SECRET;
@@ -93,7 +94,10 @@ describe('QrTokenService', () => {
           'https://carteirinha-digital-front-end-aluno.vercel.app/p/short-ref-1234567890',
         ),
     };
-    const service = new QrTokenService(jwt, mockRefService as any);
+    const service = new QrTokenService(
+      jwt,
+      mockRefService as unknown as AttendanceQrReferenceService,
+    );
 
     const response = await service.generate({
       eventId: 'event-id',
@@ -105,12 +109,74 @@ describe('QrTokenService', () => {
     expect(response.qrUrl).toBe(
       'https://carteirinha-digital-front-end-aluno.vercel.app/p/short-ref-1234567890',
     );
-    expect(typeof response.serverTime).toBe('string');
-    expect(mockRefService.createReference).toHaveBeenCalledWith({
-      checkpointId: 'checkpoint-id',
+    expect(mockRefService.createReference).toHaveBeenCalledTimes(1);
+    const [callArg] = mockRefService.createReference.mock.calls[0] as [
+      {
+        checkpointId: string;
+        checkpointVersion: number;
+        jwtToken: string;
+        expiresAt: unknown;
+      },
+    ];
+    expect(callArg.checkpointId).toBe('checkpoint-id');
+    expect(callArg.checkpointVersion).toBe(2);
+    expect(callArg.jwtToken).toBe(response.qrToken);
+    expect(callArg.expiresAt).toBeInstanceOf(Date);
+  });
+
+  it('generationReturnsReferenceUrlAndServerTime: retorna qrUrl com 22 chars, serverTime e expiração coerente', async () => {
+    const jwt = new JwtService();
+    const mockRefService = {
+      createReference: jest
+        .fn()
+        .mockImplementation(({ expiresAt }: { expiresAt: Date }) => ({
+          reference: '1234567890123456789012',
+          expiresAt,
+        })),
+      buildQrUrl: jest
+        .fn()
+        .mockReturnValue(
+          'https://carteirinha-digital-front-end-aluno.vercel.app/p/1234567890123456789012',
+        ),
+    };
+    const service = new QrTokenService(
+      jwt,
+      mockRefService as unknown as AttendanceQrReferenceService,
+    );
+
+    const before = Date.now();
+    const response = await service.generate({
+      eventId: 'event-id',
+      checkpoint: CheckpointType.CHECK_IN,
       checkpointVersion: 2,
-      jwtToken: response.qrToken,
-      expiresAt: expect.any(Date),
+      checkpointId: 'checkpoint-id',
     });
+    const after = Date.now();
+
+    expect(response.qrUrl).toBe(
+      'https://carteirinha-digital-front-end-aluno.vercel.app/p/1234567890123456789012',
+    );
+    expect(response.serverTime).toBeDefined();
+    const serverTimeMs = new Date(String(response.serverTime)).getTime();
+    expect(serverTimeMs).toBeGreaterThanOrEqual(before - 1000);
+    expect(serverTimeMs).toBeLessThanOrEqual(after + 1000);
+    expect(response.expiresAt).toBeDefined();
+    const expMs = new Date(response.expiresAt).getTime();
+    expect(expMs - serverTimeMs).toBeGreaterThanOrEqual(18000);
+    expect(expMs - serverTimeMs).toBeLessThanOrEqual(21000);
+  });
+
+  it('generationDoesNotSilentlyOmitRequiredReferenceService: falha explicitamente se checkpointId for fornecido sem serviço de referência', async () => {
+    const jwt = new JwtService();
+    const service = new QrTokenService(jwt);
+
+    await expect(
+      service.generate({
+        eventId: 'event-id',
+        checkpoint: CheckpointType.CHECK_IN,
+        checkpointVersion: 2,
+        checkpointId: 'checkpoint-id',
+      }),
+    ).rejects.toThrow('Serviço de referência de QR');
   });
 });

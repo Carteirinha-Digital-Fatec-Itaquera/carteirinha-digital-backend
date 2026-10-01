@@ -446,8 +446,12 @@ integration('Attendance with real PostgreSQL and backend QR', () => {
       .expect(200)
       .expect('Cache-Control', 'no-store');
 
-    expect(preview.body.event.id).toBe(eventId);
-    expect(preview.body.checkpoint.type).toBe('CHECK_IN');
+    const previewBody = preview.body as {
+      event: { id: string };
+      checkpoint: { type: string };
+    };
+    expect(previewBody.event.id).toBe(eventId);
+    expect(previewBody.checkpoint.type).toBe('CHECK_IN');
     expect(await prisma.attendance.count({ where: { eventId } })).toBe(0);
 
     // 2. Confirmação por scan-reference: registra presença
@@ -502,5 +506,120 @@ integration('Attendance with real PostgreSQL and backend QR', () => {
         where: { eventId, studentRa: secondStudentRa },
       }),
     ).toBe(1);
+  });
+
+  it('expiredReferenceCannotConfirm: referência de checkpoint fechado ou versão obsoleta é recusada', async () => {
+    // 1. Abre check-in e gera QR
+    await checkpoint('check-in', 'open').expect(200);
+    const qrResponse = await http()
+      .get(`/events/${eventId}/checkpoints/check-in/qr`)
+      .auth(secretaryToken, { type: 'bearer' })
+      .expect(200);
+    const reference = (qrResponse.body as { qrUrl: string }).qrUrl.split(
+      '/p/',
+    )[1];
+
+    // 2. Fecha o checkpoint
+    await checkpoint('check-in', 'close').expect(200);
+
+    // 3. Tenta confirmar com a referência gerada antes do fechamento
+    const scanResult = await http()
+      .post('/attendances/scan-reference')
+      .auth(studentToken, { type: 'bearer' })
+      .send({ qrReference: reference });
+
+    expect(scanResult.status).toBe(400);
+    expect(scanResult.body).toMatchObject({ code: 'CHECKPOINT_CLOSED' });
+
+    // Referência inexistente/desconhecida também é rejeitada
+    const nonExistentRef = 'nonExistentRef12345678';
+    const invalidResult = await http()
+      .post('/attendances/scan-reference')
+      .auth(studentToken, { type: 'bearer' })
+      .send({ qrReference: nonExistentRef });
+    expect(invalidResult.status).toBe(400);
+    expect(invalidResult.body).toMatchObject({ code: 'EXPIRED_OR_INVALID_QR' });
+  });
+
+  it('doubleConfirmIsIdempotent: duplo toque com a mesma referência não duplica presença', async () => {
+    // Aluno novo para isolar o teste
+    const studentRa = 'idempotent-' + randomUUID();
+    const student = await prisma.student.create({
+      data: {
+        ra: studentRa,
+        name: 'Aluno Idempotente',
+        course: 'DSM',
+        status: 'Ativo',
+        admission: '20261',
+        email: randomUUID() + '@example.test',
+        password: 'unused',
+        dueDate: new Date('2030-01-01'),
+      },
+    });
+    const token = jwt.sign({
+      sub: studentRa,
+      accountId: student.accountId,
+      role: 'student',
+    });
+
+    await checkpoint('check-in', 'open').expect(200);
+    const qrResponse = await http()
+      .get(`/events/${eventId}/checkpoints/check-in/qr`)
+      .auth(secretaryToken, { type: 'bearer' })
+      .expect(200);
+    const reference = (qrResponse.body as { qrUrl: string }).qrUrl.split(
+      '/p/',
+    )[1];
+
+    // Primeiro toque: sucesso
+    await http()
+      .post('/attendances/scan-reference')
+      .auth(token, { type: 'bearer' })
+      .send({ qrReference: reference })
+      .expect(200);
+
+    // Segundo toque imediato com a mesma referência: recusado sem criar registro duplicado
+    const secondCall = await http()
+      .post('/attendances/scan-reference')
+      .auth(token, { type: 'bearer' })
+      .send({ qrReference: reference });
+
+    expect(secondCall.status).toBe(200);
+    expect(secondCall.body).toMatchObject({
+      success: false,
+      code: 'ALREADY_CHECKED_IN',
+    });
+    expect(
+      await prisma.attendance.count({
+        where: { eventId, studentRa },
+      }),
+    ).toBe(1);
+  });
+
+  it('referenceGeneratedByConfiguredBackendResolvesThere: apenas referência gerada neste backend é resolvida', async () => {
+    await checkpoint('check-in', 'open').expect(200);
+    const qrResponse = await http()
+      .get(`/events/${eventId}/checkpoints/check-in/qr`)
+      .auth(secretaryToken, { type: 'bearer' })
+      .expect(200);
+    const reference = (qrResponse.body as { qrUrl: string }).qrUrl.split(
+      '/p/',
+    )[1];
+
+    // Resolve com 200 no backend onde foi gerada
+    const resolved = await http()
+      .get(`/attendances/qr/${reference}`)
+      .auth(studentToken, { type: 'bearer' })
+      .expect(200);
+    const resolvedBody = resolved.body as { event: { id: string } };
+    expect(resolvedBody.event.id).toBe(eventId);
+
+    // Referência de outro backend ou aleatória não resolve
+    const foreignReference = 'foreignBackendRef12345';
+    const foreignResult = await http()
+      .get(`/attendances/qr/${foreignReference}`)
+      .auth(studentToken, { type: 'bearer' })
+      .expect(400);
+    expect(foreignResult.body).toMatchObject({ code: 'EXPIRED_OR_INVALID_QR' });
   });
 });
