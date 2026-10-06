@@ -36,8 +36,9 @@ interface FitTextOptions {
 export class PdfGeneratorService {
   private getVerificationUrl(code: string): string {
     const rawBaseUrl =
-      process.env.CERTIFICATE_VERIFICATION_BASE_URL ||
-      'http://localhost:5173';
+      process.env.CERTIFICATE_VERIFICATION_BASE_URL?.trim() ||
+      process.env.STUDENT_APP_URL?.trim() ||
+      'https://carteirinha-digital-front-end-aluno.vercel.app';
 
     try {
       const parsed = new URL(rawBaseUrl);
