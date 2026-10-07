@@ -52,35 +52,55 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
       this.logger.warn(`Execução de prisma migrate deploy falhou: ${errMsg}`);
 
       try {
-        const columns = (await this.$queryRawUnsafe(`
+        const columns = await this.$queryRawUnsafe<
+          Array<{ column_name: string }>
+        >(`
           SELECT column_name
           FROM information_schema.columns
           WHERE table_name = 'Student' AND column_name = 'accountId';
-        `)) as Array<{ column_name: string }>;
+        `);
 
         if (!columns || columns.length === 0) {
           this.logger.warn(
             'Coluna Student.accountId ausente no banco! Aplicando migration SQL de eventos e Student...',
           );
           const candidatePaths = [
-            path.resolve(process.cwd(), 'prisma/migrations/20260927224000_issue23_events_schema/migration.sql'),
-            path.resolve(__dirname, '../../../prisma/migrations/20260927224000_issue23_events_schema/migration.sql'),
-            path.resolve(__dirname, '../../prisma/migrations/20260927224000_issue23_events_schema/migration.sql'),
+            path.resolve(
+              process.cwd(),
+              'prisma/migrations/20260927224000_issue23_events_schema/migration.sql',
+            ),
+            path.resolve(
+              __dirname,
+              '../../../prisma/migrations/20260927224000_issue23_events_schema/migration.sql',
+            ),
+            path.resolve(
+              __dirname,
+              '../../prisma/migrations/20260927224000_issue23_events_schema/migration.sql',
+            ),
           ];
           const migrationPath = candidatePaths.find((p) => fs.existsSync(p));
           if (migrationPath) {
             const sql = fs.readFileSync(migrationPath, 'utf-8');
             await this.$executeRawUnsafe(sql);
-            this.logger.log('Migration SQL aplicada com sucesso diretamente no PostgreSQL!');
+            this.logger.log(
+              'Migration SQL aplicada com sucesso diretamente no PostgreSQL!',
+            );
           } else {
-            this.logger.error('Arquivo migration.sql não encontrado no filesystem!');
+            this.logger.error(
+              'Arquivo migration.sql não encontrado no filesystem!',
+            );
           }
         } else {
-          this.logger.log('Coluna Student.accountId já confirmada presente no banco.');
+          this.logger.log(
+            'Coluna Student.accountId já confirmada presente no banco.',
+          );
         }
       } catch (sqlErr: unknown) {
-        const sqlMsg = sqlErr instanceof Error ? sqlErr.message : String(sqlErr);
-        this.logger.error(`Erro ao aplicar fallback de migration SQL: ${sqlMsg}`);
+        const sqlMsg =
+          sqlErr instanceof Error ? sqlErr.message : String(sqlErr);
+        this.logger.error(
+          `Erro ao aplicar fallback de migration SQL: ${sqlMsg}`,
+        );
       }
     }
   }
