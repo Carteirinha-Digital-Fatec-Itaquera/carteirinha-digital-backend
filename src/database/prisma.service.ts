@@ -34,10 +34,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
     }
   }
 
+  private static migrationsChecked = false;
+
   private async ensureMigrationsApplied(): Promise<void> {
-    if (!process.env.DIRECT_URL) {
+    if (!process.env.DIRECT_URL || PrismaService.migrationsChecked) {
       return;
     }
+    PrismaService.migrationsChecked = true;
 
     try {
       this.logger.log('Executando verificação de migrations via Prisma CLI...');

@@ -7,8 +7,8 @@ export class ProjectCreditsController {
   constructor(private readonly projectCredits: ProjectCreditsService) {}
 
   @Get()
-  @Header('Cache-Control', 'public, max-age=300')
-  list(): ProjectCreditsResponse {
-    return this.projectCredits.listPublicCredits();
+  @Header('Cache-Control', 'no-store')
+  async list(): Promise<ProjectCreditsResponse> {
+    return this.projectCredits.getPublicCredits();
   }
 }

@@ -56,6 +56,7 @@ model Secretary {
   lastLogin       DateTime?
   events          Event[]   @relation("EventCreatedBy")
   cancelledEvents Event[]   @relation("EventCancelledBy")
+  creditAudits    ProjectCreditAudit[]
 }
 
 model Event {
@@ -188,3 +189,124 @@ enum AttendanceStatus {
   CHECKED_IN
   CONFIRMED
 }
+
+enum ProjectContributorStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ProjectCreditAuditAction {
+  CREATED
+  UPDATED
+  DRAFT_SAVED
+  PUBLISHED
+  ARCHIVED
+  RESTORED
+  PHOTO_REPLACED
+  PHOTO_REMOVED
+}
+
+enum ProjectCreditAssetStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+enum ProjectContributorLinkKind {
+  GITHUB
+  LINKEDIN
+  EMAIL
+  EXTERNAL
+}
+
+model ProjectContributor {
+  id                String                             @id @default(uuid())
+  slug              String                             @unique
+  name              String
+  status            ProjectContributorStatus           @default(DRAFT)
+  draftVersion      Int                                @default(1)
+  publishedVersion  Int?
+  publishedSnapshot Json?
+  photoUrl          String?
+  photoStorageKey   String?
+  photoPendingKey   String?
+  photoConfirmed    Boolean                            @default(false)
+  profileConfirmed  Boolean                            @default(false)
+  archiveReason     String?
+  archivedAt        DateTime?
+  publishedAt       DateTime?
+  createdAt         DateTime                           @default(now())
+  updatedAt         DateTime                           @updatedAt
+  participations    ProjectContributionParticipation[]
+  links             ProjectContributorLink[]
+  audits            ProjectCreditAudit[]
+
+  @@index([status])
+  @@index([name])
+}
+
+model ProjectContributionParticipation {
+  id            String             @id @default(uuid())
+  contributorId String
+  contributor   ProjectContributor @relation(fields: [contributorId], references: [id], onDelete: Cascade)
+  semester      String
+  course        String?
+  roles         String[]
+  contribution  String?
+  confirmed     Boolean            @default(false)
+  order         Int                @default(0)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@unique([contributorId, semester])
+  @@index([contributorId])
+}
+
+model ProjectContributorLink {
+  id            String                     @id @default(uuid())
+  contributorId String
+  contributor   ProjectContributor        @relation(fields: [contributorId], references: [id], onDelete: Cascade)
+  kind          ProjectContributorLinkKind @default(EXTERNAL)
+  label         String
+  url           String
+  order         Int                        @default(0)
+  confirmed     Boolean                    @default(false)
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
+
+  @@unique([contributorId, url])
+  @@index([contributorId])
+}
+
+model ProjectCreditAudit {
+  id                     String                   @id @default(uuid())
+  contributorId          String
+  contributor            ProjectContributor       @relation(fields: [contributorId], references: [id], onDelete: Cascade)
+  action                 ProjectCreditAuditAction
+  performedBySecretaryId Int?
+  performedBySecretary   Secretary?               @relation(fields: [performedBySecretaryId], references: [id], onDelete: SetNull)
+  performedByName        String?
+  beforeSnapshot         Json?
+  afterSnapshot          Json?
+  metadata               Json?
+  createdAt              DateTime                 @default(now())
+
+  @@index([contributorId])
+  @@index([performedBySecretaryId])
+}
+
+model ProjectCreditAssetCleanup {
+  id           String                   @id @default(uuid())
+  storageKey   String
+  source       String                   @default("CREDITS_PHOTO")
+  status       ProjectCreditAssetStatus @default(PENDING)
+  attempts     Int                      @default(0)
+  lastError    String?
+  scheduledFor DateTime                 @default(now())
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+
+  @@index([status, scheduledFor])
+}
+
