@@ -65,4 +65,8 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # Documentation
 /docs
-HANDOFF_LOCAL.md
+HANDOFF_LOCAL.md
+
+# Keep Markdown documentation local; README files remain versionable.
+*.[mM][dD]
+![rR][eE][aA][dD][mM][eE].[mM][dD]
