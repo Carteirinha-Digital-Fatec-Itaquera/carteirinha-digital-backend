@@ -8,6 +8,7 @@ import { VerificationModule } from './verification/verification.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { EventModule } from './event/event.module';
 import { CertificateModule } from './certificate/certificate.module';
+import { ProjectCreditsModule } from './project-credits/project-credits.module';
 import { ServeStaticModule } from '@nestjs/serve-static'; // 👈 Importe isso
 import { join } from 'path';
 
@@ -21,6 +22,7 @@ import { join } from 'path';
     EventModule,
     AttendanceModule,
     CertificateModule,
+    ProjectCreditsModule,
 
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'uploads'),
