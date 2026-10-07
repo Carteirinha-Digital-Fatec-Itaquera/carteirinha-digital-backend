@@ -35,7 +35,9 @@ export function normalizeAndValidateUrl(
   }
 
   if (trimmedLabel.length > 60) {
-    throw new BadRequestException('O rótulo do link não pode exceder 60 caracteres.');
+    throw new BadRequestException(
+      'O rótulo do link não pode exceder 60 caracteres.',
+    );
   }
 
   if (kind === 'email') {
@@ -44,7 +46,9 @@ export function normalizeAndValidateUrl(
       cleanEmail = cleanEmail.slice(7);
     }
     if (!EMAIL_REGEX.test(cleanEmail)) {
-      throw new BadRequestException(`E-mail inválido para contato: "${trimmedUrl}".`);
+      throw new BadRequestException(
+        `E-mail inválido para contato: "${trimmedUrl}".`,
+      );
     }
     return {
       kind: 'email',
@@ -67,7 +71,9 @@ export function normalizeAndValidateUrl(
   }
 
   if (parsed.username || parsed.password) {
-    throw new BadRequestException('URLs não podem conter credenciais embutidas.');
+    throw new BadRequestException(
+      'URLs não podem conter credenciais embutidas.',
+    );
   }
 
   const defaultLabels: Record<ProjectCreditContactKind, string> = {

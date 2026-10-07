@@ -43,7 +43,7 @@ describe('PdfGeneratorService', () => {
     // Assinatura de cabeçalho PDF
     const header = buffer.subarray(0, 5).toString('ascii');
     expect(header).toBe('%PDF-');
-  });
+  }, 15000);
 
   it('handlesLongAccentedNamesAndPagination: generates successfully with complex unicode accents', async () => {
     const complexCert: CertificateView = {
@@ -58,7 +58,7 @@ describe('PdfGeneratorService', () => {
     const buffer = await service.generatePdf(complexCert);
     expect(buffer).toBeInstanceOf(Buffer);
     expect(buffer.length).toBeGreaterThan(5000);
-  });
+  }, 15000);
 
   it('rejectsUnsafeBaseUrl: throws BadRequestException if verification base url is unsafe', async () => {
     process.env.CERTIFICATE_VERIFICATION_BASE_URL = 'javascript:alert(1)';

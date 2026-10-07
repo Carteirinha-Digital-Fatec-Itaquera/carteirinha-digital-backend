@@ -14,9 +14,10 @@ import { PrismaStudentRepository } from 'src/student/repository/prisma/prisma.st
 import { UploadModule } from '../upload/upload.module';
 import { UploadService } from '../upload/upload.service';
 import { MailModule } from '../mail/mail.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [UploadModule, DatabaseModule, UtilsModule, MailModule],
+  imports: [UploadModule, DatabaseModule, UtilsModule, MailModule, AuthModule],
   controllers: [SecretaryController],
   providers: [
     UploadService,
@@ -27,12 +28,12 @@ import { MailModule } from '../mail/mail.module';
     PrismaService,
     {
       provide: SecretaryRepository,
-      useClass: PrismaSecretaryRepository
+      useClass: PrismaSecretaryRepository,
     },
     {
       provide: StudentRepository,
       useClass: PrismaStudentRepository,
-    }
+    },
   ],
 })
 export class SecretaryModule {}

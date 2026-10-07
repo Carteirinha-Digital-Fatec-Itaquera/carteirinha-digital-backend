@@ -7,7 +7,9 @@ export class ArchiveContributorDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(255, { message: 'O motivo do arquivamento não pode exceder 255 caracteres' })
+  @MaxLength(255, {
+    message: 'O motivo do arquivamento não pode exceder 255 caracteres',
+  })
   reason?: string;
 }
 

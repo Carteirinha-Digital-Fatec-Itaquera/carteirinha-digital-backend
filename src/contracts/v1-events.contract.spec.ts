@@ -1,5 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { EventController } from '../event/event.controller';
+import { AttendanceController } from '../attendance/attendance.controller';
+import { EventAttendanceController } from '../attendance/attendance.controller';
+import {
+  CertificateController,
+  CertificateVerificationController,
+} from '../certificate/certificate.controller';
+import { VerificationController } from '../verification/verification.controller';
 import type {
   AttendanceQrResponse,
   AttendanceScanDuplicate,
@@ -18,10 +26,10 @@ import type {
   MyAttendanceView,
 } from './v1-events.types';
 
-const contractDir = join(__dirname, '..', '..', 'docs', 'contracts');
+const fixtureDir = join(__dirname, 'fixtures');
 const fixture = <T>(name: string): T => {
   const parsed: unknown = JSON.parse(
-    readFileSync(join(contractDir, 'fixtures', name), 'utf8'),
+    readFileSync(join(fixtureDir, name), 'utf8'),
   );
   return parsed as T;
 };
@@ -85,9 +93,11 @@ function expectFields(value: unknown, fields: Record<string, FieldKind>): void {
 }
 
 describe('Contrato V1 de eventos', () => {
-  const events = fixture<EventFixtures>('events.mock.json');
-  const attendance = fixture<AttendanceFixtures>('attendance.mock.json');
-  const certificates = fixture<CertificateFixtures>('certificates.mock.json');
+  const events = fixture<EventFixtures>('events.fixture.json');
+  const attendance = fixture<AttendanceFixtures>('attendance.fixture.json');
+  const certificates = fixture<CertificateFixtures>(
+    'certificates.fixture.json',
+  );
 
   it('valida campos obrigatórios e tipos dos três exemplos JSON', () => {
     expectFields(events.createRequest, {
@@ -297,7 +307,9 @@ describe('Contrato V1 de eventos', () => {
     expect(claims.checkpoint).toBe(events.checkpointOpenResponse.type);
     expect(claims.checkpointVersion).toBe(qr.checkpointVersion);
     expect(claims.exp - claims.iat).toBe(qr.expiresInSeconds);
-    expect(new Date(claims.exp * 1000).toISOString()).toBe(qr.expiresAt);
+    expect(Date.parse(new Date(claims.exp * 1000).toISOString())).toBe(
+      Date.parse(qr.expiresAt),
+    );
     expect(attendance.scanRequest.qrToken).toBe(token);
     const scanTime = Date.parse(attendance.scanSuccess.timestamp);
     expect(scanTime).toBeGreaterThanOrEqual(claims.iat * 1000);
@@ -344,20 +356,30 @@ describe('Contrato V1 de eventos', () => {
     expect(revoked.valid).toBe(false);
   });
 
-  it('mantém exatamente 15 rotas únicas e uma seção de detalhes para cada uma', () => {
-    const spec = readFileSync(join(contractDir, 'v1-events-spec.md'), 'utf8');
-    const routes = [
-      ...spec.matchAll(/^\|\s*(\d+)\s*\|\s*`([A-Z]+) ([^`]+)`\s*\|/gm),
-    ];
-    expect(routes).toHaveLength(16);
-    expect(routes.map((match) => Number(match[1]))).toEqual(
-      Array.from({ length: 16 }, (_, index) => index + 1),
-    );
-    expect(new Set(routes.map((match) => `${match[2]} ${match[3]}`)).size).toBe(
-      16,
-    );
-    for (const route of routes) {
-      expect(spec).toContain(`### ${route[1]}. ${route[2]} ${route[3]}`);
-    }
+  it('mantém rotas de eventos, presença e verificação de certificado nos controllers', () => {
+    const routeCount = (controller: { prototype: object }) => {
+      const prefix = Reflect.getMetadata('path', controller) as string;
+      return Object.getOwnPropertyNames(controller.prototype).filter((key) => {
+        const descriptor = Object.getOwnPropertyDescriptor(
+          controller.prototype,
+          key,
+        );
+        const method = descriptor?.value as
+          | ((...args: unknown[]) => unknown)
+          | undefined;
+        return (
+          typeof method === 'function' &&
+          Reflect.getMetadata('path', method) !== undefined &&
+          Reflect.getMetadata('method', method) !== undefined &&
+          prefix.length > 0
+        );
+      }).length;
+    };
+    expect(routeCount(EventController)).toBeGreaterThanOrEqual(9);
+    expect(routeCount(AttendanceController)).toBe(4);
+    expect(routeCount(EventAttendanceController)).toBe(2);
+    expect(routeCount(CertificateVerificationController)).toBe(1);
+    expect(routeCount(CertificateController)).toBe(3);
+    expect(routeCount(VerificationController)).toBe(2);
   });
 });

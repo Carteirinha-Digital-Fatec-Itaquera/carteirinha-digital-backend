@@ -1,8 +1,8 @@
-import { 
-  Injectable, 
-  InternalServerErrorException, 
-  NotFoundException, 
-  BadRequestException 
+import {
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { parse } from 'csv-parse';
 import * as XLSX from 'xlsx';
@@ -32,16 +32,16 @@ export class SecretaryService {
 
   private normalizeStatus(status: string): string {
     const map: Record<string, string> = {
-      'ativo': 'Em curso',
+      ativo: 'Em curso',
       'em curso': 'Em curso',
-      'cursando': 'Em curso',
-      'matriculado': 'Em curso',
-      'trancado': 'Trancado',
-      'concluido': 'Concluído',
-      'concluído': 'Concluído',
-      'desistente': 'Desistente',
-      'evadido': 'Desistente',
-      'cancelado': 'Desistente',
+      cursando: 'Em curso',
+      matriculado: 'Em curso',
+      trancado: 'Trancado',
+      concluido: 'Concluído',
+      concluído: 'Concluído',
+      desistente: 'Desistente',
+      evadido: 'Desistente',
+      cancelado: 'Desistente',
     };
 
     return map[status?.trim().toLowerCase()] ?? status;
@@ -52,47 +52,26 @@ export class SecretaryService {
     const ra = String(row['RA'] ?? row['ra'] ?? '').trim();
 
     const name = String(
-      row['Aluno'] ??
-      row['nome'] ??
-      row['name'] ??
-      '',
+      row['Aluno'] ?? row['nome'] ?? row['name'] ?? '',
     ).trim();
 
     const course = String(
-      row['Curso'] ??
-      row['curso'] ??
-      row['course'] ??
-      '',
+      row['Curso'] ?? row['curso'] ?? row['course'] ?? '',
     ).trim();
 
     const period = String(
-      row['Turno'] ??
-      row['turno'] ??
-      row['period'] ??
-      '',
+      row['Turno'] ?? row['turno'] ?? row['period'] ?? '',
     ).trim();
 
     const status = this.normalizeStatus(
-      String(
-        row['Situação'] ??
-        row['Situacao'] ??
-        row['status'] ??
-        '',
-      ),
+      String(row['Situação'] ?? row['Situacao'] ?? row['status'] ?? ''),
     );
 
     const ciclo = String(
-      row['Ciclo'] ??
-      row['ciclo'] ??
-      row['admission'] ??
-      '',
+      row['Ciclo'] ?? row['ciclo'] ?? row['admission'] ?? '',
     ).trim();
 
-    const email = String(
-      row['E-mail'] ??
-      row['email'] ??
-      '',
-    ).trim();
+    const email = String(row['E-mail'] ?? row['email'] ?? '').trim();
 
     return {
       ra,
@@ -119,6 +98,22 @@ export class SecretaryService {
       throw new NotFoundException('Secretaria não encontrada');
     }
 
+    if (dto.email) {
+      const normalizedEmail = dto.email.toLowerCase().trim();
+      if (!normalizedEmail.endsWith('@cps.sp.gov.br')) {
+        throw new BadRequestException(
+          'Apenas e-mails com domínio @cps.sp.gov.br são permitidos.',
+        );
+      }
+      if (normalizedEmail !== existing.email.toLowerCase().trim()) {
+        const emailInUse = await this.repository.findByEmail(normalizedEmail);
+        if (emailInUse && emailInUse.id !== id) {
+          throw new BadRequestException('E-mail já cadastrado.');
+        }
+      }
+      dto.email = normalizedEmail;
+    }
+
     const updated = {
       ...existing,
       ...dto,
@@ -127,12 +122,14 @@ export class SecretaryService {
       dueDate: dto.dueDate ? new Date(dto.dueDate) : existing.dueDate,
     };
 
-    await this.repository.update(updated as SecretaryEntity);
+    await this.repository.update(updated);
 
     if (dto.password) {
       const hashed = await this.hashService.hashContent(dto.password);
       await this.repository.updatePassword(id, hashed);
     }
+
+    return { message: 'Secretaria atualizada com sucesso' };
   }
 
   async getSecretary(): Promise<SecretaryEntity[]> {
@@ -196,10 +193,7 @@ export class SecretaryService {
       },
     });
 
-    await this.mailService.sendVerificationCode(
-      secretary.email,
-      code,
-    );
+    await this.mailService.sendVerificationCode(secretary.email, code);
 
     return {
       message: 'Código de verificação enviado para o e-mail.',
@@ -211,9 +205,36 @@ export class SecretaryService {
     code: string,
     secretary: CreateSecretaryDTO,
   ) {
+    if (!email || !code || !secretary) {
+      throw new BadRequestException('Dados incompletos para confirmação');
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    if (!normalizedEmail.endsWith('@cps.sp.gov.br')) {
+      throw new BadRequestException(
+        'Apenas e-mails com domínio @cps.sp.gov.br são permitidos.',
+      );
+    }
+
+    if (
+      secretary.email &&
+      secretary.email.toLowerCase().trim() !== normalizedEmail
+    ) {
+      throw new BadRequestException(
+        'E-mail fornecido diverge do e-mail verificado.',
+      );
+    }
+
+    secretary.email = normalizedEmail;
+
+    const existing = await this.repository.findByEmail(normalizedEmail);
+    if (existing) {
+      throw new BadRequestException('E-mail já cadastrado.');
+    }
+
     const verification = await this.prisma.verificationCode.findFirst({
       where: {
-        email,
+        email: normalizedEmail,
         code,
         used: false,
         expiresAt: {
@@ -223,9 +244,7 @@ export class SecretaryService {
     });
 
     if (!verification) {
-      throw new BadRequestException(
-        'Código inválido ou expirado.',
-      );
+      throw new BadRequestException('Código inválido ou expirado.');
     }
 
     await this.prisma.verificationCode.update({
@@ -244,8 +263,7 @@ export class SecretaryService {
         ? secretary.password
         : this.generateInitialPassword(birthDate);
 
-      const hashedPassword =
-        await this.hashService.hashContent(passwordToHash);
+      const hashedPassword = await this.hashService.hashContent(passwordToHash);
 
       const entity = this.mapper.toEntity({
         ...secretary,
@@ -257,7 +275,6 @@ export class SecretaryService {
       console.log(`Secretaria criada: ${entity.email}`);
 
       return await this.repository.create(entity);
-
     } catch (error) {
       throw new InternalServerErrorException(
         `Erro ao criar secretaria: ${error.message}`,
@@ -289,30 +306,16 @@ export class SecretaryService {
     return await this.repository.updateLastLogin(id);
   }
 
-  async updateSecretaryPassword(
-    id: number,
-    newPassword: string,
-  ) {
-    return await this.repository.updatePassword(
-      id,
-      newPassword,
-    );
+  async updateSecretaryPassword(id: number, newPassword: string) {
+    return await this.repository.updatePassword(id, newPassword);
   }
 
-  private generateInitialPassword(
-    birthDate: Date,
-  ): string {
-    const day = String(
-      birthDate.getUTCDate(),
-    ).padStart(2, '0');
+  private generateInitialPassword(birthDate: Date): string {
+    const day = String(birthDate.getUTCDate()).padStart(2, '0');
 
-    const month = String(
-      birthDate.getUTCMonth() + 1,
-    ).padStart(2, '0');
+    const month = String(birthDate.getUTCMonth() + 1).padStart(2, '0');
 
-    const year = String(
-      birthDate.getUTCFullYear(),
-    );
+    const year = String(birthDate.getUTCFullYear());
 
     return `${day}${month}${year}`;
   }
@@ -323,18 +326,12 @@ export class SecretaryService {
       type: 'buffer',
     });
 
-    const sheet =
-      workbook.Sheets[workbook.SheetNames[0]];
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
-    const records: any[] = XLSX.utils.sheet_to_json(
-      sheet,
-      { defval: '' },
-    );
+    const records: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
 
     if (records.length === 0) {
-      throw new BadRequestException(
-        'Arquivo vazio ou formato inválido',
-      );
+      throw new BadRequestException('Arquivo vazio ou formato inválido');
     }
 
     const resultados = {
@@ -353,23 +350,15 @@ export class SecretaryService {
       try {
         const aluno = this.parseAlunoRow(row);
 
-        if (
-          !aluno.ra ||
-          !aluno.name ||
-          !aluno.email
-        ) {
-          throw new Error(
-            'Campos obrigatórios faltando: RA, Aluno, E-mail',
-          );
+        if (!aluno.ra || !aluno.name || !aluno.email) {
+          throw new Error('Campos obrigatórios faltando: RA, Aluno, E-mail');
         }
 
         const cpfRaw = row['CPF'] ?? row['cpf'] ?? null;
         const cpf = cpfRaw ? String(cpfRaw).trim() : null;
 
         const birthDate =
-          row['birthDate'] ??
-          row['DataNascimento'] ??
-          new Date('2000-01-01');
+          row['birthDate'] ?? row['DataNascimento'] ?? new Date('2000-01-01');
 
         await this.studentService.createStudent({
           ...aluno,
@@ -379,7 +368,6 @@ export class SecretaryService {
         });
 
         resultados.sucesso++;
-
       } catch (error) {
         resultados.erros.push({
           linha: i + 2,
@@ -407,9 +395,7 @@ export class SecretaryService {
     }
 
     if (records.length === 0) {
-      throw new BadRequestException(
-        'Arquivo vazio ou formato inválido',
-      );
+      throw new BadRequestException('Arquivo vazio ou formato inválido');
     }
 
     const resultados = {
@@ -422,14 +408,8 @@ export class SecretaryService {
       try {
         const aluno = this.parseAlunoRow(records[i]);
 
-        if (
-          !aluno.ra ||
-          !aluno.name ||
-          !aluno.email
-        ) {
-          throw new Error(
-            'Campos obrigatórios faltando: RA, Aluno, E-mail',
-          );
+        if (!aluno.ra || !aluno.name || !aluno.email) {
+          throw new Error('Campos obrigatórios faltando: RA, Aluno, E-mail');
         }
 
         const cpfRaw = records[i]['CPF'] ?? records[i]['cpf'] ?? null;
@@ -448,7 +428,6 @@ export class SecretaryService {
         });
 
         resultados.sucesso++;
-
       } catch (error) {
         resultados.erros.push({
           linha: i + 2,
@@ -466,15 +445,13 @@ export class SecretaryService {
     const linhas = buffer
       .toString('utf-8')
       .split('\n')
-      .filter(l => l.trim());
+      .filter((l) => l.trim());
 
     if (linhas.length === 0) {
       throw new BadRequestException('Arquivo vazio');
     }
 
-    const headers = linhas[0]
-      .split(';')
-      .map(h => h.trim());
+    const headers = linhas[0].split(';').map((h) => h.trim());
 
     const resultados = {
       total: linhas.length - 1,
@@ -483,9 +460,7 @@ export class SecretaryService {
     };
 
     for (let i = 1; i < linhas.length; i++) {
-      const cols = linhas[i]
-        .split(';')
-        .map(c => c.trim());
+      const cols = linhas[i].split(';').map((c) => c.trim());
 
       const row: Record<string, string> = {};
 
@@ -496,23 +471,15 @@ export class SecretaryService {
       try {
         const aluno = this.parseAlunoRow(row);
 
-        if (
-          !aluno.ra ||
-          !aluno.name ||
-          !aluno.email
-        ) {
-          throw new Error(
-            'Campos obrigatórios faltando: RA, Aluno, E-mail',
-          );
+        if (!aluno.ra || !aluno.name || !aluno.email) {
+          throw new Error('Campos obrigatórios faltando: RA, Aluno, E-mail');
         }
 
-        const cpfRaw = (row['CPF'] ?? row['cpf'] ?? '') as string;
+        const cpfRaw = row['CPF'] ?? row['cpf'] ?? '';
         const cpf = cpfRaw.trim() !== '' ? cpfRaw.trim() : null;
 
         const birthDate =
-          row['birthDate'] ??
-          row['DataNascimento'] ??
-          '2000-01-01';
+          row['birthDate'] ?? row['DataNascimento'] ?? '2000-01-01';
 
         await this.studentService.createStudent({
           ...aluno,
@@ -522,7 +489,6 @@ export class SecretaryService {
         });
 
         resultados.sucesso++;
-
       } catch (error) {
         resultados.erros.push({
           linha: i + 1,
@@ -541,14 +507,10 @@ export class SecretaryService {
 
       const texto = data.text;
 
-      const linhas = texto
-        .split('\n')
-        .filter((linha: string) => linha.trim());
+      const linhas = texto.split('\n').filter((linha: string) => linha.trim());
 
       if (linhas.length === 0) {
-        throw new BadRequestException(
-          'Arquivo vazio ou formato inválido',
-        );
+        throw new BadRequestException('Arquivo vazio ou formato inválido');
       }
 
       const dadosLinhas = linhas.slice(1);
@@ -566,9 +528,7 @@ export class SecretaryService {
       for (let i = 0; i < dadosLinhas.length; i++) {
         const linha = dadosLinhas[i];
 
-        const colunas = linha
-          .split(';')
-          .map((c: string) => c.trim());
+        const colunas = linha.split(';').map((c: string) => c.trim());
 
         try {
           if (colunas.length < 8) {
@@ -579,22 +539,16 @@ export class SecretaryService {
 
           const ra = colunas[0];
           const course = colunas[1];
-          const status = this.normalizeStatus(
-            colunas[2],
-          );
+          const status = this.normalizeStatus(colunas[2]);
           const name = colunas[3];
           const admission = colunas[4];
           const email = colunas[5];
           const cpf = colunas[6];
 
-          const birthDate = new Date(
-            colunas[7],
-          );
+          const birthDate = new Date(colunas[7]);
 
           if (isNaN(birthDate.getTime())) {
-            throw new Error(
-              `Data de nascimento inválida: ${colunas[7]}`,
-            );
+            throw new Error(`Data de nascimento inválida: ${colunas[7]}`);
           }
 
           await this.studentService.createStudent({
@@ -610,7 +564,6 @@ export class SecretaryService {
           });
 
           resultados.sucesso++;
-
         } catch (error) {
           resultados.erros.push({
             linha: i + 2,
@@ -621,16 +574,11 @@ export class SecretaryService {
       }
 
       return resultados;
-
     } catch (error) {
-      console.error(
-        'Erro ao processar PDF:',
-        error,
-      );
+      console.error('Erro ao processar PDF:', error);
 
       throw new BadRequestException(
-        'Erro ao processar arquivo PDF: ' +
-        error.message,
+        'Erro ao processar arquivo PDF: ' + error.message,
       );
     }
   }
