@@ -1,10 +1,14 @@
 import {
   IsArray,
+  ArrayMaxSize,
+  ArrayUnique,
   IsBoolean,
   IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsInt,
+  Min,
   Matches,
   MaxLength,
   ValidateNested,
@@ -26,7 +30,9 @@ export class ContributorParticipationInputDto {
   course?: string;
 
   @IsArray()
+  @ArrayMaxSize(10)
   @IsString({ each: true })
+  @MaxLength(80, { each: true })
   @IsNotEmpty({ each: true })
   roles: string[];
 
@@ -40,6 +46,8 @@ export class ContributorParticipationInputDto {
   confirmed?: boolean;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
   order?: number;
 }
 
@@ -64,12 +72,15 @@ export class ContributorLinkInputDto {
   confirmed?: boolean;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
   order?: number;
 }
 
 export class CreateContributorDto {
   @IsString()
   @IsNotEmpty({ message: 'O nome do colaborador é obrigatório' })
+  @Matches(/\S/, { message: 'O nome não pode conter somente espaços' })
   @MaxLength(160, { message: 'O nome não pode exceder 160 caracteres' })
   name: string;
 
@@ -83,17 +94,23 @@ export class CreateContributorDto {
   profileConfirmed?: boolean;
 
   @IsOptional()
-  @IsBoolean()
-  photoConfirmed?: boolean;
-
-  @IsOptional()
   @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique((value: ContributorParticipationInputDto) =>
+    typeof value?.semester === 'string'
+      ? value.semester.trim()
+      : value?.semester,
+  )
   @ValidateNested({ each: true })
   @Type(() => ContributorParticipationInputDto)
   participations?: ContributorParticipationInputDto[];
 
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(20)
+  @ArrayUnique((value: ContributorLinkInputDto) =>
+    typeof value?.url === 'string' ? value.url.trim() : value?.url,
+  )
   @ValidateNested({ each: true })
   @Type(() => ContributorLinkInputDto)
   links?: ContributorLinkInputDto[];

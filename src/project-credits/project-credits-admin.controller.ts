@@ -1,23 +1,27 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
   Get,
   Header,
   Param,
+  Patch,
   Post,
   Put,
   Query,
   Req,
-  UploadedFile,
   UseGuards,
-  UseInterceptors,
+  UsePipes,
+  ValidationPipe,
+  ServiceUnavailableException,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import type { Secretary } from '@prisma/client';
+interface CreditsRequest {
+  secretary: Secretary;
+}
 import { SecretaryActiveGuard } from './guards/secretary-active.guard';
 import { ProjectCreditsService } from './project-credits.service';
 import { CreateContributorDto } from './dto/create-contributor.dto';
@@ -32,6 +36,13 @@ import { AdminQueryContributorsDto } from './dto/admin-query.dto';
 @Controller('project-credits/admin/contributors')
 @UseGuards(AuthGuard, RolesGuard, SecretaryActiveGuard)
 @Roles('secretary')
+@UsePipes(
+  new ValidationPipe({
+    transform: true,
+    whitelist: true,
+    forbidNonWhitelisted: true,
+  }),
+)
 export class ProjectCreditsAdminController {
   constructor(private readonly service: ProjectCreditsService) {}
 
@@ -48,7 +59,7 @@ export class ProjectCreditsAdminController {
   }
 
   @Post()
-  async create(@Body() dto: CreateContributorDto, @Req() req: any) {
+  async create(@Body() dto: CreateContributorDto, @Req() req: CreditsRequest) {
     return this.service.createContributor(dto, req.secretary);
   }
 
@@ -56,7 +67,16 @@ export class ProjectCreditsAdminController {
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateContributorDto,
-    @Req() req: any,
+    @Req() req: CreditsRequest,
+  ) {
+    return this.service.updateContributor(id, dto, req.secretary);
+  }
+
+  @Patch(':id')
+  async patch(
+    @Param('id') id: string,
+    @Body() dto: UpdateContributorDto,
+    @Req() req: CreditsRequest,
   ) {
     return this.service.updateContributor(id, dto, req.secretary);
   }
@@ -65,7 +85,7 @@ export class ProjectCreditsAdminController {
   async publish(
     @Param('id') id: string,
     @Body() dto: PublishContributorDto,
-    @Req() req: any,
+    @Req() req: CreditsRequest,
   ) {
     return this.service.publishContributor(id, dto, req.secretary);
   }
@@ -74,7 +94,7 @@ export class ProjectCreditsAdminController {
   async archive(
     @Param('id') id: string,
     @Body() dto: ArchiveContributorDto,
-    @Req() req: any,
+    @Req() req: CreditsRequest,
   ) {
     return this.service.archiveContributor(id, dto, req.secretary);
   }
@@ -83,7 +103,7 @@ export class ProjectCreditsAdminController {
   async restore(
     @Param('id') id: string,
     @Body() dto: RestoreContributorDto,
-    @Req() req: any,
+    @Req() req: CreditsRequest,
   ) {
     return this.service.restoreContributor(id, dto, req.secretary);
   }
@@ -99,43 +119,23 @@ export class ProjectCreditsAdminController {
   }
 
   @Post(':id/photo')
-  @UseInterceptors(FileInterceptor('file'))
-  async uploadPhoto(
-    @Param('id') id: string,
-    @UploadedFile() file: Express.Multer.File,
-    @Body('expectedVersion') expectedVersionStr: string,
-    @Req() req: any,
-  ) {
-    if (!file) {
-      throw new BadRequestException('Arquivo de imagem não fornecido.');
-    }
-    const expectedVersion = Number(expectedVersionStr);
-    if (isNaN(expectedVersion) || expectedVersion < 1) {
-      throw new BadRequestException(
-        'expectedVersion deve ser um número inteiro válido.',
-      );
-    }
-    return this.service.uploadPhoto(id, file, expectedVersion, req.secretary);
+  photoUploadUnavailable(): never {
+    throw new ServiceUnavailableException(
+      'Fotos de créditos serão disponibilizadas em uma próxima entrega.',
+    );
   }
 
   @Get(':id/photo')
-  @Header('Cache-Control', 'no-store')
-  async getPhotoPreview(@Param('id') id: string) {
-    return this.service.getPhotoPreview(id);
+  photoPreviewUnavailable(): never {
+    throw new ServiceUnavailableException(
+      'Fotos de créditos serão disponibilizadas em uma próxima entrega.',
+    );
   }
 
   @Delete(':id/photo')
-  async deletePhoto(
-    @Param('id') id: string,
-    @Body('expectedVersion') expectedVersionStr: string,
-    @Req() req: any,
-  ) {
-    const expectedVersion = Number(expectedVersionStr);
-    if (isNaN(expectedVersion) || expectedVersion < 1) {
-      throw new BadRequestException(
-        'expectedVersion deve ser um número inteiro válido.',
-      );
-    }
-    return this.service.deletePhoto(id, expectedVersion, req.secretary);
+  photoDeleteUnavailable(): never {
+    throw new ServiceUnavailableException(
+      'Fotos de créditos serão disponibilizadas em uma próxima entrega.',
+    );
   }
 }

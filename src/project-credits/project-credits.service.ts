@@ -20,71 +20,55 @@ import {
   RestoreContributorDto,
 } from './dto/archive-restore.dto';
 import { AdminQueryContributorsDto } from './dto/admin-query.dto';
-import { normalizeAndValidateUrl, validateSemester } from './utils/url-validator';
-import { ProjectCreditsAssetService } from './services/project-credits-asset.service';
+import {
+  normalizeAndValidateUrl,
+  validateSemester,
+} from './utils/url-validator';
+
 import {
   Prisma,
   ProjectContributor,
-  ProjectContributorLinkKind,
+  ProjectContributionParticipation,
+  ProjectContributorLink,
+  ProjectCreditAudit,
   Secretary,
 } from '@prisma/client';
 
 @Injectable()
 export class ProjectCreditsService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly assetService: ProjectCreditsAssetService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async getPublicCredits(): Promise<ProjectCreditsResponse> {
-    const contributors = await this.prisma.projectContributor.findMany({
+    const rows = await this.prisma.projectContributor.findMany({
       where: { status: 'PUBLISHED' },
-      include: {
-        participations: {
-          where: { confirmed: true },
-          orderBy: [{ order: 'asc' }, { semester: 'desc' }],
-        },
-        links: {
-          where: { confirmed: true },
-          orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
-        },
-      },
-      orderBy: [{ name: 'asc' }],
+      orderBy: { name: 'asc' },
     });
-
-    const mapped = contributors.map((c) => {
-      if (c.publishedSnapshot && typeof c.publishedSnapshot === 'object') {
-        const snap = c.publishedSnapshot as Record<string, unknown>;
-        return {
-          id: (snap.id as string) || c.id,
-          name: (snap.name as string) || c.name,
-          photoUrl: (snap.photoUrl as string | null) || null,
-          participations: Array.isArray(snap.participations)
-            ? snap.participations
-            : [],
-          contacts: Array.isArray(snap.contacts) ? snap.contacts : [],
-        };
-      }
-
-      return {
-        id: c.id,
-        name: c.name,
-        photoUrl: c.photoUrl,
-        participations: c.participations.map((p) => ({
-          semester: p.semester,
-          course: p.course,
-          roles: p.roles,
-          contribution: p.contribution,
-        })),
-        contacts: c.links.map((l) => ({
-          kind: l.kind.toLowerCase() as ProjectCreditContactKind,
-          label: l.label,
-          href: l.url,
-        })),
-      };
+    const contributors = rows.flatMap((c) => {
+      if (
+        !c.publishedSnapshot ||
+        typeof c.publishedSnapshot !== 'object' ||
+        Array.isArray(c.publishedSnapshot)
+      )
+        return [];
+      const snap = c.publishedSnapshot as Record<string, unknown>;
+      if (
+        typeof snap.name !== 'string' ||
+        !Array.isArray(snap.participations) ||
+        !Array.isArray(snap.contacts)
+      )
+        return [];
+      const photo = null;
+      return [
+        {
+          id: c.id,
+          name: snap.name,
+          photoUrl: photo,
+          participations: snap.participations,
+          contacts: snap.contacts,
+        },
+      ];
     });
-
-    return { contributors: mapped };
+    return { contributors };
   }
 
   async listContributorsAdmin(query: AdminQueryContributorsDto): Promise<{
@@ -97,7 +81,7 @@ export class ProjectCreditsService {
     const limit = Math.max(1, Math.min(100, Number(query.limit) || 50));
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.ProjectContributorWhereInput = {};
     if (query.q?.trim()) {
       where.name = { contains: query.q.trim(), mode: 'insensitive' };
     }
@@ -118,7 +102,7 @@ export class ProjectCreditsService {
         take: limit,
         include: {
           participations: {
-            select: { semester: true },
+            select: { semester: true, roles: true },
             orderBy: { semester: 'desc' },
           },
         },
@@ -144,9 +128,10 @@ export class ProjectCreditsService {
         draftVersion: c.draftVersion,
         publishedVersion: c.publishedVersion,
         hasUnpublishedChanges,
-        photoUrl: c.photoUrl,
-        hasPhoto: Boolean(c.photoUrl || c.photoStorageKey || c.photoPendingKey),
+        photoUrl: null,
+        hasPhoto: false,
         semesters: distinctSemesters,
+        roles: [...new Set(c.participations.flatMap((p) => p.roles))],
         updatedAt: c.updatedAt.toISOString(),
         publishedAt: c.publishedAt ? c.publishedAt.toISOString() : null,
       };
@@ -155,7 +140,9 @@ export class ProjectCreditsService {
     return { total, page, limit, items };
   }
 
-  async getContributorAdmin(id: string): Promise<AdminProjectContributorDetail> {
+  async getContributorAdmin(
+    id: string,
+  ): Promise<AdminProjectContributorDetail> {
     const c = await this.prisma.projectContributor.findUnique({
       where: { id },
       include: {
@@ -185,7 +172,9 @@ export class ProjectCreditsService {
   ): Promise<AdminProjectContributorDetail> {
     const slug =
       dto.slug?.trim() ||
-      this.generateSlug(dto.name) + '-' + Math.random().toString(36).substring(2, 6);
+      this.generateSlug(dto.name) +
+        '-' +
+        Math.random().toString(36).substring(2, 6);
 
     const existingSlug = await this.prisma.projectContributor.findUnique({
       where: { slug },
@@ -204,7 +193,7 @@ export class ProjectCreditsService {
           status: 'DRAFT',
           draftVersion: 1,
           profileConfirmed: Boolean(dto.profileConfirmed),
-          photoConfirmed: Boolean(dto.photoConfirmed),
+          photoConfirmed: false,
         },
       });
 
@@ -296,25 +285,33 @@ export class ProjectCreditsService {
       draftVersion: existing.draftVersion,
       profileConfirmed: existing.profileConfirmed,
       photoConfirmed: existing.photoConfirmed,
-      participations: existing.participations,
-      links: existing.links,
+      participations: existing.participations.map((p) => ({
+        semester: p.semester,
+        course: p.course,
+        roles: p.roles,
+        contribution: p.contribution,
+        confirmed: p.confirmed,
+      })),
+      links: existing.links.map((l) => ({
+        kind: l.kind,
+        label: l.label,
+        url: l.url,
+        confirmed: l.confirmed,
+      })),
     };
 
     await this.prisma.$transaction(async (tx) => {
       const nextVersion = existing.draftVersion + 1;
 
-      await tx.projectContributor.update({
-        where: { id },
+      await this.claimVersion(tx, id, dto.expectedVersion, {
         data: {
           name: dto.name ? dto.name.trim() : existing.name,
           profileConfirmed:
             dto.profileConfirmed !== undefined
               ? dto.profileConfirmed
-              : existing.profileConfirmed,
-          photoConfirmed:
-            dto.photoConfirmed !== undefined
-              ? dto.photoConfirmed
-              : existing.photoConfirmed,
+              : dto.name !== undefined && dto.name.trim() !== existing.name
+                ? false
+                : existing.profileConfirmed,
           draftVersion: nextVersion,
         },
       });
@@ -398,97 +395,59 @@ export class ProjectCreditsService {
         links: { orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] },
       },
     });
-
-    if (!existing) {
-      throw new NotFoundException(`Colaborador com ID "${id}" não encontrado.`);
-    }
-
-    if (existing.draftVersion !== dto.expectedVersion) {
-      throw new ConflictException(
-        `Conflito de versão: o colaborador foi modificado por outro usuário (versão atual: ${existing.draftVersion}, esperada: ${dto.expectedVersion}).`,
-      );
-    }
-
-    if (!dto.profileConfirmed) {
+    if (!existing) throw new NotFoundException('Colaborador não encontrado.');
+    if (existing.status === 'ARCHIVED')
+      throw new ConflictException('Restaure o colaborador antes de publicar.');
+    if (!dto.profileConfirmed)
       throw new BadRequestException(
-        'A autorização expressa para divulgação dos dados do colaborador é obrigatória para publicar.',
+        'Confirme a autorização para divulgar o perfil.',
       );
-    }
-
-    if (!existing.name.trim()) {
-      throw new BadRequestException('O nome do colaborador não pode ser vazio.');
-    }
-
-    if (existing.participations.length === 0) {
+    if (
+      existing.status === 'PUBLISHED' &&
+      existing.publishedVersion === existing.draftVersion &&
+      [existing.draftVersion, existing.draftVersion - 1].includes(
+        dto.expectedVersion,
+      )
+    )
+      return this.getContributorAdmin(id);
+    if (existing.draftVersion !== dto.expectedVersion)
+      throw new ConflictException('Conflito de versão. Recarregue os dados.');
+    if (
+      !existing.name.trim() ||
+      !existing.participations.length ||
+      existing.participations.some((p) => !p.confirmed || !p.roles.length) ||
+      existing.links.some((l) => !l.confirmed)
+    )
       throw new BadRequestException(
-        'O colaborador deve possuir pelo menos uma participação por semestre para ser publicado.',
+        'Revise nome, participações, papéis e autorizações dos contatos antes de publicar.',
       );
-    }
-
-    const unconfirmedParticipation = existing.participations.find(
-      (p) => !p.confirmed,
-    );
-    if (unconfirmedParticipation) {
-      throw new BadRequestException(
-        `A participação do semestre "${unconfirmedParticipation.semester}" precisa ser confirmada antes da publicação.`,
-      );
-    }
-
-    const unconfirmedLink = existing.links.find((l) => !l.confirmed);
-    if (unconfirmedLink) {
-      throw new BadRequestException(
-        `O link "${unconfirmedLink.label}" precisa ser confirmado antes da publicação.`,
-      );
-    }
-
-    let publicPhotoUrl = existing.photoUrl;
-    let oldStorageKeyToCleanup: string | null = null;
-
-    if (existing.photoPendingKey) {
-      publicPhotoUrl = this.assetService.getPrivateDownloadUrl(
-        existing.photoPendingKey,
-      );
-      if (existing.photoStorageKey && existing.photoStorageKey !== existing.photoPendingKey) {
-        oldStorageKeyToCleanup = existing.photoStorageKey;
-      }
-    }
-
-    const nextVersion = existing.draftVersion + 1;
-
-    const publishedSnapshot = {
-      id: existing.id,
+    const snapshot = {
+      id,
       name: existing.name,
-      photoUrl: publicPhotoUrl,
+      photoUrl: null,
       participations: existing.participations.map((p) => ({
         semester: p.semester,
-        course: p.course || null,
+        course: p.course,
         roles: p.roles,
-        contribution: p.contribution || null,
+        contribution: p.contribution,
       })),
       contacts: existing.links.map((l) => ({
-        kind: l.kind.toLowerCase() as ProjectCreditContactKind,
+        kind: l.kind.toLowerCase(),
         label: l.label,
         href: l.url,
       })),
     };
-
     await this.prisma.$transaction(async (tx) => {
-      await tx.projectContributor.update({
-        where: { id },
+      await this.claimVersion(tx, id, dto.expectedVersion, {
         data: {
           status: 'PUBLISHED',
-          draftVersion: nextVersion,
-          publishedVersion: nextVersion,
-          publishedSnapshot,
+          draftVersion: dto.expectedVersion + 1,
+          publishedVersion: dto.expectedVersion + 1,
+          publishedSnapshot: snapshot,
           publishedAt: new Date(),
           profileConfirmed: true,
-          photoConfirmed: Boolean(dto.photoConfirmed ?? existing.photoConfirmed),
-          photoUrl: publicPhotoUrl,
-          photoStorageKey: existing.photoPendingKey || existing.photoStorageKey,
-          photoPendingKey: null,
         },
       });
-
       await tx.projectCreditAudit.create({
         data: {
           contributorId: id,
@@ -496,17 +455,12 @@ export class ProjectCreditsService {
           performedBySecretaryId: secretary.id,
           performedByName: secretary.name,
           beforeSnapshot:
-            (existing.publishedSnapshot as unknown as Prisma.InputJsonValue) ??
+            (existing.publishedSnapshot as Prisma.InputJsonValue) ??
             Prisma.JsonNull,
-          afterSnapshot: publishedSnapshot as unknown as Prisma.InputJsonValue,
+          afterSnapshot: snapshot,
         },
       });
     });
-
-    if (oldStorageKeyToCleanup) {
-      await this.assetService.destroyAsset(oldStorageKeyToCleanup);
-    }
-
     return this.getContributorAdmin(id);
   }
 
@@ -532,8 +486,7 @@ export class ProjectCreditsService {
     const nextVersion = existing.draftVersion + 1;
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.projectContributor.update({
-        where: { id },
+      await this.claimVersion(tx, id, dto.expectedVersion, {
         data: {
           status: 'ARCHIVED',
           archiveReason: dto.reason?.trim() || null,
@@ -548,7 +501,9 @@ export class ProjectCreditsService {
           action: 'ARCHIVED',
           performedBySecretaryId: secretary.id,
           performedByName: secretary.name,
-          metadata: { reason: dto.reason?.trim() || 'Arquivado pela secretaria' },
+          metadata: {
+            reason: dto.reason?.trim() || 'Arquivado pela secretaria',
+          },
         },
       });
     });
@@ -578,8 +533,7 @@ export class ProjectCreditsService {
     const nextVersion = existing.draftVersion + 1;
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.projectContributor.update({
-        where: { id },
+      await this.claimVersion(tx, id, dto.expectedVersion, {
         data: {
           status: 'DRAFT',
           archiveReason: null,
@@ -594,145 +548,26 @@ export class ProjectCreditsService {
           action: 'RESTORED',
           performedBySecretaryId: secretary.id,
           performedByName: secretary.name,
-          metadata: { note: 'Restaurado para rascunho sem republicação automática.' },
+          metadata: {
+            note: 'Restaurado para rascunho sem republicação automática.',
+          },
         },
       });
     });
 
     return this.getContributorAdmin(id);
-  }
-
-  async uploadPhoto(
-    id: string,
-    file: Express.Multer.File,
-    expectedVersion: number,
-    secretary: Secretary,
-  ): Promise<AdminProjectContributorDetail> {
-    const existing = await this.prisma.projectContributor.findUnique({
-      where: { id },
-    });
-
-    if (!existing) {
-      throw new NotFoundException(`Colaborador com ID "${id}" não encontrado.`);
-    }
-
-    if (existing.draftVersion !== expectedVersion) {
-      throw new ConflictException(
-        `Conflito de versão ao enviar foto (versão atual: ${existing.draftVersion}, esperada: ${expectedVersion}).`,
-      );
-    }
-
-    const processed = await this.assetService.processPhoto(file.buffer);
-    const { storageKey } = await this.assetService.uploadDraftPhoto(
-      id,
-      existing.draftVersion,
-      processed.buffer,
-    );
-
-    const oldPending = existing.photoPendingKey;
-    const nextVersion = existing.draftVersion + 1;
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.projectContributor.update({
-        where: { id },
-        data: {
-          photoPendingKey: storageKey,
-          photoConfirmed: true,
-          draftVersion: nextVersion,
-        },
-      });
-
-      await tx.projectCreditAudit.create({
-        data: {
-          contributorId: id,
-          action: 'PHOTO_REPLACED',
-          performedBySecretaryId: secretary.id,
-          performedByName: secretary.name,
-          metadata: { newStorageKey: storageKey },
-        },
-      });
-    });
-
-    if (oldPending && oldPending !== storageKey) {
-      await this.assetService.destroyAsset(oldPending);
-    }
-
-    return this.getContributorAdmin(id);
-  }
-
-  async deletePhoto(
-    id: string,
-    expectedVersion: number,
-    secretary: Secretary,
-  ): Promise<AdminProjectContributorDetail> {
-    const existing = await this.prisma.projectContributor.findUnique({
-      where: { id },
-    });
-
-    if (!existing) {
-      throw new NotFoundException(`Colaborador com ID "${id}" não encontrado.`);
-    }
-
-    if (existing.draftVersion !== expectedVersion) {
-      throw new ConflictException(
-        `Conflito de versão ao remover foto (versão atual: ${existing.draftVersion}, esperada: ${expectedVersion}).`,
-      );
-    }
-
-    const oldPending = existing.photoPendingKey;
-    const nextVersion = existing.draftVersion + 1;
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.projectContributor.update({
-        where: { id },
-        data: {
-          photoPendingKey: null,
-          photoConfirmed: false,
-          draftVersion: nextVersion,
-        },
-      });
-
-      await tx.projectCreditAudit.create({
-        data: {
-          contributorId: id,
-          action: 'PHOTO_REMOVED',
-          performedBySecretaryId: secretary.id,
-          performedByName: secretary.name,
-        },
-      });
-    });
-
-    if (oldPending) {
-      await this.assetService.destroyAsset(oldPending);
-    }
-
-    return this.getContributorAdmin(id);
-  }
-
-  async getPhotoPreview(id: string): Promise<{ url: string }> {
-    const existing = await this.prisma.projectContributor.findUnique({
-      where: { id },
-    });
-
-    if (!existing) {
-      throw new NotFoundException(`Colaborador com ID "${id}" não encontrado.`);
-    }
-
-    const key = existing.photoPendingKey || existing.photoStorageKey;
-    if (!key) {
-      throw new NotFoundException('Colaborador não possui foto cadastrada.');
-    }
-
-    return {
-      url: this.assetService.getPrivateDownloadUrl(key),
-    };
   }
 
   async getAuditHistory(
     id: string,
     page = 1,
     limit = 20,
-  ): Promise<{ total: number; page: number; limit: number; items: AdminAuditLogItem[] }> {
+  ): Promise<{
+    total: number;
+    page: number;
+    limit: number;
+    items: AdminAuditLogItem[];
+  }> {
     const pageNum = Math.max(1, Number(page) || 1);
     const take = Math.max(1, Math.min(100, Number(limit) || 20));
     const skip = (pageNum - 1) * take;
@@ -761,11 +596,25 @@ export class ProjectCreditsService {
     return { total, page: pageNum, limit: take, items };
   }
 
+  private async claimVersion(
+    tx: Prisma.TransactionClient,
+    id: string,
+    version: number,
+    update: { data: Prisma.ProjectContributorUpdateManyMutationInput },
+  ): Promise<void> {
+    const result = await tx.projectContributor.updateMany({
+      where: { id, draftVersion: version },
+      data: update.data,
+    });
+    if (result.count !== 1)
+      throw new ConflictException('Conflito de versão. Recarregue os dados.');
+  }
+
   private mapToDetailDto(
     c: ProjectContributor & {
-      participations: any[];
-      links: any[];
-      audits?: any[];
+      participations: ProjectContributionParticipation[];
+      links: ProjectContributorLink[];
+      audits?: ProjectCreditAudit[];
     },
   ): AdminProjectContributorDetail {
     const hasUnpublishedChanges =
@@ -782,7 +631,7 @@ export class ProjectCreditsService {
       publishedVersion: c.publishedVersion,
       hasUnpublishedChanges,
       photoUrl: c.photoUrl,
-      photoPending: Boolean(c.photoPendingKey),
+      photoPending: false,
       photoConfirmed: c.photoConfirmed,
       profileConfirmed: c.profileConfirmed,
       archiveReason: c.archiveReason,
@@ -812,9 +661,9 @@ export class ProjectCreditsService {
         action: a.action,
         performedBySecretaryId: a.performedBySecretaryId,
         performedByName: a.performedByName,
-        beforeSnapshot: a.beforeSnapshot,
-        afterSnapshot: a.afterSnapshot,
-        metadata: a.metadata,
+        beforeSnapshot: a.beforeSnapshot as Record<string, unknown> | null,
+        afterSnapshot: a.afterSnapshot as Record<string, unknown> | null,
+        metadata: a.metadata as Record<string, unknown> | null,
         createdAt: a.createdAt.toISOString(),
       })),
     };

@@ -1,10 +1,7 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
 import {
   BadRequestException,
-  ConflictException,
-  ForbiddenException,
   INestApplication,
-  UnauthorizedException,
   ValidationPipe,
 } from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
@@ -19,7 +16,10 @@ import { ProjectCreditsAssetService } from './services/project-credits-asset.ser
 import { ProjectCreditsImporter } from './importer/project-credits.importer';
 import { SecretaryActiveGuard } from './guards/secretary-active.guard';
 import { PrismaService } from '../database/prisma.service';
-import { normalizeAndValidateUrl, validateSemester } from './utils/url-validator';
+import {
+  normalizeAndValidateUrl,
+  validateSemester,
+} from './utils/url-validator';
 
 describe('Project Credits Module & Administration', () => {
   let app: INestApplication;
@@ -46,11 +46,13 @@ describe('Project Credits Module & Administration', () => {
 
   const mockPrisma = {
     secretary: {
-      findUnique: jest.fn().mockImplementation(({ where }: { where: { id: number } }) => {
-        if (where.id === 1) return Promise.resolve(activeSecretary);
-        if (where.id === 2) return Promise.resolve(expiredSecretary);
-        return Promise.resolve(null);
-      }),
+      findUnique: jest
+        .fn()
+        .mockImplementation(({ where }: { where: { id: number } }) => {
+          if (where.id === 1) return Promise.resolve(activeSecretary);
+          if (where.id === 2) return Promise.resolve(expiredSecretary);
+          return Promise.resolve(null);
+        }),
     },
     projectContributor: {
       findMany: jest.fn(),
@@ -58,6 +60,7 @@ describe('Project Credits Module & Administration', () => {
       count: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     projectContributionParticipation: {
       create: jest.fn(),
@@ -75,9 +78,9 @@ describe('Project Credits Module & Administration', () => {
     projectCreditAssetCleanup: {
       create: jest.fn(),
     },
-    $transaction: jest.fn().mockImplementation(async (callback) => {
-      return callback(mockPrisma);
-    }),
+    $transaction: jest
+      .fn()
+      .mockImplementation((callback) => Promise.resolve(callback(mockPrisma))),
   };
 
   const mockAssetService = {
@@ -92,7 +95,9 @@ describe('Project Credits Module & Administration', () => {
       publicUrl: 'https://cdn.example.com/photo.webp',
       storageKey: 'project-credits/public/pub_123',
     }),
-    getPrivateDownloadUrl: jest.fn().mockReturnValue('https://cdn.example.com/private/signed-url'),
+    getPrivateDownloadUrl: jest
+      .fn()
+      .mockReturnValue('https://cdn.example.com/private/signed-url'),
     destroyAsset: jest.fn().mockResolvedValue(undefined),
     queueAssetCleanup: jest.fn().mockResolvedValue(undefined),
   };
@@ -117,7 +122,9 @@ describe('Project Credits Module & Administration', () => {
     }).compile();
 
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
 
     jwt = moduleRef.get(JwtService);
@@ -136,6 +143,8 @@ describe('Project Credits Module & Administration', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockPrisma.projectContributor.findUnique.mockReset();
+    mockPrisma.projectContributor.updateMany.mockResolvedValue({ count: 1 });
   });
 
   describe('URL and Semester Validator', () => {
@@ -156,7 +165,9 @@ describe('Project Credits Module & Administration', () => {
         'https://github.com/profile?tab=repositories#header',
         'Meu GitHub',
       );
-      expect(result.url).toBe('https://github.com/profile?tab=repositories#header');
+      expect(result.url).toBe(
+        'https://github.com/profile?tab=repositories#header',
+      );
       expect(result.label).toBe('Meu GitHub');
     });
 
@@ -168,12 +179,20 @@ describe('Project Credits Module & Administration', () => {
         normalizeAndValidateUrl('external', 'javascript:alert(1)', 'XSS'),
       ).toThrow(BadRequestException);
       expect(() =>
-        normalizeAndValidateUrl('external', 'https://user:pass@example.com', 'Creds'),
+        normalizeAndValidateUrl(
+          'external',
+          'https://user:pass@example.com',
+          'Creds',
+        ),
       ).toThrow(BadRequestException);
     });
 
     it('validates mailto for email links', () => {
-      const res = normalizeAndValidateUrl('email', 'contato@fatec.sp.gov.br', 'Contato');
+      const res = normalizeAndValidateUrl(
+        'email',
+        'contato@fatec.sp.gov.br',
+        'Contato',
+      );
       expect(res.url).toBe('mailto:contato@fatec.sp.gov.br');
       expect(res.kind).toBe('email');
     });
@@ -299,7 +318,9 @@ describe('Project Credits Module & Administration', () => {
         id: 'c-1',
         name: 'Carlos',
         draftVersion: 1,
-        participations: [{ semester: '2026.1', roles: ['Dev'], confirmed: true }],
+        participations: [
+          { semester: '2026.1', roles: ['Dev'], confirmed: true },
+        ],
         links: [],
       });
 
@@ -392,7 +413,9 @@ describe('Project Credits Module & Administration', () => {
         .expect(201);
 
       expect(res.body.status).toBe('PUBLISHED');
-      expect(mockPrisma.projectContributor.update).toHaveBeenCalled();
+      expect(mockPrisma.projectContributor.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'c-1', draftVersion: 1 } }),
+      );
       expect(mockPrisma.projectCreditAudit.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -510,9 +533,7 @@ describe('Project Credits Module & Administration', () => {
             roles: ['Desenvolvimento do projeto'],
           },
         ],
-        links: [
-          { kind: 'GITHUB', url: 'https://github.com/wellingtonspdev' },
-        ],
+        links: [{ kind: 'GITHUB', url: 'https://github.com/wellingtonspdev' }],
       });
 
       const result = await importer.importCuratedCredits(false);

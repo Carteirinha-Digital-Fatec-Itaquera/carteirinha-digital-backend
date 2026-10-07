@@ -6,13 +6,17 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import type { TokenPayload } from '../../auth/dto/payload.dto';
+import type { Secretary } from '@prisma/client';
 
 @Injectable()
 export class SecretaryActiveGuard implements CanActivate {
   constructor(private readonly prisma: PrismaService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
+    const request = context
+      .switchToHttp()
+      .getRequest<{ user?: TokenPayload; secretary?: Secretary }>();
     const user = request.user;
 
     if (!user || !user.sub) {

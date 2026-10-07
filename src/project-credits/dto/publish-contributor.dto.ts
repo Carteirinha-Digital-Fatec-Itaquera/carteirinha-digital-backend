@@ -1,4 +1,4 @@
-import { IsBoolean, IsInt, IsOptional, Min } from 'class-validator';
+import { IsBoolean, IsInt, Min } from 'class-validator';
 
 export class PublishContributorDto {
   @IsInt({ message: 'expectedVersion deve ser um número inteiro' })
@@ -7,8 +7,4 @@ export class PublishContributorDto {
 
   @IsBoolean({ message: 'A confirmação do perfil é obrigatória para publicar' })
   profileConfirmed: boolean;
-
-  @IsOptional()
-  @IsBoolean()
-  photoConfirmed?: boolean;
 }

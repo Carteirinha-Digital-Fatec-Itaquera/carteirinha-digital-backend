@@ -2,9 +2,7 @@ import 'dotenv/config';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { execSync } from 'child_process';
-import * as fs from 'fs';
-import * as path from 'path';
+import { execFileSync } from 'child_process';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit {
@@ -34,61 +32,31 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
     }
   }
 
-  private static migrationsChecked = false;
+  private static migrationCheck: Promise<void> | undefined;
 
   private async ensureMigrationsApplied(): Promise<void> {
-    if (!process.env.DIRECT_URL || PrismaService.migrationsChecked) {
-      return;
-    }
-    PrismaService.migrationsChecked = true;
-
-    try {
-      this.logger.log('Executando verificação de migrations via Prisma CLI...');
-      const output = execSync('npx prisma migrate deploy', {
-        env: process.env,
-        stdio: 'pipe',
-        encoding: 'utf-8',
-      });
-      this.logger.log(`Resultado prisma migrate deploy:\n${output}`);
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`Execução de prisma migrate deploy falhou: ${errMsg}`);
-
+    if (!process.env.DIRECT_URL)
+      throw new Error(
+        'DIRECT_URL deve estar configurada antes de iniciar a API.',
+      );
+    PrismaService.migrationCheck ??= Promise.resolve().then(() => {
       try {
-        const columns = (await this.$queryRawUnsafe(`
-          SELECT column_name
-          FROM information_schema.columns
-          WHERE table_name = 'Student' AND column_name = 'accountId';
-        `)) as Array<{ column_name: string }>;
-
-        if (!columns || columns.length === 0) {
-          this.logger.warn(
-            'Coluna Student.accountId ausente no banco! Aplicando migration SQL de eventos e Student...',
-          );
-          const candidatePaths = [
-            path.resolve(process.cwd(), 'prisma/migrations/20260927224000_issue23_events_schema/migration.sql'),
-            path.resolve(__dirname, '../../../prisma/migrations/20260927224000_issue23_events_schema/migration.sql'),
-            path.resolve(__dirname, '../../prisma/migrations/20260927224000_issue23_events_schema/migration.sql'),
-          ];
-          const migrationPath = candidatePaths.find((p) => fs.existsSync(p));
-          if (migrationPath) {
-            const sql = fs.readFileSync(migrationPath, 'utf-8');
-            await this.$executeRawUnsafe(sql);
-            this.logger.log('Migration SQL aplicada com sucesso diretamente no PostgreSQL!');
-          } else {
-            this.logger.error('Arquivo migration.sql não encontrado no filesystem!');
-          }
-        } else {
-          this.logger.log('Coluna Student.accountId já confirmada presente no banco.');
-        }
-      } catch (sqlErr: unknown) {
-        const sqlMsg = sqlErr instanceof Error ? sqlErr.message : String(sqlErr);
-        this.logger.error(`Erro ao aplicar fallback de migration SQL: ${sqlMsg}`);
+        const output = execFileSync(
+          process.execPath,
+          [require.resolve('prisma/build/index.js'), 'migrate', 'deploy'],
+          { env: process.env, stdio: 'pipe', encoding: 'utf-8' },
+        );
+        this.logger.log(output);
+      } catch {
+        this.logger.error(
+          'Falha nas migrations. A API não será iniciada com schema incompleto.',
+        );
+        throw new Error('Migrations obrigatórias não foram aplicadas.');
       }
-    }
+    });
+    await PrismaService.migrationCheck;
   }
 }
-
 //import { PrismaPg } from '@prisma/adapter-pg'
 //import { PrismaClient } from '@prisma/client'
 

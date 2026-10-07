@@ -86,6 +86,7 @@ export interface AdminProjectContributorSummary {
   photoUrl?: string | null;
   hasPhoto: boolean;
   semesters: string[];
+  roles: string[];
   updatedAt: string;
   publishedAt?: string | null;
 }

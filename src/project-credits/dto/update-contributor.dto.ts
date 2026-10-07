@@ -1,11 +1,14 @@
 import {
   IsArray,
+  ArrayMaxSize,
+  ArrayUnique,
   IsBoolean,
   IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   MaxLength,
+  Matches,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -23,6 +26,7 @@ export class UpdateContributorDto {
   @IsOptional()
   @IsString()
   @IsNotEmpty({ message: 'O nome não pode ser vazio' })
+  @Matches(/\S/)
   @MaxLength(160, { message: 'O nome não pode exceder 160 caracteres' })
   name?: string;
 
@@ -31,17 +35,23 @@ export class UpdateContributorDto {
   profileConfirmed?: boolean;
 
   @IsOptional()
-  @IsBoolean()
-  photoConfirmed?: boolean;
-
-  @IsOptional()
   @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique((value: ContributorParticipationInputDto) =>
+    typeof value?.semester === 'string'
+      ? value.semester.trim()
+      : value?.semester,
+  )
   @ValidateNested({ each: true })
   @Type(() => ContributorParticipationInputDto)
   participations?: ContributorParticipationInputDto[];
 
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(20)
+  @ArrayUnique((value: ContributorLinkInputDto) =>
+    typeof value?.url === 'string' ? value.url.trim() : value?.url,
+  )
   @ValidateNested({ each: true })
   @Type(() => ContributorLinkInputDto)
   links?: ContributorLinkInputDto[];

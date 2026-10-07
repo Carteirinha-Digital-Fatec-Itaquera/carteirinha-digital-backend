@@ -8,7 +8,9 @@ async function bootstrap() {
   const isApply = process.argv.includes('--apply');
   const dryRun = !isApply;
 
-  console.log(`[Importer] Iniciando importador de créditos (modo: ${dryRun ? 'DRY-RUN' : 'APPLY'})...`);
+  console.log(
+    `[Importer] Iniciando importador de créditos (modo: ${dryRun ? 'DRY-RUN' : 'APPLY'})...`,
+  );
 
   const app = await NestFactory.createApplicationContext(ProjectCreditsModule, {
     logger: ['error', 'warn', 'log'],
@@ -18,7 +20,10 @@ async function bootstrap() {
     const prisma = app.get(PrismaService);
     const importer = new ProjectCreditsImporter(prisma);
     const result = await importer.importCuratedCredits(dryRun);
-    console.log('[Importer] Resultado da execução:', JSON.stringify(result, null, 2));
+    console.log(
+      '[Importer] Resultado da execução:',
+      JSON.stringify(result, null, 2),
+    );
   } catch (error) {
     console.error('[Importer] Falha na importação:', error);
     process.exit(1);
@@ -27,4 +32,7 @@ async function bootstrap() {
   }
 }
 
-bootstrap();
+void bootstrap().catch(() => {
+  console.error('Importação de créditos interrompida.');
+  process.exitCode = 1;
+});
