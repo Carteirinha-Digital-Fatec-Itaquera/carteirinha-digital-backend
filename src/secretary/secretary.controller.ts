@@ -68,23 +68,23 @@ export class SecretaryController {
   }
 
   @Post('criar')
-  async createSecretary(@Body() secretary: CreateSecretaryDTO) {
-    return await this.service.createSecretary(secretary);
+  async createSecretary(@Body() _secretary: CreateSecretaryDTO) {
+    throw new ForbiddenException(
+      'Cadastro manual de secretaria desabilitado.',
+    );
   }
 
   @Post('confirmar-cadastro')
   async confirmSecretary(
     @Body()
-    body: {
+    _body: {
       email: string;
       code: string;
       secretary: CreateSecretaryDTO;
     },
   ) {
-    return await this.service.confirmSecretary(
-      body.email,
-      body.code,
-      body.secretary,
+    throw new ForbiddenException(
+      'Cadastro manual de secretaria desabilitado.',
     );
   }
 
