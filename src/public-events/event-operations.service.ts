@@ -94,7 +94,7 @@ export class EventOperationsService {
     });
   }
   async participants(eventId: string) {
-    return this.prisma.eventParticipant.findMany({
+    const list = await this.prisma.eventParticipant.findMany({
       where: { eventId },
       select: {
         id: true,
@@ -102,6 +102,7 @@ export class EventOperationsService {
         course: true,
         role: true,
         visitorId: true,
+        accountId: true,
         attendance: {
           select: { id: true, checkInAt: true, checkOutAt: true, status: true },
         },
@@ -117,6 +118,43 @@ export class EventOperationsService {
       },
       orderBy: { name: 'asc' },
     });
+    const unlinked = await this.prisma.attendance.findMany({
+      where: { eventId, participantId: null },
+      include: { certificate: { include: { artifact: true } } },
+    });
+    if (unlinked.length > 0) {
+      for (const att of unlinked) {
+        list.push({
+          id: `legacy-${att.id}`,
+          name: att.studentName,
+          course: att.studentCourse,
+          role: 'ATTENDEE',
+          visitorId: null,
+          accountId: att.studentAccountId,
+          attendance: {
+            id: att.id,
+            checkInAt: att.checkInAt,
+            checkOutAt: att.checkOutAt,
+            status: att.status,
+          },
+          certificate: att.certificate
+            ? {
+                id: att.certificate.id,
+                verificationCode: att.certificate.verificationCode,
+                issuedAt: att.certificate.issuedAt,
+                revokedAt: att.certificate.revokedAt,
+                artifact: att.certificate.artifact
+                  ? {
+                      state: att.certificate.artifact.state,
+                      deliveryState: att.certificate.artifact.deliveryState,
+                    }
+                  : null,
+              }
+            : null,
+        });
+      }
+    }
+    return list;
   }
   async assignRole(
     id: string,
@@ -127,7 +165,7 @@ export class EventOperationsService {
     if (!['ATTENDEE', 'SPEAKER'].includes(role) || reason.trim().length < 10)
       throw new BadRequestException('Informe papel e justificativa.');
     return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT * FROM "EventParticipant" WHERE "id" = ${id} FOR UPDATE`;
+      await tx.$queryRaw`SELECT "id" FROM "EventParticipant" WHERE "id" = ${id} FOR UPDATE`;
       const current = await tx.eventParticipant.findUnique({
         where: { id },
         include: { event: { include: { series: true } } },
@@ -138,6 +176,19 @@ export class EventOperationsService {
         );
       if (await tx.certificate.count({ where: { participantId: id } }))
         throw new ConflictException('Certificado já emitido.');
+      if (
+        current.event.certificateEnabled &&
+        current.event.certificatePolicies
+      ) {
+        const policy = (
+          current.event.certificatePolicies as Record<string, unknown>
+        )?.[role];
+        if (!policy) {
+          throw new BadRequestException(
+            `Papel ${role} não possui modelo de certificado configurado para este evento.`,
+          );
+        }
+      }
       const row = await tx.eventParticipant.update({
         where: { id },
         data: { role },

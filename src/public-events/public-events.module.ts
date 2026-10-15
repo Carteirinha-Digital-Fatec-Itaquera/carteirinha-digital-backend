@@ -6,6 +6,7 @@ import { CertificateModule } from '../certificate/certificate.module';
 import { MailModule } from '../mail/mail.module';
 import { SecretaryActiveGuard } from '../project-credits/guards/secretary-active.guard';
 import { EventAssetsModule } from './event-assets.module';
+import { EventModule } from '../event/event.module';
 import { VisitorService } from './visitor.service';
 import { EventCatalogService } from './event-catalog.service';
 import { EventOperationsService } from './event-operations.service';
@@ -24,6 +25,7 @@ import {
     CertificateModule,
     MailModule,
     EventAssetsModule,
+    EventModule,
   ],
   controllers: [
     EventManagementController,
