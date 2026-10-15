@@ -6,6 +6,9 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
+    "test:public-events": "jest --runInBand src/public-events",
+    "test:public-events:integration": "node -r ts-node/register -r tsconfig-paths/register scripts/test-public-events-integration.ts",
+    "test:public-events:migration": "node scripts/test-public-events-migration.cjs",
     "prisma:seed": "npx prisma db seed",
     "prisma:init": "npx prisma generate && npx prisma migrate dev",
     "prisma:db": "npx prisma generate && npx prisma db push",

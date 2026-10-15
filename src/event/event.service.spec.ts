@@ -10,6 +10,8 @@ import { EventService } from './event.service';
 describe('EventService', () => {
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue([]),
+    eventParticipant: { count: jest.fn().mockResolvedValue(0) },
+    eventAudit: { create: jest.fn() },
     event: {
       create: jest.fn(),
       findUnique: jest.fn(),

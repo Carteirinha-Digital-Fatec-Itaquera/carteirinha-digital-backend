@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   UnauthorizedException,
   ConflictException,
+  Optional,
 } from '@nestjs/common';
 import { Prisma, type Certificate } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
@@ -24,6 +25,12 @@ import type {
   CertificateVerificationResponse,
 } from './dto/view-certificate.dto';
 import { PdfGeneratorService } from './pdf-generator.service';
+import type {
+  CertificatePolicy,
+  TemplateConfig,
+} from '../public-events/event-catalog.service';
+import { EventStorageService } from '../public-events/event-storage.service';
+import { randomUUID } from 'node:crypto';
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -41,6 +48,7 @@ export class CertificateService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pdfGenerator: PdfGeneratorService,
+    @Optional() private readonly storage?: EventStorageService,
   ) {}
 
   public async issueCertificate(
@@ -80,22 +88,26 @@ export class CertificateService {
       }
 
       // 4. Idempotência por [eventId, studentRa]
-      const existingByRa = await client.certificate.findUnique({
-        where: {
-          eventId_studentRa: {
-            eventId: attendance.eventId,
-            studentRa: attendance.studentRa,
-          },
-        },
-      });
+      const existingByRa = attendance.studentRa
+        ? await client.certificate.findUnique({
+            where: {
+              eventId_studentRa: {
+                eventId: attendance.eventId,
+                studentRa: attendance.studentRa,
+              },
+            },
+          })
+        : null;
       if (existingByRa) {
         return existingByRa;
       }
 
       // 5. Vincular studentRefRa apenas se o estudante atual ainda possuir a mesma conta original
-      const currentStudent = await client.student.findUnique({
-        where: { ra: attendance.studentRa },
-      });
+      const currentStudent = attendance.studentRa
+        ? await client.student.findUnique({
+            where: { ra: attendance.studentRa },
+          })
+        : null;
       const studentRefRa =
         currentStudent &&
         currentStudent.accountId === attendance.studentAccountId
@@ -103,7 +115,49 @@ export class CertificateService {
           : null;
 
       // 6. Snapshot imutável
-      const snapshot = buildCertificateSnapshot(attendance, attendance.event);
+      const snapshot = attendance.event.seriesId
+        ? await this.snapshotV2(client, attendance)
+        : buildCertificateSnapshot(
+            { ...attendance, studentRa: attendance.studentRa || '' },
+            attendance.event,
+          );
+
+      if (snapshot.version === 2) {
+        // ON CONFLICT evita abortar a transação de presença durante uma colisão.
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const id = randomUUID();
+          const inserted = await client.certificate.createMany({
+            data: [
+              {
+                id,
+                eventId: attendance.eventId,
+                participantId: attendance.participantId,
+                studentRa: attendance.studentRa,
+                studentAccountId: attendance.studentAccountId,
+                studentRefRa,
+                attendanceId: attendance.id,
+                verificationCode: generateVerificationCode(),
+                payloadSnapshot: snapshot as unknown as Prisma.InputJsonValue,
+              },
+            ],
+            skipDuplicates: true,
+          });
+          if (inserted.count === 1) {
+            await client.certificateArtifact.create({
+              data: { certificateId: id },
+            });
+            return client.certificate.findUniqueOrThrow({ where: { id } });
+          }
+          const existing = await client.certificate.findUnique({
+            where: { attendanceId: attendance.id },
+          });
+          if (existing && existing.participantId === attendance.participantId)
+            return existing;
+        }
+        throw new ConflictException(
+          'Não foi possível emitir um código único de certificado.',
+        );
+      }
 
       // 7. Geração do código com tentativa em caso de colisão de código
       let certificate: Certificate | null = null;
@@ -116,6 +170,7 @@ export class CertificateService {
               studentRa: attendance.studentRa,
               studentAccountId: attendance.studentAccountId,
               studentRefRa,
+              participantId: attendance.participantId,
               attendanceId: attendance.id,
               verificationCode: code,
               payloadSnapshot: snapshot as unknown as Prisma.InputJsonValue,
@@ -170,6 +225,74 @@ export class CertificateService {
       maxWait: 5000,
       timeout: 10000,
     });
+  }
+
+  private async snapshotV2(
+    client: Prisma.TransactionClient,
+    attendance: Prisma.AttendanceGetPayload<{ include: { event: true } }>,
+  ): Promise<CertificateSnapshot> {
+    if (attendance.participantId)
+      await client.$queryRaw`SELECT "id" FROM "EventParticipant" WHERE "id" = ${attendance.participantId} FOR UPDATE`;
+    const participant = attendance.participantId
+      ? await client.eventParticipant.findUnique({
+          where: { id: attendance.participantId },
+        })
+      : null;
+    if (!participant)
+      throw new ConflictException('Participante não configurado para emissão.');
+    const policy = (
+      attendance.event.certificatePolicies as unknown as CertificatePolicy
+    )?.[participant.role as keyof CertificatePolicy];
+    if (!policy)
+      throw new ConflictException('Modelo de certificado não configurado.');
+    const template = await client.certificateTemplate.findUnique({
+      where: { id: policy.templateId },
+    });
+    if (
+      !template ||
+      !['PUBLISHED', 'ARCHIVED'].includes(template.status) ||
+      template.role !== participant.role
+    )
+      throw new ConflictException('Modelo não disponível para emissão.');
+    const signers = await client.certificateSigner.findMany({
+      where: { id: { in: policy.signerIds } },
+    });
+    if (signers.length !== policy.signerIds.length)
+      throw new ConflictException(
+        'Assinatura indisponível. Procure a Secretaria.',
+      );
+    const config = template.config as unknown as TemplateConfig;
+    const series = await client.eventSeries.findUniqueOrThrow({
+      where: { id: attendance.event.seriesId! },
+    });
+    return {
+      ...buildCertificateSnapshot(
+        {
+          studentName: participant.name,
+          studentRa: attendance.studentRa || '',
+          studentCourse: participant.course || '',
+        },
+        attendance.event,
+      ),
+      version: 2,
+      rendererVersion: 'technology-week/1',
+      role: participant.role,
+      seriesTitle: series.title,
+      location: attendance.event.location,
+      startsAt: attendance.event.startsAt.toISOString(),
+      endsAt: attendance.event.endsAt.toISOString(),
+      promoter: attendance.event.promoter || '',
+      template: { id: template.id, version: template.version, ...config },
+      signers: policy.signerIds.map((id) => {
+        const signer = signers.find((s) => s.id === id)!;
+        return {
+          id,
+          name: signer.name,
+          title: signer.title,
+          assetId: signer.assetId,
+        };
+      }),
+    };
   }
 
   public async getStudentCertificates(
@@ -296,7 +419,17 @@ export class CertificateService {
       throw new ConflictException('Certificado revogado não pode ser baixado');
     }
 
-    const buffer = await this.pdfGenerator.generatePdf(certView);
+    let buffer: Buffer;
+    if (certView.payloadSnapshot.version === 2) {
+      const artifact = await this.prisma.certificateArtifact.findUnique({
+        where: { certificateId: id },
+      });
+      if (artifact?.state !== 'READY' || !artifact.storageKey || !this.storage)
+        throw new ConflictException(
+          'PDF em processamento. Tente novamente em instantes.',
+        );
+      buffer = await this.storage.get(artifact.storageKey, true);
+    } else buffer = await this.pdfGenerator.generatePdf(certView);
     return {
       buffer,
       verificationCode: certView.verificationCode,

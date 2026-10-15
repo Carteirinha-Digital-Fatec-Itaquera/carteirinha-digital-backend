@@ -230,6 +230,15 @@ export class EventService {
       const startsAt = dto.startsAt ? new Date(dto.startsAt) : event.startsAt;
       const endsAt = dto.endsAt ? new Date(dto.endsAt) : event.endsAt;
       this.assertDateRange(startsAt, endsAt);
+      if (event.seriesId) {
+        const series = await tx.eventSeries.findUnique({
+          where: { id: event.seriesId },
+        });
+        if (!series || startsAt < series.startsAt || endsAt > series.endsAt)
+          throw new BadRequestException(
+            'Os horários devem estar dentro do período da edição.',
+          );
+      }
 
       return tx.event.update({
         where: { id },
@@ -248,9 +257,17 @@ export class EventService {
     });
   }
 
-  async delete(id: string, _secretaryId: number) {
+  async delete(id: string, secretaryId: number) {
     return this.prisma.$transaction(async (tx) => {
       const { checkpoints } = await lockEventForMutation(tx, id);
+      if (await tx.attendance.count({ where: { eventId: id } }))
+        throw new ConflictException(
+          'Evento com histórico deve ser cancelado, não excluído.',
+        );
+      if (await tx.eventParticipant.count({ where: { eventId: id } }))
+        throw new ConflictException(
+          'Evento com inscrições deve ser cancelado, não excluído.',
+        );
 
       if (checkpoints.some((checkpoint) => checkpoint.isOpen)) {
         throw new ConflictException(
@@ -278,6 +295,13 @@ export class EventService {
 
       await tx.event.delete({
         where: { id },
+      });
+      await tx.eventAudit.create({
+        data: {
+          eventId: id,
+          action: 'EVENT_DELETED_WITHOUT_HISTORY',
+          secretaryId,
+        },
       });
 
       return {

@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Optional } from '@nestjs/common';
+import { TechnologyPdfService } from './technology-pdf.service';
 import { join } from 'node:path';
 import PDFDocument from 'pdfkit';
 import * as QRCode from 'qrcode';
@@ -34,6 +35,7 @@ interface FitTextOptions {
 
 @Injectable()
 export class PdfGeneratorService {
+  constructor(@Optional() private readonly technologyPdf?: TechnologyPdfService) {}
   private getVerificationUrl(code: string): string {
     const rawBaseUrl =
       process.env.CERTIFICATE_VERIFICATION_BASE_URL?.trim() ||
@@ -149,6 +151,10 @@ export class PdfGeneratorService {
     certificate: CertificateView,
   ): Promise<Buffer> {
     const snapshot = certificate.payloadSnapshot;
+    if (snapshot.version === 2) {
+      if (!this.technologyPdf) throw new BadRequestException('Renderizador da Semana indisponível.');
+      return this.technologyPdf.render(certificate);
+    }
 
     const verificationUrl = this.getVerificationUrl(
       certificate.verificationCode,

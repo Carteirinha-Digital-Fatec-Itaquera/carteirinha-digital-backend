@@ -12,9 +12,18 @@ import { lockEventForMutation } from './event-mutation-lock';
 export class CheckpointService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async open(eventId: string, type: CheckpointType) {
+  async open(eventId: string, type: CheckpointType, secretaryId?: number) {
     return this.prisma.$transaction(async (tx) => {
       const { event, checkpoints } = await lockEventForMutation(tx, eventId);
+      if (event.seriesId) {
+        const series = await tx.eventSeries.findUnique({
+          where: { id: event.seriesId },
+        });
+        if (!series || series.purgedAt || series.retentionAt <= new Date())
+          throw new ConflictException(
+            'Período operacional da edição encerrado.',
+          );
+      }
 
       if (event.status === EventStatus.CANCELLED) {
         throw new ConflictException(
@@ -64,6 +73,9 @@ export class CheckpointService {
         data: {
           isOpen: true,
           openedAt: now,
+          closesAt: event.windowMinutes
+            ? new Date(now.getTime() + event.windowMinutes * 60000)
+            : null,
           closedAt: null,
           version: { increment: 1 },
         },
@@ -88,11 +100,15 @@ export class CheckpointService {
       if (!updated) {
         throw new NotFoundException('Checkpoint não encontrado');
       }
+      if (event.seriesId)
+        await tx.eventAudit.create({
+          data: { eventId, action: `CHECKPOINT_OPEN_${type}`, secretaryId },
+        });
       return this.toMutationResponse(updated);
     });
   }
 
-  async close(eventId: string, type: CheckpointType) {
+  async close(eventId: string, type: CheckpointType, secretaryId?: number) {
     return this.prisma.$transaction(async (tx) => {
       const { event, checkpoints } = await lockEventForMutation(tx, eventId);
 
@@ -141,6 +157,10 @@ export class CheckpointService {
       if (!updated) {
         throw new NotFoundException('Checkpoint não encontrado');
       }
+      if (event.seriesId)
+        await tx.eventAudit.create({
+          data: { eventId, action: `CHECKPOINT_CLOSE_${type}`, secretaryId },
+        });
       return this.toMutationResponse(updated);
     });
   }
@@ -162,7 +182,10 @@ export class CheckpointService {
     if (!checkpoint) {
       throw new NotFoundException('Checkpoint não encontrado');
     }
-    if (!checkpoint.isOpen) {
+    if (
+      !checkpoint.isOpen ||
+      (checkpoint.closesAt && checkpoint.closesAt <= new Date())
+    ) {
       throw new BadRequestException(
         'Checkpoint não está aberto para geração de QR Code',
       );

@@ -18,6 +18,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { TokenPayload } from '../auth/dto/payload.dto';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
+import { ActiveEventAccountGuard } from '../auth/active-event-account.guard';
 import { CheckpointService } from './checkpoint.service';
 import { CheckpointTypePipe } from './checkpoint-type.pipe';
 import { CancelEventDto } from './dto/cancel-event.dto';
@@ -32,7 +33,7 @@ interface AuthenticatedRequest {
 }
 
 @Controller('events')
-@UseGuards(AuthGuard, RolesGuard)
+@UseGuards(AuthGuard, RolesGuard, ActiveEventAccountGuard)
 export class EventController {
   constructor(
     private readonly eventService: EventService,
@@ -64,8 +65,9 @@ export class EventController {
     @Param('id', new ParseUUIDPipe()) id: string,
     @Param('type', new CheckpointTypePipe())
     type: ReturnType<CheckpointTypePipe['transform']>,
+    @Request() request: AuthenticatedRequest,
   ) {
-    return this.checkpointService.open(id, type);
+    return this.checkpointService.open(id, type, Number(request.user.sub));
   }
 
   @Post(':id/checkpoints/:type/close')
@@ -75,8 +77,9 @@ export class EventController {
     @Param('id', new ParseUUIDPipe()) id: string,
     @Param('type', new CheckpointTypePipe())
     type: ReturnType<CheckpointTypePipe['transform']>,
+    @Request() request: AuthenticatedRequest,
   ) {
-    return this.checkpointService.close(id, type);
+    return this.checkpointService.close(id, type, Number(request.user.sub));
   }
   @Get(':id/checkpoints/:type/qr')
   @Roles('secretary')

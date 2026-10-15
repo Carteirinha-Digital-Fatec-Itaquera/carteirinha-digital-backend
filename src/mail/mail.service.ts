@@ -12,6 +12,22 @@ export class MailService {
     });
   }
 
+  async sendVisitorCode(email: string, code: string) {
+    await this.client.transactionalEmails.sendTransacEmail({
+      subject: 'Seu acesso aos eventos da Fatec Itaquera', to: [{ email }],
+      sender: { name: 'Carteirinha Digital', email: process.env.EVENT_MAIL_SENDER || 'carteirinha.digital.fatec@gmail.com' },
+      textContent: `Seu código de acesso é ${code}. Válido por 10 minutos. Não compartilhe. Este acesso não cria uma conta de aluno.`,
+    });
+  }
+
+  async sendVisitorCertificate(email: string, url: string) {
+    await this.client.transactionalEmails.sendTransacEmail({
+      subject: 'Seu certificado está disponível - Fatec Itaquera', to: [{ email }],
+      sender: { name: 'Carteirinha Digital', email: process.env.EVENT_MAIL_SENDER || 'carteirinha.digital.fatec@gmail.com' },
+      textContent: `Seu certificado está disponível. Acesse a área de visitante e confirme seu e-mail: ${url}\nBaixe seu documento dentro do período informado pela organização.`,
+    });
+  }
+
   async sendVerificationCode(email: string, code: string) {
     try {
       await this.client.transactionalEmails.sendTransacEmail({

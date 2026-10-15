@@ -10,6 +10,7 @@ import { CheckpointService } from './checkpoint.service';
 import { EventController } from './event.controller';
 import { EventService } from './event.service';
 import { QrTokenService } from './qr-token.service';
+import { PrismaService } from '../database/prisma.service';
 
 describe('EventController authorization and validation', () => {
   let app: INestApplication;
@@ -43,6 +44,16 @@ describe('EventController authorization and validation', () => {
       providers: [
         AuthGuard,
         RolesGuard,
+        {
+          provide: PrismaService,
+          useValue: {
+            secretary: {
+              findUnique: jest
+                .fn()
+                .mockResolvedValue({ id: 7, dueDate: new Date('2030-01-01') }),
+            },
+          },
+        },
         { provide: EventService, useValue: eventService },
         { provide: CheckpointService, useValue: checkpointService },
         { provide: QrTokenService, useValue: qrTokenService },
@@ -203,6 +214,7 @@ describe('EventController authorization and validation', () => {
     expect(checkpointService.open).toHaveBeenCalledWith(
       '11111111-1111-4111-8111-111111111111',
       CheckpointType.CHECK_IN,
+      7,
     );
   });
 
@@ -228,6 +240,7 @@ describe('EventController authorization and validation', () => {
     expect(checkpointService.close).toHaveBeenCalledWith(
       '11111111-1111-4111-8111-111111111111',
       CheckpointType.CHECK_IN,
+      7,
     );
   });
 

@@ -8,15 +8,18 @@ import {
 import { CertificateService } from './certificate.service';
 import { PdfGeneratorService } from './pdf-generator.service';
 import { CertificateRateLimitGuard } from './certificate-rate-limit.guard';
+import { EventAssetsModule } from '../public-events/event-assets.module';
+import { TechnologyPdfService } from './technology-pdf.service';
 
 @Module({
-  imports: [DatabaseModule, AuthModule],
+  imports: [DatabaseModule, AuthModule, EventAssetsModule],
   controllers: [CertificateVerificationController, CertificateController],
   providers: [
     CertificateService,
+    TechnologyPdfService,
     PdfGeneratorService,
     CertificateRateLimitGuard,
   ],
-  exports: [CertificateService, PdfGeneratorService],
+  exports: [CertificateService, PdfGeneratorService, TechnologyPdfService],
 })
 export class CertificateModule {}

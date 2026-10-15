@@ -12,6 +12,7 @@ import {
 import { AttendanceService } from './attendance.service';
 
 import { AttendanceQrReferenceService } from './attendance-qr-reference.service';
+import { PrismaService } from '../database/prisma.service';
 
 const id = '11111111-1111-4111-8111-111111111111';
 describe('Attendance HTTP authorization and DTO', () => {
@@ -34,6 +35,16 @@ describe('Attendance HTTP authorization and DTO', () => {
       providers: [
         AuthGuard,
         RolesGuard,
+        {
+          provide: PrismaService,
+          useValue: {
+            secretary: {
+              findUnique: jest
+                .fn()
+                .mockResolvedValue({ id: 1, dueDate: new Date('2030-01-01') }),
+            },
+          },
+        },
         { provide: AttendanceService, useValue: service },
         { provide: AttendanceQrReferenceService, useValue: qrRefService },
       ],

@@ -1,4 +1,14 @@
 export interface CertificateSnapshot {
+  version?: 2;
+  rendererVersion?: string;
+  role?: string;
+  seriesTitle?: string;
+  location?: string;
+  startsAt?: string;
+  endsAt?: string;
+  promoter?: string;
+  template?: { id: string; version: number; heading: string; edition: string; backgroundAssetId?: string };
+  signers?: { id: string; name: string; title: string; assetId: string }[];
   studentName: string;
   studentRa: string;
   course: string;

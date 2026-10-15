@@ -47,40 +47,49 @@ model StudentLog {
 }
 
 model Secretary {
-  id              Int       @id @default(autoincrement())
+  id              Int                  @id @default(autoincrement())
   name            String
-  email           String    @unique
+  email           String               @unique
   dueDate         DateTime
   password        String
   birthDate       DateTime
   lastLogin       DateTime?
-  events          Event[]   @relation("EventCreatedBy")
-  cancelledEvents Event[]   @relation("EventCancelledBy")
+  events          Event[]              @relation("EventCreatedBy")
+  cancelledEvents Event[]              @relation("EventCancelledBy")
   creditAudits    ProjectCreditAudit[]
 }
 
 model Event {
-  id                 String            @id @default(uuid())
-  title              String
-  description        String?
-  speaker            String
-  location           String
-  startsAt           DateTime
-  endsAt             DateTime
-  workloadMinutes    Int
-  status             EventStatus       @default(SCHEDULED)
-  certificateEnabled Boolean           @default(true)
-  createdById        Int?
-  createdBy          Secretary?        @relation("EventCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  cancelReason       String?
-  cancelledAt        DateTime?
-  cancelledById      Int?
-  cancelledBy        Secretary?        @relation("EventCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
-  checkpoints        EventCheckpoint[]
-  attendances        Attendance[]
-  certificates       Certificate[]
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  id                  String             @id @default(uuid())
+  title               String
+  description         String?
+  speaker             String
+  location            String
+  startsAt            DateTime
+  endsAt              DateTime
+  workloadMinutes     Int
+  status              EventStatus        @default(SCHEDULED)
+  certificateEnabled  Boolean            @default(true)
+  seriesId            String?
+  series              EventSeries?       @relation(fields: [seriesId], references: [id], onDelete: Restrict)
+  visitorsAllowed     Boolean            @default(false)
+  organizerCourse     String?
+  promoter            String?
+  windowMinutes       Int?
+  geoPolicy           Json?
+  certificatePolicies Json?
+  participants        EventParticipant[]
+  createdById         Int?
+  createdBy           Secretary?         @relation("EventCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  cancelReason        String?
+  cancelledAt         DateTime?
+  cancelledById       Int?
+  cancelledBy         Secretary?         @relation("EventCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  checkpoints         EventCheckpoint[]
+  attendances         Attendance[]
+  certificates        Certificate[]
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
 
   @@index([createdById])
   @@index([cancelledById])
@@ -94,6 +103,7 @@ model EventCheckpoint {
   isOpen       Boolean                 @default(false)
   openedAt     DateTime?
   closedAt     DateTime?
+  closesAt     DateTime?
   version      Int                     @default(1)
   qrReferences AttendanceQrReference[]
   createdAt    DateTime                @default(now())
@@ -117,45 +127,201 @@ model AttendanceQrReference {
 }
 
 model Attendance {
-  id               String           @id @default(uuid())
+  id               String            @id @default(uuid())
   eventId          String
-  event            Event            @relation(fields: [eventId], references: [id], onDelete: Restrict)
-  studentRa        String
+  event            Event             @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  studentRa        String?
   studentName      String
   studentCourse    String
-  studentAccountId String
+  studentAccountId String?
+  participantId    String?           @unique
+  participant      EventParticipant? @relation(fields: [participantId, eventId], references: [id, eventId], onDelete: Restrict, onUpdate: Restrict, map: "attendance_participant_event")
+  evidence         Json?
   studentRefRa     String?
-  student          Student?         @relation(fields: [studentRefRa], references: [ra], onDelete: SetNull)
+  student          Student?          @relation(fields: [studentRefRa], references: [ra], onDelete: SetNull)
   checkInAt        DateTime?
   checkOutAt       DateTime?
-  status           AttendanceStatus @default(CHECKED_IN)
+  status           AttendanceStatus  @default(CHECKED_IN)
   certificate      Certificate?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   @@unique([eventId, studentRa])
+  @@unique([participantId, eventId])
   @@index([studentRefRa, studentAccountId])
 }
 
 model Certificate {
-  id               String     @id @default(uuid())
+  id               String               @id @default(uuid())
   eventId          String
-  event            Event      @relation(fields: [eventId], references: [id], onDelete: Restrict)
-  studentRa        String
-  studentAccountId String
+  event            Event                @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  studentRa        String?
+  studentAccountId String?
+  participantId    String?              @unique
+  participant      EventParticipant?    @relation(fields: [participantId, eventId], references: [id, eventId], onDelete: Restrict, onUpdate: Restrict, map: "certificate_participant_event")
+  artifact         CertificateArtifact?
   studentRefRa     String?
-  student          Student?   @relation(fields: [studentRefRa], references: [ra], onDelete: SetNull)
-  attendanceId     String     @unique
-  attendance       Attendance @relation(fields: [attendanceId], references: [id], onDelete: Restrict)
-  verificationCode String     @unique
+  student          Student?             @relation(fields: [studentRefRa], references: [ra], onDelete: SetNull)
+  attendanceId     String               @unique
+  attendance       Attendance           @relation(fields: [attendanceId], references: [id], onDelete: Restrict)
+  verificationCode String               @unique
   payloadSnapshot  Json
-  issuedAt         DateTime   @default(now())
+  issuedAt         DateTime             @default(now())
   revokedAt        DateTime?
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   @@unique([eventId, studentRa])
+  @@unique([participantId, eventId])
   @@index([studentRefRa, studentAccountId])
+}
+
+model EventSeries {
+  id          String                @id @default(uuid())
+  slug        String                @unique
+  title       String
+  startsAt    DateTime
+  endsAt      DateTime
+  retentionAt DateTime
+  published   Boolean               @default(false)
+  cpfRequired Boolean               @default(false)
+  courses     String[]
+  purgedAt    DateTime?
+  events      Event[]
+  visitors    VisitorRegistration[]
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+}
+
+model VisitorRegistration {
+  id              String             @id @default(uuid())
+  seriesId        String
+  series          EventSeries        @relation(fields: [seriesId], references: [id], onDelete: Restrict)
+  name            String
+  email           String?
+  emailHash       String?
+  course          String?
+  cpfHash         String?
+  verifiedAt      DateTime?
+  otpHash         String?
+  otpExpiresAt    DateTime?
+  otpAttempts     Int                @default(0)
+  lastChallengeAt DateTime?
+  sessions        VisitorSession[]
+  participants    EventParticipant[]
+  createdAt       DateTime           @default(now())
+
+  @@unique([seriesId, emailHash])
+  @@unique([seriesId, cpfHash])
+}
+
+model VisitorSession {
+  id        String              @id @default(uuid())
+  tokenHash String              @unique
+  visitorId String
+  visitor   VisitorRegistration @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime            @default(now())
+
+  @@index([expiresAt])
+}
+
+model EventParticipant {
+  id          String               @id @default(uuid())
+  eventId     String
+  event       Event                @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  visitorId   String?
+  visitor     VisitorRegistration? @relation(fields: [visitorId], references: [id], onDelete: SetNull)
+  accountId   String?
+  name        String
+  course      String?
+  role        String               @default("ATTENDEE")
+  attendance  Attendance?
+  certificate Certificate?
+  createdAt   DateTime             @default(now())
+
+  @@unique([eventId, visitorId])
+  @@unique([eventId, accountId])
+  @@unique([id, eventId], map: "participant_event_unique")
+}
+
+model CertificateTemplate {
+  id        String   @id @default(uuid())
+  name      String
+  role      String
+  version   Int
+  status    String   @default("DRAFT")
+  config    Json
+  createdAt DateTime @default(now())
+
+  @@unique([name, role, version])
+}
+
+model CertificateSigner {
+  id           String   @id @default(uuid())
+  name         String
+  title        String
+  course       String?
+  version      Int      @default(1)
+  archived     Boolean  @default(false)
+  assetId      String
+  authorizedAt DateTime
+  createdAt    DateTime @default(now())
+}
+
+model EventAsset {
+  id         String   @id @default(uuid())
+  kind       String
+  storageKey String   @unique
+  sha256     String
+  createdAt  DateTime @default(now())
+}
+
+model CertificateArtifact {
+  id               String      @id @default(uuid())
+  certificateId    String      @unique
+  certificate      Certificate @relation(fields: [certificateId], references: [id], onDelete: Restrict)
+  state            String      @default("PENDING_RENDER")
+  storageKey       String?
+  sha256           String?
+  attempts         Int         @default(0)
+  nextAttemptAt    DateTime    @default(now())
+  leaseUntil       DateTime?
+  leaseToken       String?
+  deliveryState    String      @default("PENDING")
+  deliveryAttempts Int         @default(0)
+  createdAt        DateTime    @default(now())
+
+  @@index([state, nextAttemptAt])
+}
+
+model EventAudit {
+  id          String   @id @default(uuid())
+  eventId     String?
+  subjectId   String?
+  action      String
+  secretaryId Int?
+  reason      String?
+  createdAt   DateTime @default(now())
+
+  @@index([eventId, createdAt])
+}
+
+model EventRateLimit {
+  key       String   @id
+  count     Int      @default(1)
+  expiresAt DateTime
+}
+
+model PresenceChallenge {
+  id                String   @id @default(uuid())
+  identity          String
+  eventId           String
+  checkpoint        String
+  checkpointVersion Int
+  expiresAt         DateTime
+
+  @@index([expiresAt])
 }
 
 model VerificationCode {
@@ -266,7 +432,7 @@ model ProjectContributionParticipation {
 model ProjectContributorLink {
   id            String                     @id @default(uuid())
   contributorId String
-  contributor   ProjectContributor        @relation(fields: [contributorId], references: [id], onDelete: Cascade)
+  contributor   ProjectContributor         @relation(fields: [contributorId], references: [id], onDelete: Cascade)
   kind          ProjectContributorLinkKind @default(EXTERNAL)
   label         String
   url           String

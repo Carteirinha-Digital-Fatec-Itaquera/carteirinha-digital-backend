@@ -7,11 +7,17 @@ import { EventService } from './event.service';
 import { QrTokenService } from './qr-token.service';
 
 import { AttendanceModule } from '../attendance/attendance.module';
+import { ActiveEventAccountGuard } from '../auth/active-event-account.guard';
 
 @Module({
   imports: [DatabaseModule, AuthModule, AttendanceModule],
   controllers: [EventController],
-  providers: [EventService, CheckpointService, QrTokenService],
+  providers: [
+    EventService,
+    CheckpointService,
+    QrTokenService,
+    ActiveEventAccountGuard,
+  ],
   exports: [EventService, CheckpointService, QrTokenService],
 })
 export class EventModule {}
