@@ -119,16 +119,17 @@ async function run() {
             }
 
             // Identificar vínculo atual de aluno
-            const currentStudent = await tx.student.findUnique({
+            const currentStudent = att.studentRa ? await tx.student.findUnique({
               where: { ra: att.studentRa },
-            });
+            }) : null;
             const studentRefRa =
               currentStudent &&
               currentStudent.accountId === att.studentAccountId
                 ? currentStudent.ra
                 : null;
 
-            const snapshot = buildCertificateSnapshot(att, att.event);
+            if (att.event.seriesId || !att.studentRa) throw new Error('Use o serviço de emissão v2 para atividades públicas.');
+            const snapshot = buildCertificateSnapshot({ ...att, studentRa: att.studentRa }, att.event);
             const verificationCode = generateVerificationCode();
 
             await tx.certificate.create({

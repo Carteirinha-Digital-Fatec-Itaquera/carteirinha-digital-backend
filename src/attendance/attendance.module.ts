@@ -10,11 +10,13 @@ import { AttendanceService } from './attendance.service';
 import { CertificateModule } from '../certificate/certificate.module';
 import { AttendanceQrReferenceService } from './attendance-qr-reference.service';
 import { AttendanceQrCleanupService } from './attendance-qr-cleanup.service';
+import { ActiveEventAccountGuard } from '../auth/active-event-account.guard';
 
 @Module({
   imports: [DatabaseModule, AuthModule, CertificateModule],
   controllers: [AttendanceController, EventAttendanceController],
   providers: [
+    ActiveEventAccountGuard,
     AttendanceService,
     AttendanceQrReferenceService,
     AttendanceQrCleanupService,

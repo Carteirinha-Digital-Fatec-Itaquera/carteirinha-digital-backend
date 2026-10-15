@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
+import { ActiveEventAccountGuard } from '../auth/active-event-account.guard';
 import { Roles } from '../auth/roles.decorator';
 import type { TokenPayload } from '../auth/dto/payload.dto';
 import { AttendanceService } from './attendance.service';
@@ -38,7 +39,9 @@ export class AttendanceController {
     dto: ScanQrDto,
     @Request() request: { user: TokenPayload },
   ) {
-    return this.attendance.scan(dto.qrToken, request.user);
+    return dto.position
+      ? this.attendance.scan(dto.qrToken, request.user, dto.position)
+      : this.attendance.scan(dto.qrToken, request.user);
   }
 
   @Get('qr/:reference')
@@ -56,6 +59,7 @@ export class AttendanceController {
       checkpoint: {
         type: record.checkpoint.type,
       },
+      ...(record.checkpoint.event.geoPolicy ? { locationRequired: true } : {}),
       expiresAt: record.expiresAt.toISOString(),
       serverTime: new Date().toISOString(),
     };
@@ -69,9 +73,12 @@ export class AttendanceController {
     dto: ScanReferenceDto,
     @Request() request: { user: TokenPayload },
   ) {
-    const record =
-      await this.attendanceQrReferenceService.resolveReference(dto.qrReference);
-    return this.attendance.scan(record.jwtToken, request.user);
+    const record = await this.attendanceQrReferenceService.resolveReference(
+      dto.qrReference,
+    );
+    return dto.position
+      ? this.attendance.scan(record.jwtToken, request.user, dto.position)
+      : this.attendance.scan(record.jwtToken, request.user);
   }
 
   @Get('me')
@@ -82,7 +89,7 @@ export class AttendanceController {
 }
 
 @Controller('events')
-@UseGuards(AuthGuard, RolesGuard)
+@UseGuards(AuthGuard, RolesGuard, ActiveEventAccountGuard)
 @Roles('secretary')
 export class EventAttendanceController {
   constructor(private readonly attendance: AttendanceService) {}

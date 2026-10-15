@@ -26,6 +26,11 @@ import type {
   MyAttendanceView,
 } from './dto/view-attendance.dto';
 import { CertificateService } from '../certificate/certificate.service';
+import {
+  assertGeoPolicy,
+  evaluatePosition,
+  type PositionEvidence,
+} from '../public-events/presence-policy';
 
 type ActiveStudent = Pick<
   Student,
@@ -61,15 +66,36 @@ export class AttendanceService {
 
   async scan(
     qrToken: string,
-    user: TokenPayload,
+    user: TokenPayload | null,
+    position?: PositionEvidence,
+    visitorParticipantId?: string,
   ): Promise<AttendanceScanResponse> {
     const claims = await this.verifyQr(qrToken);
     return this.prisma.$transaction(
       async (tx) => {
-        const student = await this.activeStudent(tx, user);
+        const participant = visitorParticipantId
+          ? await tx.eventParticipant.findUnique({
+              where: { id: visitorParticipantId },
+            })
+          : null;
+        if (
+          visitorParticipantId &&
+          (!participant?.visitorId || participant.eventId !== claims.eventId)
+        )
+          throw new ForbiddenException('Participação inválida');
+        if (!participant && !user)
+          throw new UnauthorizedException('Identidade obrigatória.');
+        const student = participant
+          ? {
+              ra: null,
+              accountId: null,
+              name: participant.name,
+              course: participant.course || 'Participante/ouvinte',
+            }
+          : await this.activeStudent(tx, user!);
         // Serializa o par mesmo antes de existir a linha. A chave única permanece no banco.
         // Colisão de hash apenas serializa pares extras; não altera a identidade consultada.
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify([claims.eventId, student.ra])}, 0))::text`;
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify([claims.eventId, participant?.id || student.ra])}, 0))::text`;
         // Mesma ordem de escrita da #25: checkpoint antes de evento. FOR SHARE impede
         // fechamento/reabertura enquanto validamos e gravamos a presença.
         const checkpoints = await tx.$queryRaw<EventCheckpoint[]>`
@@ -110,14 +136,83 @@ export class AttendanceService {
           });
         }
         const now = new Date();
+        if (checkpoint.closesAt && checkpoint.closesAt <= now)
+          throw new BadRequestException({
+            code: 'WINDOW_CLOSED',
+            message: 'A janela de registro foi encerrada.',
+          });
+        if (participant && !event.visitorsAllowed)
+          throw new ForbiddenException('Atividade não permite visitantes.');
+        if (event.seriesId) {
+          const [series] = await tx.$queryRaw<
+            { purgedAt: Date | null; retentionAt: Date }[]
+          >`SELECT "purgedAt", "retentionAt" FROM "EventSeries" WHERE "id" = ${event.seriesId} FOR SHARE`;
+          if (!series || series.purgedAt || series.retentionAt <= now)
+            throw new ForbiddenException('Período operacional encerrado.');
+          if (participant?.visitorId) {
+            const visitor = await tx.visitorRegistration.findUnique({
+              where: { id: participant.visitorId },
+            });
+            if (!visitor?.verifiedAt || visitor.seriesId !== event.seriesId)
+              throw new ForbiddenException(
+                'Inscrição inválida para esta edição.',
+              );
+          }
+        }
+        const geoPolicy = assertGeoPolicy(event.geoPolicy);
+        const identityParticipant =
+          participant ||
+          (await tx.eventParticipant.upsert({
+            where: {
+              eventId_accountId: {
+                eventId: event.id,
+                accountId: student.accountId!,
+              },
+            },
+            create: {
+              eventId: event.id,
+              accountId: student.accountId,
+              name: student.name,
+              course: student.course,
+            },
+            update: {},
+          }));
+        let evidence: Prisma.InputJsonValue | undefined;
+        if (geoPolicy) {
+          if (!position?.challengeId)
+            throw new BadRequestException({
+              code: 'LOCATION_REQUIRED',
+              message: 'Obtenha sua localização para confirmar.',
+            });
+          const consumed = await tx.presenceChallenge.deleteMany({
+            where: {
+              id: position.challengeId,
+              eventId: event.id,
+              identity: participant?.id || student.accountId!,
+              checkpoint: claims.checkpoint,
+              checkpointVersion: checkpoint.version,
+              expiresAt: { gt: now },
+            },
+          });
+          if (consumed.count !== 1)
+            throw new BadRequestException('Desafio de localização inválido.');
+          evidence = {
+            ...evaluatePosition(geoPolicy, position),
+            policy: { ...geoPolicy },
+            recordedAt: now.toISOString(),
+          };
+        }
         // Uma requisição pode esperar por locks e vencer durante a espera.
         if (claims.exp * 1000 <= now.getTime()) this.expiredQr();
-        const where = {
-          eventId_studentRa: { eventId: event.id, studentRa: student.ra },
-        };
+        const where = participant
+          ? { participantId: participant.id }
+          : {
+              eventId_studentRa: { eventId: event.id, studentRa: student.ra! },
+            };
         const previous = await tx.attendance.findUnique({ where });
         if (
           previous &&
+          !participant &&
           (previous.studentAccountId !== student.accountId ||
             previous.studentRefRa !== student.ra)
         ) {
@@ -137,6 +232,10 @@ export class AttendanceService {
             studentAccountId: student.accountId,
             studentName: student.name,
             studentCourse: student.course,
+            ...(identityParticipant
+              ? { participantId: identityParticipant.id }
+              : {}),
+            ...(evidence ? { evidence } : {}),
             checkInAt: now,
             status: 'CHECKED_IN' as const,
           };
@@ -172,7 +271,12 @@ export class AttendanceService {
         }
         await tx.attendance.update({
           where,
-          data: { checkOutAt: now, status: 'CONFIRMED' },
+          data: {
+            checkOutAt: now,
+            status: 'CONFIRMED',
+            participantId: identityParticipant.id,
+            ...(evidence ? { evidence } : {}),
+          },
         });
         if (event.certificateEnabled) {
           await this.certificateService.issueCertificate(previous.id, tx);
@@ -219,14 +323,15 @@ export class AttendanceService {
         studentRa: true,
         studentName: true,
         studentCourse: true,
+        participant: { select: { name: true, course: true } },
       },
       orderBy: [{ checkInAt: 'asc' }, { id: 'asc' }],
     });
     return rows.map((row) => ({
       ...this.toView(row),
-      studentRa: row.studentRa,
-      studentName: row.studentName,
-      studentCourse: row.studentCourse,
+      studentRa: row.studentRa ?? '',
+      studentName: row.participant?.name ?? row.studentName,
+      studentCourse: row.participant?.course ?? row.studentCourse,
     }));
   }
 
@@ -264,7 +369,7 @@ export class AttendanceService {
     return student;
   }
 
-  private async verifyQr(token: string): Promise<QrClaims> {
+  async verifyQr(token: string): Promise<QrClaims> {
     let data: unknown;
     try {
       data = await this.jwt.verifyAsync<object>(token, {

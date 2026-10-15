@@ -37,6 +37,9 @@ describe('AttendanceService', () => {
   };
   const tx = {
     $queryRaw: jest.fn(),
+    eventParticipant: {
+      upsert: jest.fn().mockResolvedValue({ id: 'participant-one' }),
+    },
     attendance: {
       findUnique: jest.fn(),
       create: jest.fn(),
@@ -179,7 +182,11 @@ describe('AttendanceService', () => {
 
     expect(tx.attendance.update).toHaveBeenCalledWith({
       where: { eventId_studentRa: { eventId, studentRa: student.ra } },
-      data: { status: 'CONFIRMED', checkOutAt: expect.any(Date) as Date },
+      data: {
+        status: 'CONFIRMED',
+        checkOutAt: expect.any(Date) as Date,
+        participantId: 'participant-one',
+      },
     });
     expect(certificateService.issueCertificate).toHaveBeenCalledWith(
       'att-123',

@@ -49,7 +49,7 @@ export class AttendanceQrReferenceService {
   }
 
   async resolveReference(reference: string) {
-    if (!reference || typeof reference !== 'string' || reference.length < 10) {
+    if (!reference || typeof reference !== 'string' || !/^[A-Za-z0-9_-]{10,64}$/.test(reference)) {
       throw new BadRequestException({
         statusCode: 400,
         error: 'Bad Request',
@@ -82,6 +82,7 @@ export class AttendanceQrReferenceService {
     if (
       !record.checkpoint ||
       !record.checkpoint.isOpen ||
+      (record.checkpoint.closesAt && record.checkpoint.closesAt <= new Date()) ||
       record.checkpoint.version !== record.checkpointVersion ||
       record.checkpoint.event.status === 'CANCELLED'
     ) {
