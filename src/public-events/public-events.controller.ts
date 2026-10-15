@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  NotFoundException,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -84,6 +85,7 @@ export class PublicEventsController {
     private readonly catalog: EventCatalogService,
     private readonly refs: AttendanceQrReferenceService,
     private readonly visitors: VisitorService,
+    private readonly prisma: PrismaService,
   ) {}
   @Get('series') list() {
     return this.catalog.publicSeries();
@@ -110,6 +112,48 @@ export class PublicEventsController {
       seriesId: event.seriesId,
       locationRequired: Boolean(event.geoPolicy),
       expiresAt: row.expiresAt.toISOString(),
+      serverTime: new Date().toISOString(),
+    };
+  }
+
+  @Get(':id') async getPublicEvent(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    await this.visitors.limit(`event:${req.ip}`, 6000, 60);
+    const event = await this.prisma.event.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        title: true,
+        location: true,
+        speaker: true,
+        startsAt: true,
+        endsAt: true,
+        status: true,
+        visitorsAllowed: true,
+        seriesId: true,
+        geoPolicy: true,
+      },
+    });
+    if (!event) {
+      throw new NotFoundException('Evento não encontrado.');
+    }
+    return {
+      event: {
+        id: event.id,
+        title: event.title,
+        location: event.location,
+        speaker: event.speaker,
+        startsAt: event.startsAt?.toISOString(),
+        endsAt: event.endsAt?.toISOString(),
+        startDate: event.startsAt?.toISOString(),
+        endDate: event.endsAt?.toISOString(),
+        status: event.status,
+      },
+      visitorsAllowed: event.visitorsAllowed,
+      seriesId: event.seriesId,
+      locationRequired: Boolean(event.geoPolicy),
       serverTime: new Date().toISOString(),
     };
   }

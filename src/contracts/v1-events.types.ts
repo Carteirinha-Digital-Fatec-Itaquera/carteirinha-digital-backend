@@ -39,6 +39,19 @@ export interface EventView {
   cancelledAt: IsoDateTime | null;
   cancelledById: number | null;
   certificateEnabled: boolean;
+  visitorsAllowed?: boolean;
+  organizerCourse?: string | null;
+  promoter?: string | null;
+  geoPolicy?: unknown | null;
+  certificatePolicies?: unknown | null;
+  seriesId?: string | null;
+  series?: {
+    id: string;
+    title: string;
+    slug: string;
+    isAutomatic?: boolean;
+    courses?: string[];
+  } | null;
   checkpoints: CheckpointView[];
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
@@ -53,6 +66,15 @@ export interface CreateEventRequest {
   endsAt: IsoDateTime;
   workloadMinutes: number;
   certificateEnabled?: boolean;
+  visitorsAllowed?: boolean;
+  organizerCourse?: string;
+  promoter?: string;
+  geoPolicy?: unknown;
+  certificatePolicies?: unknown;
+  attendeeTemplateId?: string;
+  speakerTemplateId?: string;
+  signerIds?: string[];
+  speakerSignerIds?: string[];
 }
 
 export interface CancelEventRequest {

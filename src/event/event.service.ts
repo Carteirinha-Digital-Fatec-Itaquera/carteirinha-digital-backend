@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { EventStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { UserRole } from '../auth/dto/payload.dto';
@@ -11,10 +12,20 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { EventQueryDto } from './dto/event-query.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { lockEventForMutation } from './event-mutation-lock';
+import { assertGeoPolicy, type GeoPolicy } from '../public-events/presence-policy';
 
 const eventInclude = {
   checkpoints: {
     orderBy: { type: 'asc' as const },
+  },
+  series: {
+    select: {
+      id: true,
+      title: true,
+      slug: true,
+      isAutomatic: true,
+      courses: true,
+    },
   },
 } satisfies Prisma.EventInclude;
 
@@ -27,8 +38,61 @@ export class EventService {
     const endsAt = new Date(dto.endsAt);
     this.assertDateRange(startsAt, endsAt);
 
-    return this.prisma.$transaction((tx) =>
-      tx.event.create({
+    const geoPolicy =
+      dto.geoPolicy !== undefined && dto.geoPolicy !== null
+        ? assertGeoPolicy(dto.geoPolicy)
+        : null;
+
+    if (dto.visitorsAllowed && !geoPolicy) {
+      throw new BadRequestException(
+        'Atividades abertas a visitantes exigem localização configurada.',
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const certificatePolicies =
+        await this.validateAndBuildCertificatePolicies(tx, dto);
+
+      let seriesId = dto.seriesId || null;
+
+      if (dto.visitorsAllowed) {
+        if (seriesId) {
+          const series = await tx.eventSeries.findUnique({
+            where: { id: seriesId },
+          });
+          if (!series || series.purgedAt) {
+            throw new BadRequestException('Edição inválida ou arquivada.');
+          }
+          if (startsAt < series.startsAt || endsAt > series.endsAt) {
+            throw new BadRequestException(
+              'A atividade deve estar dentro do período da edição.',
+            );
+          }
+          if (
+            dto.organizerCourse &&
+            !series.courses.includes(dto.organizerCourse)
+          ) {
+            throw new BadRequestException('Curso não pertence à edição.');
+          }
+        } else {
+          const autoSeries = await tx.eventSeries.create({
+            data: {
+              isAutomatic: true,
+              published: true,
+              slug: 'auto-' + randomUUID().toLowerCase(),
+              title: dto.title,
+              startsAt,
+              endsAt,
+              retentionAt: new Date(endsAt.getTime() + 30 * 86400000),
+              courses: dto.organizerCourse ? [dto.organizerCourse] : ['Geral'],
+              cpfRequired: false,
+            },
+          });
+          seriesId = autoSeries.id;
+        }
+      }
+
+      const event = await tx.event.create({
         data: {
           title: dto.title,
           description: dto.description,
@@ -39,6 +103,17 @@ export class EventService {
           workloadMinutes: dto.workloadMinutes,
           certificateEnabled: dto.certificateEnabled ?? true,
           createdById,
+          visitorsAllowed: dto.visitorsAllowed ?? false,
+          organizerCourse: dto.organizerCourse ?? null,
+          promoter: dto.promoter ?? null,
+          windowMinutes: dto.visitorsAllowed ? 15 : null,
+          geoPolicy: geoPolicy
+            ? (geoPolicy as unknown as Prisma.InputJsonValue)
+            : Prisma.DbNull,
+          certificatePolicies: certificatePolicies
+            ? (certificatePolicies as unknown as Prisma.InputJsonValue)
+            : Prisma.DbNull,
+          seriesId,
           checkpoints: {
             create: [
               { type: 'CHECK_IN', isOpen: false, version: 1 },
@@ -47,8 +122,18 @@ export class EventService {
           },
         },
         include: eventInclude,
-      }),
-    );
+      });
+
+      await tx.eventAudit.create({
+        data: {
+          eventId: event.id,
+          action: 'EVENT_CREATED',
+          secretaryId: createdById,
+        },
+      });
+
+      return event;
+    });
   }
 
   async findAll(query: EventQueryDto, role: UserRole) {
@@ -227,20 +312,108 @@ export class EventService {
         );
       }
 
+      if (
+        dto.seriesId &&
+        event.seriesId &&
+        dto.seriesId !== event.seriesId &&
+        (await tx.eventParticipant.count({ where: { eventId: id } }))
+      ) {
+        throw new ConflictException(
+          'Não é permitido transferir uma atividade com inscritos para outra edição.',
+        );
+      }
+
       const startsAt = dto.startsAt ? new Date(dto.startsAt) : event.startsAt;
       const endsAt = dto.endsAt ? new Date(dto.endsAt) : event.endsAt;
       this.assertDateRange(startsAt, endsAt);
-      if (event.seriesId) {
-        const series = await tx.eventSeries.findUnique({
-          where: { id: event.seriesId },
-        });
-        if (!series || startsAt < series.startsAt || endsAt > series.endsAt)
-          throw new BadRequestException(
-            'Os horários devem estar dentro do período da edição.',
-          );
+
+      const visitorsAllowed =
+        dto.visitorsAllowed !== undefined
+          ? dto.visitorsAllowed
+          : event.visitorsAllowed;
+
+      let geoPolicy: GeoPolicy | null | undefined;
+      if (dto.geoPolicy !== undefined) {
+        geoPolicy = dto.geoPolicy ? assertGeoPolicy(dto.geoPolicy) : null;
+      } else {
+        geoPolicy = event.geoPolicy as GeoPolicy | null;
       }
 
-      return tx.event.update({
+      if (visitorsAllowed && !geoPolicy) {
+        throw new BadRequestException(
+          'Atividades abertas a visitantes exigem localização configurada.',
+        );
+      }
+
+      const certificatePolicies =
+        await this.validateAndBuildCertificatePolicies(
+          tx,
+          dto,
+          event.certificatePolicies,
+        );
+
+      let seriesId = dto.seriesId !== undefined ? dto.seriesId : event.seriesId;
+
+      if (visitorsAllowed && !seriesId) {
+        const autoSeries = await tx.eventSeries.create({
+          data: {
+            isAutomatic: true,
+            published: true,
+            slug: 'auto-' + randomUUID().toLowerCase(),
+            title: dto.title ?? event.title,
+            startsAt,
+            endsAt,
+            retentionAt: new Date(endsAt.getTime() + 30 * 86400000),
+            courses: (dto.organizerCourse ?? event.organizerCourse)
+              ? [dto.organizerCourse ?? event.organizerCourse!]
+              : ['Geral'],
+            cpfRequired: false,
+          },
+        });
+        seriesId = autoSeries.id;
+      } else if (seriesId) {
+        const series = await tx.eventSeries.findUnique({
+          where: { id: seriesId },
+        });
+        if (!series || series.purgedAt) {
+          throw new BadRequestException('Edição inválida ou arquivada.');
+        }
+        if (series.isAutomatic) {
+          const courses = (dto.organizerCourse !== undefined
+            ? dto.organizerCourse
+            : event.organizerCourse)
+            ? [
+                (dto.organizerCourse !== undefined
+                  ? dto.organizerCourse
+                  : event.organizerCourse)!,
+              ]
+            : series.courses;
+          await tx.eventSeries.update({
+            where: { id: series.id },
+            data: {
+              title: dto.title ?? series.title,
+              startsAt,
+              endsAt,
+              retentionAt: new Date(endsAt.getTime() + 30 * 86400000),
+              courses,
+            },
+          });
+        } else {
+          if (startsAt < series.startsAt || endsAt > series.endsAt) {
+            throw new BadRequestException(
+              'Os horários devem estar dentro do período da edição.',
+            );
+          }
+          if (
+            dto.organizerCourse &&
+            !series.courses.includes(dto.organizerCourse)
+          ) {
+            throw new BadRequestException('Edição/curso inválido.');
+          }
+        }
+      }
+
+      const updated = await tx.event.update({
         where: { id },
         data: {
           title: dto.title,
@@ -251,15 +424,42 @@ export class EventService {
           endsAt: dto.endsAt ? endsAt : undefined,
           workloadMinutes: dto.workloadMinutes,
           certificateEnabled: dto.certificateEnabled,
+          visitorsAllowed: dto.visitorsAllowed,
+          organizerCourse: dto.organizerCourse,
+          promoter: dto.promoter,
+          windowMinutes: visitorsAllowed ? 15 : undefined,
+          geoPolicy:
+            dto.geoPolicy !== undefined
+              ? geoPolicy
+                ? (geoPolicy as unknown as Prisma.InputJsonValue)
+                : Prisma.DbNull
+              : undefined,
+          certificatePolicies:
+            certificatePolicies !== undefined
+              ? certificatePolicies
+                ? (certificatePolicies as unknown as Prisma.InputJsonValue)
+                : Prisma.DbNull
+              : undefined,
+          seriesId: seriesId !== undefined ? seriesId : undefined,
         },
         include: eventInclude,
       });
+
+      await tx.eventAudit.create({
+        data: {
+          eventId: id,
+          action: 'EVENT_UPDATED',
+          secretaryId,
+        },
+      });
+
+      return updated;
     });
   }
 
   async delete(id: string, secretaryId: number) {
     return this.prisma.$transaction(async (tx) => {
-      const { checkpoints } = await lockEventForMutation(tx, id);
+      const { checkpoints, event } = await lockEventForMutation(tx, id);
       if (await tx.attendance.count({ where: { eventId: id } }))
         throw new ConflictException(
           'Evento com histórico deve ser cancelado, não excluído.',
@@ -296,6 +496,25 @@ export class EventService {
       await tx.event.delete({
         where: { id },
       });
+
+      if (event.seriesId) {
+        const series = await tx.eventSeries.findUnique({
+          where: { id: event.seriesId },
+          include: { events: true },
+        });
+        if (series?.isAutomatic && series.events.length <= 1) {
+          await tx.visitorSession.deleteMany({
+            where: { visitor: { seriesId: series.id } },
+          });
+          await tx.visitorRegistration.deleteMany({
+            where: { seriesId: series.id },
+          });
+          await tx.eventSeries.delete({
+            where: { id: series.id },
+          });
+        }
+      }
+
       await tx.eventAudit.create({
         data: {
           eventId: id,
@@ -309,6 +528,124 @@ export class EventService {
         id,
       };
     });
+  }
+
+  private async validateAndBuildCertificatePolicies(
+    tx: Prisma.TransactionClient,
+    dto: {
+      attendeeTemplateId?: string;
+      speakerTemplateId?: string;
+      signerIds?: string[];
+      speakerSignerIds?: string[];
+      certificatePolicies?: unknown;
+    },
+    _currentPolicies?: unknown,
+  ): Promise<Record<string, unknown> | null | undefined> {
+    const rawPolicies = dto.certificatePolicies as
+      | Record<string, { templateId?: string; signerIds?: string[] }>
+      | null
+      | undefined;
+
+    if (rawPolicies === null) {
+      return null;
+    }
+
+    const attendeeTemplateId =
+      dto.attendeeTemplateId ?? rawPolicies?.ATTENDEE?.templateId;
+    const signerIds =
+      dto.signerIds ?? rawPolicies?.ATTENDEE?.signerIds;
+    const speakerTemplateId =
+      dto.speakerTemplateId ?? rawPolicies?.SPEAKER?.templateId;
+    const speakerSignerIds =
+      dto.speakerSignerIds ?? rawPolicies?.SPEAKER?.signerIds;
+
+    const hasNewConfig =
+      attendeeTemplateId !== undefined ||
+      signerIds !== undefined ||
+      speakerTemplateId !== undefined ||
+      speakerSignerIds !== undefined;
+
+    if (!hasNewConfig && rawPolicies === undefined) {
+      return undefined;
+    }
+
+    if (!attendeeTemplateId && !signerIds && !speakerTemplateId) {
+      return null;
+    }
+
+    if (!attendeeTemplateId || !signerIds) {
+      throw new BadRequestException(
+        'Configuração de certificado para participantes requer modelo e assinantes.',
+      );
+    }
+
+    if (
+      !Array.isArray(signerIds) ||
+      signerIds.length < 1 ||
+      signerIds.length > 3 ||
+      new Set(signerIds).size !== signerIds.length
+    ) {
+      throw new BadRequestException(
+        'Escolha de um a três assinantes distintos.',
+      );
+    }
+
+    const attendeeTemplate = await tx.certificateTemplate.findFirst({
+      where: { id: attendeeTemplateId, role: 'ATTENDEE', status: 'PUBLISHED' },
+    });
+    if (!attendeeTemplate) {
+      throw new BadRequestException(
+        'Selecione modelos publicados para cada papel.',
+      );
+    }
+
+    const allSignerIds = [
+      ...new Set([...signerIds, ...(speakerSignerIds || [])]),
+    ];
+    const signersCount = await tx.certificateSigner.count({
+      where: { id: { in: allSignerIds }, archived: false },
+    });
+    if (signersCount !== allSignerIds.length) {
+      throw new BadRequestException('Assinante arquivado ou inexistente.');
+    }
+
+    const policies: Record<
+      string,
+      { templateId: string; signerIds: string[] }
+    > = {
+      ATTENDEE: {
+        templateId: attendeeTemplateId,
+        signerIds,
+      },
+    };
+
+    if (speakerTemplateId) {
+      const spkSigners = speakerSignerIds || signerIds;
+      if (
+        !Array.isArray(spkSigners) ||
+        spkSigners.length < 1 ||
+        spkSigners.length > 3 ||
+        new Set(spkSigners).size !== spkSigners.length
+      ) {
+        throw new BadRequestException(
+          'Escolha de um a três assinantes distintos para palestrantes.',
+        );
+      }
+      const speakerTemplate = await tx.certificateTemplate.findFirst({
+        where: { id: speakerTemplateId, role: 'SPEAKER', status: 'PUBLISHED' },
+      });
+      if (!speakerTemplate) {
+        throw new BadRequestException(
+          'Selecione modelos publicados para cada papel.',
+        );
+      }
+      policies.SPEAKER = {
+        templateId: speakerTemplateId,
+        signerIds: spkSigners,
+      };
+    }
+
+    return policies;
   }
 
   private assertDateRange(startsAt: Date, endsAt: Date) {

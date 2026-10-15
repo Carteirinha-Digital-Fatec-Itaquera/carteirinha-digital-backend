@@ -115,7 +115,16 @@ export class CertificateService {
           : null;
 
       // 6. Snapshot imutável
-      const snapshot = attendance.event.seriesId
+      const customPolicy = attendance.event
+        .certificatePolicies as unknown as CertificatePolicy;
+      const hasCustomPolicy = Boolean(
+        customPolicy &&
+          typeof customPolicy === 'object' &&
+          Object.keys(customPolicy).length > 0 &&
+          (customPolicy.ATTENDEE || customPolicy.SPEAKER),
+      );
+
+      const snapshot = hasCustomPolicy
         ? await this.snapshotV2(client, attendance)
         : buildCertificateSnapshot(
             { ...attendance, studentRa: attendance.studentRa || '' },
@@ -233,18 +242,42 @@ export class CertificateService {
   ): Promise<CertificateSnapshot> {
     if (attendance.participantId)
       await client.$queryRaw`SELECT "id" FROM "EventParticipant" WHERE "id" = ${attendance.participantId} FOR UPDATE`;
-    const participant = attendance.participantId
+    let participant = attendance.participantId
       ? await client.eventParticipant.findUnique({
           where: { id: attendance.participantId },
         })
       : null;
+    if (!participant && attendance.studentAccountId) {
+      participant = await client.eventParticipant.findUnique({
+        where: {
+          eventId_accountId: {
+            eventId: attendance.eventId,
+            accountId: attendance.studentAccountId,
+          },
+        },
+      });
+    }
+    if (!participant && attendance.studentRa) {
+      participant = await client.eventParticipant.create({
+        data: {
+          eventId: attendance.eventId,
+          accountId: attendance.studentAccountId,
+          name: attendance.studentName,
+          course: attendance.studentCourse,
+          role: 'ATTENDEE',
+        },
+      });
+    }
     if (!participant)
       throw new ConflictException('Participante não configurado para emissão.');
+    const role = (participant.role || 'ATTENDEE') as keyof CertificatePolicy;
     const policy = (
       attendance.event.certificatePolicies as unknown as CertificatePolicy
-    )?.[participant.role as keyof CertificatePolicy];
+    )?.[role];
     if (!policy)
-      throw new ConflictException('Modelo de certificado não configurado.');
+      throw new ConflictException(
+        `Papel ${role} não possui modelo de certificado configurado para este evento.`,
+      );
     const template = await client.certificateTemplate.findUnique({
       where: { id: policy.templateId },
     });
@@ -262,9 +295,11 @@ export class CertificateService {
         'Assinatura indisponível. Procure a Secretaria.',
       );
     const config = template.config as unknown as TemplateConfig;
-    const series = await client.eventSeries.findUniqueOrThrow({
-      where: { id: attendance.event.seriesId! },
-    });
+    const series = attendance.event.seriesId
+      ? await client.eventSeries.findUnique({
+          where: { id: attendance.event.seriesId },
+        })
+      : null;
     return {
       ...buildCertificateSnapshot(
         {
@@ -277,7 +312,7 @@ export class CertificateService {
       version: 2,
       rendererVersion: 'technology-week/1',
       role: participant.role,
-      seriesTitle: series.title,
+      seriesTitle: series?.title || attendance.event.title,
       location: attendance.event.location,
       startsAt: attendance.event.startsAt.toISOString(),
       endsAt: attendance.event.endsAt.toISOString(),

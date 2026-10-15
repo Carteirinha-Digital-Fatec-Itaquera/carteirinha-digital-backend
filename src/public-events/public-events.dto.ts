@@ -69,19 +69,20 @@ export class EventConfigurationDto {
   @ArrayMaxSize(3)
   @IsUUID('4', { each: true })
   speakerSignerIds?: string[];
-  @IsUUID() seriesId: string;
+  @IsOptional() @IsUUID() seriesId?: string;
   @IsBoolean() visitorsAllowed: boolean;
-  @IsString() @Length(3, 120) organizerCourse: string;
+  @IsOptional() @IsString() @Length(3, 120) organizerCourse?: string;
   @IsOptional() @IsString() @MaxLength(160) promoter?: string;
-  @IsInt() @Min(15) @Max(15) windowMinutes: number;
+  @IsOptional() @IsInt() @Min(15) @Max(15) windowMinutes?: number;
   @IsOptional() geoPolicy?: unknown;
-  @IsUUID() attendeeTemplateId: string;
-  @IsUUID() speakerTemplateId: string;
+  @IsOptional() @IsUUID() attendeeTemplateId?: string;
+  @IsOptional() @IsUUID() speakerTemplateId?: string;
+  @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(3)
   @IsUUID('4', { each: true })
-  signerIds: string[];
+  signerIds?: string[];
 }
 export class ManualPresenceDto {
   @IsUUID() participantId: string;

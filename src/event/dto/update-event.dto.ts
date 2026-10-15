@@ -47,6 +47,41 @@ export class UpdateEventDto {
   certificateEnabled?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  visitorsAllowed?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  organizerCourse?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  promoter?: string;
+
+  @IsOptional()
+  geoPolicy?: unknown;
+
+  @IsOptional()
+  attendeeTemplateId?: string;
+
+  @IsOptional()
+  speakerTemplateId?: string;
+
+  @IsOptional()
+  signerIds?: string[];
+
+  @IsOptional()
+  speakerSignerIds?: string[];
+
+  @IsOptional()
+  certificatePolicies?: unknown;
+
+  @IsOptional()
+  seriesId?: string;
+
+  @IsOptional()
   @IsIn(['CANCELLED'])
   status?: 'CANCELLED';
 

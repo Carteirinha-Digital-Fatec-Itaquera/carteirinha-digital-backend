@@ -185,6 +185,7 @@ model EventSeries {
   retentionAt DateTime
   published   Boolean               @default(false)
   cpfRequired Boolean               @default(false)
+  isAutomatic Boolean               @default(false)
   courses     String[]
   purgedAt    DateTime?
   events      Event[]
