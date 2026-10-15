@@ -39,9 +39,10 @@ async function main() {
     attendance = randomUUID(),
     cert = randomUUID(),
     account = randomUUID();
+  const originalCredential = randomUUID();
   await client.query(
-    `INSERT INTO "Student" ("ra","accountId","name","course","status","admission","email","password","dueDate") VALUES ('UPGRADE-TEST',$1,'Aluno histórico','DSM','Ativo','2026','upgrade@example.invalid','unchanged-test-password','2030-01-01')`,
-    [account],
+    `INSERT INTO "Student" ("ra","accountId","name","course","status","admission","email","password","dueDate") VALUES ('UPGRADE-TEST',$1,'Aluno histórico','DSM','Ativo','2026','upgrade@example.invalid',$2,'2030-01-01')`,
+    [account, originalCredential],
   );
   await client.query(
     `INSERT INTO "Event" ("id","title","speaker","location","startsAt","endsAt","workloadMinutes","updatedAt") VALUES ($1,'Evento legado','Palestrante teste','Local teste',NOW(),NOW()+INTERVAL '2 hours',120,NOW())`,
@@ -84,7 +85,7 @@ async function main() {
         'SELECT "password" FROM "Student" WHERE "ra"=\'UPGRADE-TEST\'',
       )
     ).rows[0].password,
-    'unchanged-test-password',
+    originalCredential,
   );
   await client.query('DELETE FROM "Student" WHERE "ra"=\'UPGRADE-TEST\'');
   const history = (
