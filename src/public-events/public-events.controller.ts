@@ -48,6 +48,7 @@ import {
 } from './public-events.dto';
 import { EventStorageService } from './event-storage.service';
 import { NoStoreInterceptor } from './no-store.interceptor';
+import { defaultEventVenue } from './event-venue.config';
 
 const validation = new ValidationPipe({
   whitelist: true,
@@ -307,7 +308,13 @@ export class EventManagementController {
       this.prisma.certificateSigner.findMany({ orderBy: { name: 'asc' } }),
       this.prisma.event.findMany({ orderBy: { startsAt: 'desc' } }),
     ]);
-    return { series, templates, signers, events };
+    return {
+      series,
+      templates,
+      signers,
+      events,
+      defaultVenue: defaultEventVenue(),
+    };
   }
   @Post('series') series(
     @Body(validation) dto: SeriesDto,

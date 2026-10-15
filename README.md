@@ -95,6 +95,7 @@ Configuração do backend:
 - `VISITOR_IDENTITY_SECRET`: chave estável dedicada para HMAC dos identificadores temporários; na ausência, usa a chave JWT com finalidade separada. Rotacionar com planejamento de inscrições existentes.
 - `STUDENT_APP_URL`: origem HTTPS oficial do Aluno; também usada na validação de origem das mutações de visitante.
 - `CERTIFICATE_VERIFICATION_BASE_URL`: origem da página pública de verificação.
+- Local padrão: Fatec Itaquera, Av. Miguel Ignácio Curi, 360 - Itaquera, São Paulo - SP, 08295-005; coordenadas fornecidas pela organização: `-23.54503950757055, -46.46790057119243`. O catálogo administrativo fornece esse preset à Secretaria. Raio inicial de 150 m e precisão máxima de 50 m são provisórios para o piloto; configurar `EVENT_VENUE_LATITUDE`, `EVENT_VENUE_LONGITUDE`, `EVENT_VENUE_RADIUS_METERS` e `EVENT_VENUE_MAX_ACCURACY_METERS` permite calibrar sem alterar código. A política é salva por atividade mediante ação da Secretaria; mudar o preset não altera eventos existentes.
 - `BREVO_API_KEY` e `EVENT_MAIL_SENDER`: envio de códigos e avisos; o remetente deve estar autorizado no provedor.
 - `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`: imagens e PDFs autenticados. Validar suporte de PDF e downloads privados na conta antes de habilitar a edição.
 
