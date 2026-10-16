@@ -100,6 +100,7 @@ export interface AdminProjectContributorDetail {
   publishedVersion?: number | null;
   hasUnpublishedChanges: boolean;
   photoUrl?: string | null;
+  publishedSnapshot?: Record<string, unknown> | null;
   photoPending: boolean;
   photoConfirmed: boolean;
   profileConfirmed: boolean;
