@@ -113,6 +113,7 @@ export class EventCatalogService {
           name: dto.name,
           role: dto.role,
           version: (last?.version || 0) + 1,
+          status: dto.autoPublish ? 'PUBLISHED' : 'DRAFT',
           config: {
             heading: dto.heading,
             edition: dto.edition,
@@ -129,6 +130,49 @@ export class EventCatalogService {
       });
       return row;
     });
+  }
+
+  async ensureDefaultTemplates() {
+    const defaults = [
+      {
+        name: 'XIII Semana de Tecnologia — Participante',
+        role: 'ATTENDEE',
+        heading: 'CERTIFICADO',
+        edition: "XIII Semana de Tecnologia da Fatec Itaquera 'Professor Miguel Reale'",
+      },
+      {
+        name: 'XIII Semana de Tecnologia — Palestrante',
+        role: 'SPEAKER',
+        heading: 'CERTIFICADO',
+        edition: "XIII Semana de Tecnologia da Fatec Itaquera 'Professor Miguel Reale'",
+      },
+    ];
+
+    for (const def of defaults) {
+      const existing = await this.prisma.certificateTemplate.findFirst({
+        where: { name: def.name, role: def.role },
+      });
+      if (!existing) {
+        await this.prisma.certificateTemplate.create({
+          data: {
+            name: def.name,
+            role: def.role,
+            version: 1,
+            status: 'PUBLISHED',
+            config: {
+              heading: def.heading,
+              edition: def.edition,
+              backgroundAssetId: null,
+            },
+          },
+        });
+      } else if (existing.status !== 'PUBLISHED') {
+        await this.prisma.certificateTemplate.update({
+          where: { id: existing.id },
+          data: { status: 'PUBLISHED' },
+        });
+      }
+    }
   }
   async templateStatus(
     id: string,
