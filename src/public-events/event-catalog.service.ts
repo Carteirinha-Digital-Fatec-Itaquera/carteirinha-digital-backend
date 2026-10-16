@@ -135,6 +135,18 @@ export class EventCatalogService {
   async ensureDefaultTemplates() {
     const defaults = [
       {
+        name: 'Modelo Institucional Padrão Fatec',
+        role: 'ATTENDEE',
+        heading: 'CERTIFICADO',
+        edition: "Faculdade de Tecnologia de Itaquera 'Professor Miguel Reale'",
+      },
+      {
+        name: 'Modelo Institucional Padrão Fatec',
+        role: 'SPEAKER',
+        heading: 'CERTIFICADO',
+        edition: "Faculdade de Tecnologia de Itaquera 'Professor Miguel Reale'",
+      },
+      {
         name: 'XIII Semana de Tecnologia — Participante',
         role: 'ATTENDEE',
         heading: 'CERTIFICADO',

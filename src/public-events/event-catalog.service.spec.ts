@@ -50,12 +50,26 @@ describe('EventCatalogService - Templates de Certificados', () => {
     );
   });
 
-  it('ensureDefaultTemplates cria modelos da Semana de Tecnologia quando ausentes', async () => {
+  it('ensureDefaultTemplates cria modelos institucionais e da Semana de Tecnologia quando ausentes', async () => {
     prisma.certificateTemplate.findFirst.mockResolvedValue(null);
 
     await service.ensureDefaultTemplates();
 
-    expect(prisma.certificateTemplate.create).toHaveBeenCalledTimes(2);
+    expect(prisma.certificateTemplate.create).toHaveBeenCalledTimes(4);
+    expect(prisma.certificateTemplate.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        name: 'Modelo Institucional Padrão Fatec',
+        role: 'ATTENDEE',
+        status: 'PUBLISHED',
+      }),
+    });
+    expect(prisma.certificateTemplate.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        name: 'Modelo Institucional Padrão Fatec',
+        role: 'SPEAKER',
+        status: 'PUBLISHED',
+      }),
+    });
     expect(prisma.certificateTemplate.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         name: 'XIII Semana de Tecnologia — Participante',
