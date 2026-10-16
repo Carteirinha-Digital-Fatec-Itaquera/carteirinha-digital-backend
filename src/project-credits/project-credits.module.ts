@@ -1,3 +1,4 @@
+import { ProjectCreditsAssetService } from './services/project-credits-asset.service';
 import { Module } from '@nestjs/common';
 import { ProjectCreditsController } from './project-credits.controller';
 import { ProjectCreditsAdminController } from './project-credits-admin.controller';
@@ -12,6 +13,7 @@ import { AuthModule } from '../auth/auth.module';
   controllers: [ProjectCreditsController, ProjectCreditsAdminController],
   providers: [
     ProjectCreditsService,
+    ProjectCreditsAssetService,
     ProjectCreditsImporter,
     SecretaryActiveGuard,
   ],

@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { v2 as cloudinary } from 'cloudinary';
 import { createHash, randomUUID } from 'node:crypto';
-import sharp from 'sharp';
+import { processImage } from '../upload/process-image';
 
 @Injectable()
 export class EventStorageService {
@@ -71,22 +71,7 @@ export class EventStorageService {
       !['SIGNATURE', 'BACKGROUND'].includes(kind)
     )
       throw new BadRequestException('Envie PNG ou JPEG de até 2 MB.');
-    let buffer: Buffer;
-    try {
-      const metadata = await sharp(file.buffer, {
-        limitInputPixels: 16000000,
-      }).metadata();
-      if (!['png', 'jpeg'].includes(metadata.format || '')) throw new Error();
-      buffer = await sharp(file.buffer)
-        .rotate()
-        .resize(kind === 'BACKGROUND' ? 2400 : 1000, undefined, {
-          withoutEnlargement: true,
-        })
-        .png()
-        .toBuffer();
-    } catch {
-      throw new BadRequestException('Imagem inválida. Use PNG ou JPEG.');
-    }
+    const buffer = await processImage(file, kind === 'BACKGROUND' ? 2400 : 1000);
     return this.put(buffer);
   }
   async get(key: string, pdf = false) {

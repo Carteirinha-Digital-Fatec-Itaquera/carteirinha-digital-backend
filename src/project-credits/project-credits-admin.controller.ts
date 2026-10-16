@@ -13,8 +13,12 @@ import {
   UseGuards,
   UsePipes,
   ValidationPipe,
-  ServiceUnavailableException,
+  UploadedFile,
+  UseInterceptors,
+  StreamableFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { PhotoVersionDto, UploadContributorPhotoDto } from './dto/photo.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -119,23 +123,34 @@ export class ProjectCreditsAdminController {
   }
 
   @Post(':id/photo')
-  photoUploadUnavailable(): never {
-    throw new ServiceUnavailableException(
-      'Fotos de créditos serão disponibilizadas em uma próxima entrega.',
-    );
+  @UseInterceptors(
+    FileInterceptor('photo', {
+      limits: { fileSize: 2 * 1024 * 1024, files: 1 },
+    }),
+  )
+  uploadPhoto(
+    @Param('id') id: string,
+    @Body() dto: UploadContributorPhotoDto,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: CreditsRequest,
+  ) {
+    return this.service.uploadPhoto(id, dto, file, req.secretary);
   }
 
   @Get(':id/photo')
-  photoPreviewUnavailable(): never {
-    throw new ServiceUnavailableException(
-      'Fotos de créditos serão disponibilizadas em uma próxima entrega.',
-    );
+  @Header('Cache-Control', 'no-store')
+  async previewPhoto(@Param('id') id: string) {
+    return new StreamableFile(await this.service.getPhoto(id), {
+      type: 'image/png',
+    });
   }
 
   @Delete(':id/photo')
-  photoDeleteUnavailable(): never {
-    throw new ServiceUnavailableException(
-      'Fotos de créditos serão disponibilizadas em uma próxima entrega.',
-    );
+  removePhoto(
+    @Param('id') id: string,
+    @Body() dto: PhotoVersionDto,
+    @Req() req: CreditsRequest,
+  ) {
+    return this.service.removePhoto(id, dto.expectedVersion, req.secretary);
   }
 }

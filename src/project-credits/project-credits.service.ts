@@ -2,8 +2,11 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ProjectCreditsAssetService } from './services/project-credits-asset.service';
+import { UploadContributorPhotoDto } from './dto/photo.dto';
 import { PrismaService } from '../database/prisma.service';
 import {
   AdminAuditLogItem,
@@ -36,9 +39,12 @@ import {
 
 @Injectable()
 export class ProjectCreditsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly assets: ProjectCreditsAssetService,
+  ) {}
 
-  async getPublicCredits(): Promise<ProjectCreditsResponse> {
+  async getPublicCredits(baseUrl = ''): Promise<ProjectCreditsResponse> {
     const rows = await this.prisma.projectContributor.findMany({
       where: { status: 'PUBLISHED' },
       orderBy: { name: 'asc' },
@@ -57,7 +63,10 @@ export class ProjectCreditsService {
         !Array.isArray(snap.contacts)
       )
         return [];
-      const photo = null;
+      const photo =
+        typeof snap.photoStorageKey === 'string'
+          ? `${baseUrl}/project-credits/${encodeURIComponent(c.id)}/photo/${encodeURIComponent(snap.photoStorageKey.split('/').pop()!)}`
+          : null;
       return [
         {
           id: c.id,
@@ -128,8 +137,10 @@ export class ProjectCreditsService {
         draftVersion: c.draftVersion,
         publishedVersion: c.publishedVersion,
         hasUnpublishedChanges,
-        photoUrl: null,
-        hasPhoto: false,
+        photoUrl: c.photoStorageKey
+          ? this.assets.previewUrl(c.photoStorageKey)
+          : null,
+        hasPhoto: Boolean(c.photoStorageKey),
         semesters: distinctSemesters,
         roles: [...new Set(c.participations.flatMap((p) => p.roles))],
         updatedAt: c.updatedAt.toISOString(),
@@ -421,10 +432,15 @@ export class ProjectCreditsService {
       throw new BadRequestException(
         'Revise nome, participações, papéis e autorizações dos contatos antes de publicar.',
       );
+    if (existing.photoStorageKey && !existing.photoConfirmed)
+      throw new BadRequestException(
+        'Confirme a autorização da foto antes de publicar.',
+      );
     const snapshot = {
       id,
       name: existing.name,
       photoUrl: null,
+      photoStorageKey: existing.photoStorageKey,
       participations: existing.participations.map((p) => ({
         semester: p.semester,
         course: p.course,
@@ -461,6 +477,8 @@ export class ProjectCreditsService {
         },
       });
     });
+    const oldKey = this.publishedKey(existing.publishedSnapshot);
+    if (oldKey !== existing.photoStorageKey) await this.discardPhoto(oldKey);
     return this.getContributorAdmin(id);
   }
 
@@ -596,6 +614,141 @@ export class ProjectCreditsService {
     return { total, page: pageNum, limit: take, items };
   }
 
+  private publishedKey(snapshot: unknown): string | null {
+    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot))
+      return null;
+    const key = (snapshot as Record<string, unknown>).photoStorageKey;
+    return typeof key === 'string' ? key : null;
+  }
+
+  private publishedPreview(snapshot: unknown) {
+    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot))
+      return null;
+    const { photoStorageKey: _key, ...publicData } = snapshot as Record<
+      string,
+      unknown
+    >;
+    const key = this.publishedKey(snapshot);
+    return {
+      ...publicData,
+      photoUrl: key ? this.assets.previewUrl(key) : null,
+    };
+  }
+
+  async getPhoto(id: string, publicToken?: string): Promise<Buffer> {
+    const row = await this.prisma.projectContributor.findUnique({
+      where: { id },
+    });
+    const key =
+      publicToken === undefined
+        ? row?.photoStorageKey
+        : this.publishedKey(row?.publishedSnapshot);
+    if (
+      !row ||
+      !key ||
+      (publicToken !== undefined &&
+        (row.status !== 'PUBLISHED' || key.split('/').pop() !== publicToken))
+    )
+      throw new NotFoundException('Foto não encontrada.');
+    return this.assets.get(key);
+  }
+
+  private async discardPhoto(key: string | null | undefined) {
+    if (!key) return;
+    try {
+      await this.assets.remove(key);
+    } catch {
+      // Retain a durable record for an operational retry; never undo a committed save.
+      try {
+        await this.prisma.projectCreditAssetCleanup.create({
+          data: { storageKey: key },
+        });
+      } catch {
+        new Logger(ProjectCreditsService.name).error(
+          `Falha na limpeza da foto ${key}`,
+        );
+      }
+    }
+  }
+
+  async uploadPhoto(
+    id: string,
+    dto: UploadContributorPhotoDto,
+    file: Express.Multer.File,
+    secretary: Secretary,
+  ) {
+    const existing = await this.prisma.projectContributor.findUnique({
+      where: { id },
+    });
+    if (!existing) throw new NotFoundException('Colaborador não encontrado.');
+    if (existing.draftVersion !== dto.expectedVersion)
+      throw new ConflictException('Conflito de versão. Recarregue os dados.');
+    if (!dto.photoConfirmed)
+      throw new BadRequestException('Confirme a autorização da foto.');
+    const asset = await this.assets.uploadPhoto(file);
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await this.claimVersion(tx, id, dto.expectedVersion, {
+          data: {
+            photoStorageKey: asset.storageKey,
+            photoPendingKey: null,
+            photoUrl: null,
+            photoConfirmed: true,
+            draftVersion: { increment: 1 },
+          },
+        });
+        await tx.projectCreditAudit.create({
+          data: {
+            contributorId: id,
+            action: 'PHOTO_REPLACED',
+            performedBySecretaryId: secretary.id,
+            performedByName: secretary.name,
+            metadata: { storageKey: asset.storageKey },
+          },
+        });
+      });
+    } catch (error) {
+      await this.discardPhoto(asset.storageKey);
+      throw error;
+    }
+    if (
+      existing.photoStorageKey !== this.publishedKey(existing.publishedSnapshot)
+    )
+      await this.discardPhoto(existing.photoStorageKey);
+    return this.getContributorAdmin(id);
+  }
+
+  async removePhoto(id: string, expectedVersion: number, secretary: Secretary) {
+    const existing = await this.prisma.projectContributor.findUnique({
+      where: { id },
+    });
+    if (!existing) throw new NotFoundException('Colaborador não encontrado.');
+    await this.prisma.$transaction(async (tx) => {
+      await this.claimVersion(tx, id, expectedVersion, {
+        data: {
+          photoStorageKey: null,
+          photoPendingKey: null,
+          photoUrl: null,
+          photoConfirmed: false,
+          draftVersion: { increment: 1 },
+        },
+      });
+      await tx.projectCreditAudit.create({
+        data: {
+          contributorId: id,
+          action: 'PHOTO_REMOVED',
+          performedBySecretaryId: secretary.id,
+          performedByName: secretary.name,
+        },
+      });
+    });
+    if (
+      existing.photoStorageKey !== this.publishedKey(existing.publishedSnapshot)
+    )
+      await this.discardPhoto(existing.photoStorageKey);
+    return this.getContributorAdmin(id);
+  }
+
   private async claimVersion(
     tx: Prisma.TransactionClient,
     id: string,
@@ -630,8 +783,11 @@ export class ProjectCreditsService {
       draftVersion: c.draftVersion,
       publishedVersion: c.publishedVersion,
       hasUnpublishedChanges,
-      photoUrl: c.photoUrl,
+      photoUrl: c.photoStorageKey
+        ? this.assets.previewUrl(c.photoStorageKey)
+        : null,
       photoPending: false,
+      publishedSnapshot: this.publishedPreview(c.publishedSnapshot),
       photoConfirmed: c.photoConfirmed,
       profileConfirmed: c.profileConfirmed,
       archiveReason: c.archiveReason,

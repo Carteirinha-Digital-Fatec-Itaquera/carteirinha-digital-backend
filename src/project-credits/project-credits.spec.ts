@@ -274,6 +274,63 @@ describe('Project Credits Module & Administration', () => {
     });
   });
 
+  describe('Photo HTTP contract', () => {
+    it.each(['post', 'get', 'delete'] as const)(
+      'protects %s photo from anonymous and student access',
+      async (method) => {
+        await request(app.getHttpServer())
+          [method]('/project-credits/admin/contributors/c1/photo')
+          .expect(401);
+        await request(app.getHttpServer())
+          [method]('/project-credits/admin/contributors/c1/photo')
+          .set('Authorization', `Bearer ${studentToken}`)
+          .expect(403);
+        await request(app.getHttpServer())
+          [method]('/project-credits/admin/contributors/c1/photo')
+          .set('Authorization', `Bearer ${expiredSecretaryToken}`)
+          .expect(403);
+      },
+    );
+    it('accepts a multipart numeric version and explicit authorization', async () => {
+      const spy = jest
+        .spyOn(app.get(ProjectCreditsService), 'uploadPhoto')
+        .mockResolvedValueOnce({ id: 'c1', draftVersion: 4 } as never);
+      try {
+        await request(app.getHttpServer())
+          .post('/project-credits/admin/contributors/c1/photo')
+          .set('Authorization', `Bearer ${activeSecretaryToken}`)
+          .field('expectedVersion', '3')
+          .field('photoConfirmed', 'true')
+          .attach('photo', Buffer.from('test'), 'foto.png')
+          .expect(201);
+        expect(spy).toHaveBeenCalledWith(
+          'c1',
+          expect.objectContaining({ expectedVersion: 3, photoConfirmed: true }),
+          expect.objectContaining({ originalname: 'foto.png' }),
+          expect.anything(),
+        );
+      } finally {
+        spy.mockRestore();
+      }
+    });
+    it('rejects false photo authorization and files over 2 MB', async () => {
+      await request(app.getHttpServer())
+        .post('/project-credits/admin/contributors/c1/photo')
+        .set('Authorization', `Bearer ${activeSecretaryToken}`)
+        .field('expectedVersion', '3')
+        .field('photoConfirmed', 'false')
+        .attach('photo', Buffer.from('test'), 'foto.png')
+        .expect(400);
+      await request(app.getHttpServer())
+        .post('/project-credits/admin/contributors/c1/photo')
+        .set('Authorization', `Bearer ${activeSecretaryToken}`)
+        .field('expectedVersion', '3')
+        .field('photoConfirmed', 'true')
+        .attach('photo', Buffer.alloc(2097153), 'foto.png')
+        .expect(413);
+    });
+  });
+
   describe('Concurrency & Lifecycle Controls', () => {
     it('returns 409 Conflict when update expectedVersion does not match current version', async () => {
       mockPrisma.projectContributor.findUnique.mockResolvedValue({
