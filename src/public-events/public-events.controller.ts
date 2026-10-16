@@ -104,8 +104,12 @@ export class PublicEventsController {
       event: {
         id: event.id,
         title: event.title,
+        description: event.description,
         location: event.location,
         speaker: event.speaker,
+        startsAt: event.startsAt?.toISOString(),
+        endsAt: event.endsAt?.toISOString(),
+        workloadMinutes: event.workloadMinutes,
       },
       checkpoint: { type: row.checkpoint.type },
       visitorsAllowed: event.visitorsAllowed,
@@ -126,14 +130,22 @@ export class PublicEventsController {
       select: {
         id: true,
         title: true,
+        description: true,
         location: true,
         speaker: true,
         startsAt: true,
         endsAt: true,
+        workloadMinutes: true,
         status: true,
         visitorsAllowed: true,
         seriesId: true,
         geoPolicy: true,
+        checkpoints: {
+          select: {
+            type: true,
+            isOpen: true,
+          },
+        },
       },
     });
     if (!event) {
@@ -143,13 +155,16 @@ export class PublicEventsController {
       event: {
         id: event.id,
         title: event.title,
+        description: event.description,
         location: event.location,
         speaker: event.speaker,
         startsAt: event.startsAt?.toISOString(),
         endsAt: event.endsAt?.toISOString(),
         startDate: event.startsAt?.toISOString(),
         endDate: event.endsAt?.toISOString(),
+        workloadMinutes: event.workloadMinutes,
         status: event.status,
+        checkpoints: event.checkpoints,
       },
       visitorsAllowed: event.visitorsAllowed,
       seriesId: event.seriesId,
@@ -260,6 +275,31 @@ export class VisitorController {
       dto.position,
       participant.id,
     );
+  }
+  @Get('attendances') async attendances(@Req() req: Request) {
+    const visitor = await this.visitors.session(cookie(req));
+    return this.prisma.attendance.findMany({
+      where: { participant: { visitorId: visitor.id } },
+      select: {
+        id: true,
+        eventId: true,
+        checkInAt: true,
+        checkOutAt: true,
+        status: true,
+        event: {
+          select: {
+            id: true,
+            title: true,
+            speaker: true,
+            location: true,
+            startsAt: true,
+            endsAt: true,
+            workloadMinutes: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
   }
   @Get('certificates') async certificates(@Req() req: Request) {
     const visitor = await this.visitors.session(cookie(req));
