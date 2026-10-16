@@ -127,3 +127,20 @@ export class ParticipantCorrectionDto {
   @IsOptional() @IsString() @MaxLength(120) course?: string;
   @IsString() @Length(10, 1000) reason: string;
 }
+
+export class CreateEventFeedbackDto {
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  rating: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  comments?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  suggestions?: string;
+}
