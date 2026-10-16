@@ -409,4 +409,79 @@ export class EventOperationsService {
       return true;
     });
   }
+
+  async submitFeedback(
+    eventId: string,
+    dto: { rating: number; comments?: string; suggestions?: string },
+  ) {
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, title: true },
+    });
+    if (!event) throw new NotFoundException('Evento não encontrado');
+
+    const feedback = await this.prisma.eventFeedback.create({
+      data: {
+        eventId,
+        rating: dto.rating,
+        comments: dto.comments?.trim() || null,
+        suggestions: dto.suggestions?.trim() || null,
+      },
+    });
+
+    return {
+      success: true,
+      id: feedback.id,
+      message: 'Avaliação enviada com sucesso! Obrigado pelo seu feedback.',
+    };
+  }
+
+  async getFeedbackMetrics(eventId: string) {
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, title: true },
+    });
+    if (!event) throw new NotFoundException('Evento não encontrado');
+
+    const feedbacks = await this.prisma.eventFeedback.findMany({
+      where: { eventId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        rating: true,
+        comments: true,
+        suggestions: true,
+        createdAt: true,
+      },
+    });
+
+    const totalResponses = feedbacks.length;
+    const ratingDistribution: Record<number, number> = {
+      1: 0,
+      2: 0,
+      3: 0,
+      4: 0,
+      5: 0,
+    };
+    let sumRating = 0;
+
+    for (const f of feedbacks) {
+      if (ratingDistribution[f.rating] !== undefined) {
+        ratingDistribution[f.rating] += 1;
+      }
+      sumRating += f.rating;
+    }
+
+    const averageRating =
+      totalResponses > 0 ? Number((sumRating / totalResponses).toFixed(1)) : 0;
+
+    return {
+      eventId,
+      eventTitle: event.title,
+      totalResponses,
+      averageRating,
+      ratingDistribution,
+      feedbacks,
+    };
+  }
 }

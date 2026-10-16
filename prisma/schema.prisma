@@ -88,6 +88,7 @@ model Event {
   checkpoints         EventCheckpoint[]
   attendances         Attendance[]
   certificates        Certificate[]
+  feedbacks           EventFeedback[]
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
 
@@ -244,6 +245,18 @@ model EventParticipant {
   @@unique([eventId, visitorId])
   @@unique([eventId, accountId])
   @@unique([id, eventId], map: "participant_event_unique")
+}
+
+model EventFeedback {
+  id          String   @id @default(uuid())
+  eventId     String
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  rating      Int
+  comments    String?
+  suggestions String?
+  createdAt   DateTime @default(now())
+
+  @@index([eventId])
 }
 
 model CertificateTemplate {

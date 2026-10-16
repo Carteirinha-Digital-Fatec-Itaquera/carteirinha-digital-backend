@@ -46,6 +46,7 @@ import {
   SignerSelectionDto,
   RoleMutationDto,
   ParticipantCorrectionDto,
+  CreateEventFeedbackDto,
 } from './public-events.dto';
 import { EventStorageService } from './event-storage.service';
 import { NoStoreInterceptor } from './no-store.interceptor';
@@ -85,8 +86,16 @@ export class PublicEventsController {
     private readonly catalog: EventCatalogService,
     private readonly refs: AttendanceQrReferenceService,
     private readonly visitors: VisitorService,
+    private readonly operations: EventOperationsService,
     private readonly prisma: PrismaService,
   ) {}
+  @Post(':id/feedback')
+  feedback(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(validation) dto: CreateEventFeedbackDto,
+  ) {
+    return this.operations.submitFeedback(id, dto);
+  }
   @Get('series') list() {
     return this.catalog.publicSeries();
   }
@@ -482,6 +491,11 @@ export class EventManagementController {
       orderBy: { createdAt: 'desc' },
       take: 200,
     });
+  }
+  @Get('events/:id/feedback') feedbackMetrics(
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.operations.getFeedbackMetrics(id);
   }
   @Post('events/:id/manual-presence') manual(
     @Param('id', ParseUUIDPipe) id: string,
