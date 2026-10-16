@@ -54,6 +54,7 @@ export class TemplateDto {
   @IsString() @Length(3, 160) heading: string;
   @IsString() @Length(3, 200) edition: string;
   @IsOptional() @IsUUID() backgroundAssetId?: string;
+  @IsOptional() @IsBoolean() autoPublish?: boolean;
 }
 export class SignerDto {
   @IsString() @Length(3, 160) name: string;

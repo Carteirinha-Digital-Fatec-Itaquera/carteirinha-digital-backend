@@ -344,6 +344,7 @@ export class EventManagementController {
     private readonly storage: EventStorageService,
   ) {}
   @Get('catalog') async catalogData() {
+    await this.catalog.ensureDefaultTemplates();
     const [series, templates, signers, events] = await Promise.all([
       this.prisma.eventSeries.findMany({ orderBy: { startsAt: 'desc' } }),
       this.prisma.certificateTemplate.findMany({
