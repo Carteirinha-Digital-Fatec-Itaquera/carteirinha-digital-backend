@@ -380,7 +380,10 @@ async function main() {
           await page
             .getByRole('status')
             .filter({
-              hasText: type === 'CHECK_IN' ? 'Entrada' : 'Saída',
+              hasText:
+                type === 'CHECK_IN'
+                  ? 'Entrada registrada'
+                  : 'Presença confirmada',
             })
             .waitFor();
         }
