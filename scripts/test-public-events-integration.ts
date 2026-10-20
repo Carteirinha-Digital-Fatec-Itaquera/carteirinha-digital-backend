@@ -189,7 +189,20 @@ async function main() {
     catalog.configure(event.id, { ...config, geoPolicy: null }, 1),
   );
   await catalog.configure(event.id, config, 1);
-  await assert.rejects(catalog.series({ title: edition.title, slug: edition.slug, startsAt: new Date(Date.now() + 3 * 86400000).toISOString(), endsAt: new Date(Date.now() + 4 * 86400000).toISOString(), published: true, courses: ['DSM'] }, 1, edition.id));
+  await assert.rejects(
+    catalog.series(
+      {
+        title: edition.title,
+        slug: edition.slug,
+        startsAt: new Date(Date.now() + 3 * 86400000).toISOString(),
+        endsAt: new Date(Date.now() + 4 * 86400000).toISOString(),
+        published: true,
+        courses: ['DSM'],
+      },
+      1,
+      edition.id,
+    ),
+  );
   const module = await Test.createTestingModule({
     imports: [PublicEventsModule],
   })
@@ -253,10 +266,15 @@ async function main() {
       .set('Origin', origin)
       .send(payload)
       .expect(200);
-    const cookies = registrationHttp.headers['set-cookie'] as unknown as string[];
+    const cookies = registrationHttp.headers[
+      'set-cookie'
+    ] as unknown as string[];
     assert.match(cookies[0], /HttpOnly/);
     assert.match(cookies[0], /SameSite=Lax/);
-    assert.equal(JSON.stringify(registrationHttp.body).includes('token'), false);
+    assert.equal(
+      JSON.stringify(registrationHttp.body).includes('token'),
+      false,
+    );
     const sessionCookie = cookies[0].split(';')[0];
     await request(app.getHttpServer())
       .get('/visitor/session')
@@ -292,7 +310,11 @@ async function main() {
           playwrightPkg = null;
         }
       }
-      if (!playwrightPkg) return;
+      if (!playwrightPkg) {
+        throw new Error(
+          'Playwright não encontrado para execução do PUBLIC_EVENTS_BROWSER=1.',
+        );
+      }
       const { chromium } = playwrightPkg;
       const browser = await chromium.launch({
         headless: true,
@@ -317,17 +339,11 @@ async function main() {
           .fill(`browser-${run}@example.invalid`);
         await page
           .getByRole('button', {
-            name: 'Receber código de acesso',
-            exact: true,
+            name: /Continuar como visitante/i,
           })
           .click();
-        await page.getByLabel('Código recebido por e-mail').waitFor();
-        await page.getByLabel('Código recebido por e-mail').fill(otp);
         await page
-          .getByRole('button', { name: 'Confirmar e-mail', exact: true })
-          .click();
-        await page
-          .getByRole('heading', { name: 'Olá, Visitante navegador' })
+          .getByRole('heading', { name: /Olá, Visitante navegador/i })
           .waitFor();
         const browserEvent = await events.create(
           {
@@ -354,16 +370,17 @@ async function main() {
           });
           const reference = new URL(result.qrUrl!).pathname;
           await page.goto(`http://localhost:5187${reference}`);
+          await page.getByRole('button', { name: /Sou visitante/i }).click();
           await page
-            .getByRole('button', { name: 'Confirmar presença', exact: true })
+            .getByRole('button', {
+              name:
+                type === 'CHECK_IN' ? /Confirmar Entrada/i : /Confirmar Saída/i,
+            })
             .click();
           await page
             .getByRole('status')
             .filter({
-              hasText:
-                type === 'CHECK_IN'
-                  ? 'Entrada registrada'
-                  : 'Presença confirmada',
+              hasText: type === 'CHECK_IN' ? 'Entrada' : 'Saída',
             })
             .waitFor();
         }
@@ -373,12 +390,11 @@ async function main() {
         });
         await jobs.process(browserCert.artifact!.id);
         await page
-          .getByRole('button', { name: 'Atualizar certificados', exact: true })
+          .getByRole('button', { name: /Atualizar/i })
+          .first()
           .click();
         const fileDownload = page.waitForEvent('download');
-        await page
-          .getByRole('button', { name: 'Baixar PDF', exact: true })
-          .click();
+        await page.getByRole('button', { name: /Baixar PDF/i }).click();
         assert.equal(
           (await fileDownload).suggestedFilename(),
           'certificado.pdf',
@@ -407,20 +423,10 @@ async function main() {
           adminToken,
         );
         const admin = await adminContext.newPage();
-        await admin.goto('http://localhost:5188/eventos/publicos');
+        await admin.goto('http://localhost:5188/eventos');
         await admin
           .getByRole('heading', {
-            name: 'Eventos públicos e certificados',
-            exact: true,
-          })
-          .waitFor();
-        await admin
-          .getByRole('button', { name: 'Assinaturas', exact: true })
-          .click();
-        await admin
-          .getByRole('heading', {
-            name: 'Cadastrar responsável e assinatura',
-            exact: true,
+            name: /Gerenciar Eventos/i,
           })
           .waitFor();
         assert.equal(
@@ -449,7 +455,7 @@ async function main() {
         await adminContext.close();
         await context.close();
         console.log(
-          'PASS navegador: OTP, cookie via proxy, QR entrada/saída, localização simulada, PDF e telas sem overflow em desktop/mobile.',
+          'PASS navegador: identificação direta sem OTP, seletor de perfil, cookie de sessão, QR entrada/saída, localização simulada, PDF e telas sem overflow em desktop/mobile.',
         );
       } finally {
         await browser.close();
@@ -596,8 +602,7 @@ async function main() {
   assert.equal(
     createHash('sha256')
       .update(
-        (await operations.download(cert.id, registration.visitorId))
-          .buffer,
+        (await operations.download(cert.id, registration.visitorId)).buffer,
       )
       .digest('hex'),
     hash,
@@ -798,7 +803,7 @@ async function main() {
   assert.equal(files.has(orphanKey), false);
   assert.equal(files.has(kept.storageKey!), true);
   console.log(
-    'PASS: migrations, OTP único, visitante sem Student, GPS, nonce, janelas, presença, PDF, versão imutável, histórico, expurgo e revogação. E-mail/storage substituídos apenas neste teste.',
+    'PASS: migrations, identificação direta sem OTP, visitante sem Student, GPS, nonce, janelas, presença, PDF, versão imutável, histórico, expurgo e revogação. E-mail/storage substituídos apenas neste teste.',
   );
 }
 void main().finally(() => client.$disconnect());

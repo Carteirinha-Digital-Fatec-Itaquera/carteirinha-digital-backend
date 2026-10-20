@@ -5,14 +5,12 @@ import {
   HttpException,
   Injectable,
   NotFoundException,
-  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import {
   createHash,
   createHmac,
   randomBytes,
-  randomInt,
   timingSafeEqual,
 } from 'node:crypto';
 import { loadAuthSecrets } from '../auth/auth.config';
@@ -187,16 +185,6 @@ export class VisitorService {
         !row.series.published
       )
         return null;
-      if (row.identifiedAt) {
-        const token = randomBytes(32).toString('base64url');
-        const expiresAt = new Date(
-          Math.min(Date.now() + 12 * 3600000, row.series.retentionAt.getTime()),
-        );
-        await tx.visitorSession.create({
-          data: { visitorId: row.id, tokenHash: tokenHash(token), expiresAt },
-        });
-        return { token, expiresAt };
-      }
       if (
         !row.otpHash ||
         !row.otpExpiresAt ||
