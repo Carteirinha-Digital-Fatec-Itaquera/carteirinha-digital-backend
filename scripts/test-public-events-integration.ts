@@ -253,15 +253,10 @@ async function main() {
       .set('Origin', origin)
       .send(payload)
       .expect(200);
-    const verifyHttp = await request(app.getHttpServer())
-      .post('/visitor/verify')
-      .set('Origin', origin)
-      .send({ registrationId: registrationHttp.body.registrationId, code: otp })
-      .expect(200);
-    const cookies = verifyHttp.headers['set-cookie'] as unknown as string[];
+    const cookies = registrationHttp.headers['set-cookie'] as unknown as string[];
     assert.match(cookies[0], /HttpOnly/);
     assert.match(cookies[0], /SameSite=Lax/);
-    assert.equal(JSON.stringify(verifyHttp.body).includes('token'), false);
+    assert.equal(JSON.stringify(registrationHttp.body).includes('token'), false);
     const sessionCookie = cookies[0].split(';')[0];
     await request(app.getHttpServer())
       .get('/visitor/session')
@@ -472,29 +467,13 @@ async function main() {
     },
     run,
   );
-  const correct = otp;
-  await assert.rejects(
-    visitors.verify(
-      { registrationId: registration.registrationId, code: '000000' },
-      run,
-    ),
-  );
-  const session = await visitors.verify(
-    { registrationId: registration.registrationId, code: correct },
-    run,
-  );
-  await assert.rejects(
-    visitors.verify(
-      { registrationId: registration.registrationId, code: correct },
-      run,
-    ),
-  );
+  const session = registration;
   assert.equal(
     (await visitors.session(session.token)).name,
     'Visitante de teste',
   );
   const participant = await visitors.participant(
-    registration.registrationId,
+    registration.visitorId,
     event.id,
   );
   assert.equal(
@@ -599,7 +578,7 @@ async function main() {
     jobs.process(cert.artifact!.id),
   ]);
   await jobs.process(cert.artifact!.id);
-  const file = await operations.download(cert.id, registration.registrationId);
+  const file = await operations.download(cert.id, registration.visitorId);
   assert.equal(file.buffer.subarray(0, 4).toString(), '%PDF');
   assert.equal(sent, sentBefore + 1);
   if (process.env.PUBLIC_EVENTS_PDF_EVIDENCE)
@@ -617,7 +596,7 @@ async function main() {
   assert.equal(
     createHash('sha256')
       .update(
-        (await operations.download(cert.id, registration.registrationId))
+        (await operations.download(cert.id, registration.visitorId))
           .buffer,
       )
       .digest('hex'),
@@ -635,12 +614,8 @@ async function main() {
     },
     run,
   );
-  await visitors.verify(
-    { registrationId: speakerRegistration.registrationId, code: otp },
-    run,
-  );
   const speakerParticipant = await visitors.participant(
-    speakerRegistration.registrationId,
+    speakerRegistration.visitorId,
     event.id,
   );
   await operations.assignRole(
@@ -694,7 +669,7 @@ async function main() {
         (
           await operations.download(
             speakerCert.id,
-            speakerRegistration.registrationId,
+            speakerRegistration.visitorId,
           )
         ).buffer,
       )
@@ -714,7 +689,7 @@ async function main() {
   );
   await catalog.configure(secondActivity.id, config, 1);
   const secondParticipant = await visitors.participant(
-    registration.registrationId,
+    registration.visitorId,
     secondActivity.id,
   );
   assert.notEqual(secondParticipant.id, participant.id);
@@ -738,7 +713,7 @@ async function main() {
   );
   assert.equal(
     await client.certificate.count({
-      where: { participant: { visitorId: registration.registrationId } },
+      where: { participant: { visitorId: registration.visitorId } },
     }),
     2,
   );
@@ -772,7 +747,7 @@ async function main() {
   assert.equal(await operations.purge(edition.id), true);
   assert.equal(await operations.purge(edition.id), false);
   const purged = await client.visitorRegistration.findUniqueOrThrow({
-    where: { id: registration.registrationId },
+    where: { id: registration.visitorId },
   });
   for (const key of ['email', 'emailHash', 'cpfHash', 'otpHash'] as const)
     assert.equal(purged[key], null);
