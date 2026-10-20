@@ -24,17 +24,17 @@ async function main() {
   );
   const root = path.join(__dirname, '..', 'prisma', 'migrations');
   const target = '20261015120000_public_events';
-  for (const migration of fs
+  const allMigrations = fs
     .readdirSync(root)
-    .filter(
-      (name) =>
-        name !== target &&
-        fs.existsSync(path.join(root, name, 'migration.sql')),
-    )
-    .sort())
+    .filter((name) => fs.existsSync(path.join(root, name, 'migration.sql')))
+    .sort();
+  const prior = allMigrations.filter((name) => name < target);
+  const subsequent = allMigrations.filter((name) => name > target);
+  for (const migration of prior) {
     await client.query(
       fs.readFileSync(path.join(root, migration, 'migration.sql'), 'utf8'),
     );
+  }
   const event = randomUUID(),
     attendance = randomUUID(),
     cert = randomUUID(),
@@ -69,6 +69,11 @@ async function main() {
   await client.query(
     fs.readFileSync(path.join(root, target, 'migration.sql'), 'utf8'),
   );
+  for (const migration of subsequent) {
+    await client.query(
+      fs.readFileSync(path.join(root, migration, 'migration.sql'), 'utf8'),
+    );
+  }
   const row = (
     await client.query(
       `SELECT a."participantId",c."participantId" AS cert_participant,c."payloadSnapshot",p."accountId" FROM "Attendance" a JOIN "Certificate" c ON c."attendanceId"=a."id" JOIN "EventParticipant" p ON p."id"=a."participantId" WHERE a."id"=$1`,
@@ -115,6 +120,12 @@ async function main() {
       .rows[0].count,
     1,
   );
+  const visitorCols = (
+    await client.query(
+      "SELECT column_name FROM information_schema.columns WHERE table_name='VisitorRegistration' AND column_name='identifiedAt'",
+    )
+  ).rows;
+  assert.equal(visitorCols.length, 1);
   console.log(
     'PASS upgrade: dado legado preservado, backfill de participante/certificado, snapshot v1 intacto, FK histórica e bloqueio entre atividades.',
   );

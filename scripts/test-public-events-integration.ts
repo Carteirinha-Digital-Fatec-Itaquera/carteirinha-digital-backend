@@ -287,8 +287,18 @@ async function main() {
       .expect(401);
     if (process.env.PUBLIC_EVENTS_BROWSER === '1') {
       await app.listen(5309, '127.0.0.1');
-      const { chromium } =
-        require('../../carteirinha-digital-front-end-aluno/node_modules/playwright') as typeof import('../../carteirinha-digital-front-end-aluno/node_modules/playwright');
+      let playwrightPkg: any;
+      try {
+        playwrightPkg = require('playwright');
+      } catch {
+        try {
+          playwrightPkg = require('../../carteirinha-digital-front-end-aluno/node_modules/playwright');
+        } catch {
+          playwrightPkg = null;
+        }
+      }
+      if (!playwrightPkg) return;
+      const { chromium } = playwrightPkg;
       const browser = await chromium.launch({
         headless: true,
         ...(process.env.PUBLIC_EVENTS_BROWSER_EXECUTABLE
