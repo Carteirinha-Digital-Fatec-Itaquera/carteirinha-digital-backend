@@ -280,6 +280,61 @@ async function main() {
       .get('/visitor/session')
       .set('Cookie', sessionCookie)
       .expect(200);
+    const boundEvent = await events.create(
+      {
+        title: 'Atividade para validar vínculo do QR',
+        speaker: 'Pessoa de teste',
+        location: 'Local de teste',
+        startsAt: new Date().toISOString(),
+        endsAt: new Date(Date.now() + 3600000).toISOString(),
+        workloadMinutes: 60,
+      },
+      event.createdById!,
+    );
+    await catalog.configure(boundEvent.id, config, event.createdById!);
+    await checkpoints.open(boundEvent.id, 'CHECK_IN');
+    const boundCheckpoint = await checkpoints.getOpen(
+      boundEvent.id,
+      'CHECK_IN',
+    );
+    const boundQr = await qr.generate({
+      eventId: boundEvent.id,
+      checkpoint: 'CHECK_IN',
+      checkpointVersion: boundCheckpoint.version,
+      checkpointId: boundCheckpoint.id,
+      closesAt: boundCheckpoint.closesAt,
+    });
+    const boundReference = new URL(boundQr.qrUrl!).pathname.split('/').pop()!;
+    for (const path of ['/visitor/challenge', '/visitor/attendance']) {
+      await request(app.getHttpServer())
+        .post(path)
+        .set('Origin', origin)
+        .set('Cookie', sessionCookie)
+        .send({ reference: boundReference, eventId: randomUUID() })
+        .expect(400)
+        .expect((response) =>
+          assert.equal(response.body.code, 'EVENT_MISMATCH'),
+        );
+    }
+    await events.cancel(
+      boundEvent.id,
+      'Cancelamento para validar retirada da seleção pública',
+      event.createdById!,
+    );
+    await request(app.getHttpServer())
+      .get(`/public/events/${boundEvent.id}`)
+      .expect(404);
+    const publicRows = await catalog.publicSeries();
+    assert.equal(
+      publicRows.some((row) =>
+        row.events.some((item) => item.id === boundEvent.id),
+      ),
+      false,
+    );
+    assert.equal(
+      publicRows.some((row) => row.events.length === 0),
+      false,
+    );
     await request(app.getHttpServer())
       .get('/event-management/catalog')
       .set('Cookie', sessionCookie)
@@ -492,6 +547,28 @@ async function main() {
   await checkpoints.open(event.id, 'CHECK_IN');
   let cp = await checkpoints.getOpen(event.id, 'CHECK_IN');
   assert.equal(cp.closesAt!.getTime() - cp.openedAt!.getTime(), 900000);
+  const previousQr = await qr.generate({
+    eventId: event.id,
+    checkpoint: 'CHECK_IN',
+    checkpointVersion: cp.version,
+    checkpointId: cp.id,
+    closesAt: cp.closesAt,
+  });
+  const originalDeadline = cp.closesAt!.getTime();
+  const claims = await jwt.verifyAsync<{ iat: number }>(previousQr.qrToken, {
+    secret: process.env.ATTENDANCE_QR_SECRET,
+  });
+  await jwt.verifyAsync(previousQr.qrToken, {
+    secret: process.env.ATTENDANCE_QR_SECRET,
+    clockTimestamp: claims.iat + 21,
+  });
+  cp = await checkpoints.refreshQr(event.id, 'CHECK_IN', event.createdById!);
+  assert.equal(cp.closesAt!.getTime(), originalDeadline);
+  await assert.rejects(
+    refs.resolveReference(
+      new URL(previousQr.qrUrl!).pathname.split('/').pop()!,
+    ),
+  );
   let token = (
     await qr.generate({
       eventId: event.id,

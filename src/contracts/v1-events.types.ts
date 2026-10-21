@@ -97,7 +97,7 @@ export interface CheckpointMutationResponse {
 
 export interface AttendanceQrResponse {
   qrToken: string;
-  expiresInSeconds: 20;
+  expiresInSeconds: number;
   expiresAt: IsoDateTime;
   checkpointVersion: number;
 }

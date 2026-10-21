@@ -98,6 +98,7 @@ export class PositionDto {
   @IsUUID() challengeId: string;
 }
 export class VisitorScanDto {
+  @IsOptional() @IsUUID() eventId?: string;
   @IsString() @Matches(/^[A-Za-z0-9_-]{10,64}$/) reference: string;
   @IsOptional()
   @ValidateNested()

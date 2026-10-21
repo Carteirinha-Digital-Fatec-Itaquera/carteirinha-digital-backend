@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   InternalServerErrorException,
   Optional,
@@ -14,11 +15,12 @@ interface QrTokenPayload {
   checkpoint: CheckpointType;
   checkpointVersion: number;
   checkpointId?: string;
+  closesAt?: Date | null;
 }
 
 @Injectable()
 export class QrTokenService {
-  static readonly EXPIRES_IN_SECONDS = 20;
+  static readonly EXPIRES_IN_SECONDS = 15 * 60;
   private readonly attendanceQrSecret: string;
 
   constructor(
@@ -30,15 +32,24 @@ export class QrTokenService {
   }
 
   async generate(payload: QrTokenPayload) {
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const expiresAt = payload.closesAt
+      ? Math.floor(payload.closesAt.getTime() / 1000)
+      : issuedAt + QrTokenService.EXPIRES_IN_SECONDS;
+    const expiresInSeconds = expiresAt - issuedAt;
+    if (!Number.isFinite(expiresInSeconds) || expiresInSeconds <= 0) {
+      throw new BadRequestException('A janela de presença já foi encerrada.');
+    }
     const qrToken = await this.jwtService.signAsync(
       {
         eventId: payload.eventId,
         checkpoint: payload.checkpoint,
         checkpointVersion: payload.checkpointVersion,
+        iat: issuedAt,
+        exp: expiresAt,
       },
       {
         secret: this.attendanceQrSecret,
-        expiresIn: QrTokenService.EXPIRES_IN_SECONDS,
         jwtid: randomUUID(),
       },
     );
@@ -72,7 +83,7 @@ export class QrTokenService {
 
     return {
       qrToken,
-      expiresInSeconds: QrTokenService.EXPIRES_IN_SECONDS as 20,
+      expiresInSeconds,
       expiresAt: expDate.toISOString(),
       checkpointVersion: payload.checkpointVersion,
       ...(qrUrl ? { qrUrl } : {}),
