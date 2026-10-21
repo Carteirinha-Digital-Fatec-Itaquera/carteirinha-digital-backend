@@ -17,7 +17,7 @@ describe('QrTokenService', () => {
     process.env.ATTENDANCE_QR_SECRET = previousQrSecret;
   });
 
-  it('assina com segredo QR, TTL de 20s e claims mínimos', async () => {
+  it('assina com segredo QR, validade operacional e claims mínimos', async () => {
     const jwt = new JwtService();
     const service = new QrTokenService(jwt);
 
@@ -27,7 +27,7 @@ describe('QrTokenService', () => {
       checkpointVersion: 7,
     });
 
-    expect(response.expiresInSeconds).toBe(20);
+    expect(response.expiresInSeconds).toBe(900);
     expect(response.checkpointVersion).toBe(7);
 
     const payload = await jwt.verifyAsync<Record<string, unknown>>(
@@ -41,10 +41,51 @@ describe('QrTokenService', () => {
     expect(typeof payload.jti).toBe('string');
     expect(typeof payload.iat).toBe('number');
     expect(typeof payload.exp).toBe('number');
-    expect(Number(payload.exp) - Number(payload.iat)).toBe(20);
+    expect(Number(payload.exp) - Number(payload.iat)).toBe(900);
 
     for (const pii of ['ra', 'cpf', 'email', 'name']) {
       expect(payload).not.toHaveProperty(pii);
+    }
+  });
+
+  it('continua válido após 20 segundos e termina junto da janela', async () => {
+    const now = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      const jwt = new JwtService();
+      const service = new QrTokenService(jwt);
+      const closesAt = new Date(now + 120000);
+      const response = await service.generate({
+        eventId: 'event-id',
+        checkpoint: CheckpointType.CHECK_IN,
+        checkpointVersion: 2,
+        closesAt,
+      });
+      clock.mockReturnValue(now + 21000);
+      await expect(
+        jwt.verifyAsync(response.qrToken, {
+          secret: process.env.ATTENDANCE_QR_SECRET,
+        }),
+      ).resolves.toHaveProperty('eventId', 'event-id');
+      expect(Date.parse(response.expiresAt)).toBeLessThanOrEqual(
+        closesAt.getTime(),
+      );
+      clock.mockReturnValue(now + 120000);
+      await expect(
+        jwt.verifyAsync(response.qrToken, {
+          secret: process.env.ATTENDANCE_QR_SECRET,
+        }),
+      ).rejects.toThrow();
+      await expect(
+        service.generate({
+          eventId: 'event-id',
+          checkpoint: CheckpointType.CHECK_IN,
+          checkpointVersion: 2,
+          closesAt,
+        }),
+      ).rejects.toThrow();
+    } finally {
+      clock.mockRestore();
     }
   });
 

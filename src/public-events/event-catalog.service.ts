@@ -246,6 +246,9 @@ export class EventCatalogService {
         published: true,
         purgedAt: null,
         retentionAt: { gt: new Date() },
+        events: {
+          some: { visitorsAllowed: true, status: { not: 'CANCELLED' } },
+        },
         ...(slug ? { slug } : {}),
       },
       select: {
@@ -267,6 +270,7 @@ export class EventCatalogService {
             startsAt: true,
             endsAt: true,
             workloadMinutes: true,
+            status: true,
           },
         },
       },

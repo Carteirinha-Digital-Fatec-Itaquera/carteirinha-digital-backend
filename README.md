@@ -84,7 +84,9 @@ O backend está hospedado no [Render](https://render.com).
 
 ## Eventos públicos e certificados por atividade
 
-O módulo `public-events` permite inscrições sem conta de aluno, acesso temporário por código de e-mail, QR renovável, janelas de 15 minutos e GPS obrigatório nas atividades abertas a visitantes. A Secretaria configura edições, modelos por papel e assinantes; exceções presenciais exigem justificativa e autoria. Modelos e assinaturas usados na emissão ficam registrados no snapshot. O layout padrão reutiliza os recursos gráficos do PDF de referência, sem copiar sua assinatura ou dados pessoais.
+O módulo `public-events` permite inscrições sem conta de aluno, identificação autodeclarada sem código de e-mail, QR estável durante a janela de presença e GPS obrigatório nas atividades abertas a visitantes. A Secretaria configura o evento, modelos por papel e assinantes; exceções presenciais exigem justificativa e autoria. Modelos e assinaturas usados na emissão ficam registrados no snapshot. O layout padrão reutiliza os recursos gráficos do PDF de referência, sem copiar sua assinatura ou dados pessoais.
+
+O QR usa o link curto `/p/:reference`; o servidor resolve o evento e o checkpoint. A validade acompanha o término da janela de presença. Checkpoints legados sem janela explícita usam validade de 15 minutos por QR. A atualização é manual, por `POST /events/:id/checkpoints/:type/qr/refresh`, exclusiva da Secretaria ativa: invalida a versão anterior sem alterar o início ou o término da janela. Fechamento e cancelamento também invalidam a presença. Atividades canceladas ficam fora da seleção pública e da agenda do aluno; o histórico permanece preservado.
 
 As rotas administrativas ficam em `/event-management/*` e exigem Secretaria ativa. `/visitor/*` usa cookie próprio HttpOnly, separado do JWT de aluno. O frontend do aluno encaminha essas rotas por proxy de mesma origem. A verificação pública existente continua compatível com certificados anteriores.
 

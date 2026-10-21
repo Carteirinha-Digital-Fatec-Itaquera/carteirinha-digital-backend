@@ -31,6 +31,7 @@ describe('EventController authorization and validation', () => {
     open: jest.fn(),
     close: jest.fn(),
     getOpen: jest.fn(),
+    refreshQr: jest.fn(),
   };
 
   const qrTokenService = {
@@ -132,6 +133,33 @@ describe('EventController authorization and validation', () => {
         workloadMinutes: 120,
       })
       .expect(403));
+
+  it('exige Secretaria para atualizar manualmente o QR', async () => {
+    const path =
+      '/events/11111111-1111-4111-8111-111111111111/checkpoints/check-in/qr/refresh';
+    await request(app.getHttpServer() as Server)
+      .post(path)
+      .expect(401);
+    await request(app.getHttpServer() as Server)
+      .post(path)
+      .set('Authorization', `Bearer ${studentToken}`)
+      .expect(403);
+    checkpointService.refreshQr.mockResolvedValue({
+      id: 'cp',
+      type: 'CHECK_IN',
+      version: 8,
+      closesAt: new Date(Date.now() + 60000),
+    });
+    await request(app.getHttpServer() as Server)
+      .post(path)
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .expect(200);
+    expect(checkpointService.refreshQr).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      'CHECK_IN',
+      7,
+    );
+  });
 
   it('allows secretary to create and passes authenticated creator id', async () => {
     await request(app.getHttpServer() as Server)

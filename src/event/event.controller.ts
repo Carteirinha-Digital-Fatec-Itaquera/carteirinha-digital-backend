@@ -95,6 +95,31 @@ export class EventController {
       checkpoint: checkpoint.type,
       checkpointVersion: checkpoint.version,
       checkpointId: checkpoint.id,
+      closesAt: checkpoint.closesAt,
+    });
+  }
+
+  @Post(':id/checkpoints/:type/qr/refresh')
+  @Roles('secretary')
+  @HttpCode(HttpStatus.OK)
+  @Header('Cache-Control', 'no-store')
+  async refreshCheckpointQr(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('type', new CheckpointTypePipe())
+    type: ReturnType<CheckpointTypePipe['transform']>,
+    @Request() request: AuthenticatedRequest,
+  ) {
+    const checkpoint = await this.checkpointService.refreshQr(
+      id,
+      type,
+      Number(request.user.sub),
+    );
+    return this.qrTokenService.generate({
+      eventId: id,
+      checkpoint: checkpoint.type,
+      checkpointVersion: checkpoint.version,
+      checkpointId: checkpoint.id,
+      closesAt: checkpoint.closesAt,
     });
   }
 

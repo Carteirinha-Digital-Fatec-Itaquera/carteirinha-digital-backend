@@ -64,6 +64,15 @@ function cookie(req: Request) {
     .find((v) => v.startsWith('event_visitor='))
     ?.slice(14);
 }
+function assertEventContext(expectedId: string | undefined, eventId: string) {
+  if (expectedId && expectedId !== eventId) {
+    throw new BadRequestException({
+      code: 'EVENT_MISMATCH',
+      message:
+        'O QR Code pertence a outro evento. Leia o QR da atividade selecionada.',
+    });
+  }
+}
 function requireOrigin(req: Request) {
   const allowed = new Set([
     process.env.STUDENT_APP_URL ||
@@ -119,6 +128,7 @@ export class PublicEventsController {
         startsAt: event.startsAt?.toISOString(),
         endsAt: event.endsAt?.toISOString(),
         workloadMinutes: event.workloadMinutes,
+        status: event.status,
       },
       checkpoint: { type: row.checkpoint.type },
       visitorsAllowed: event.visitorsAllowed,
@@ -157,7 +167,7 @@ export class PublicEventsController {
         },
       },
     });
-    if (!event) {
+    if (!event || event.status === 'CANCELLED') {
       throw new NotFoundException('Evento não encontrado.');
     }
     return {
@@ -272,6 +282,7 @@ export class VisitorController {
     const visitor = await this.visitors.session(cookie(req));
     await this.visitors.limit(`challenge:${visitor.id}`, 30, 60);
     const record = await this.refs.resolveReference(dto.reference);
+    assertEventContext(dto.eventId, record.checkpoint.eventId);
     const participant = await this.visitors.participant(
       visitor.id,
       record.checkpoint.eventId,
@@ -295,6 +306,7 @@ export class VisitorController {
     const visitor = await this.visitors.session(cookie(req));
     await this.visitors.limit(`scan:${visitor.id}`, 60, 60);
     const row = await this.refs.resolveReference(dto.reference);
+    assertEventContext(dto.eventId, row.checkpoint.eventId);
     const participant = await this.visitors.participant(
       visitor.id,
       row.checkpoint.eventId,
