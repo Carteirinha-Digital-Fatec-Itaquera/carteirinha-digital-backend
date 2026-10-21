@@ -153,7 +153,10 @@ export class AttendanceService {
             const visitor = await tx.visitorRegistration.findUnique({
               where: { id: participant.visitorId },
             });
-            if (!visitor?.verifiedAt || visitor.seriesId !== event.seriesId)
+            if (
+              !(visitor?.identifiedAt || visitor?.verifiedAt) ||
+              visitor.seriesId !== event.seriesId
+            )
               throw new ForbiddenException(
                 'Inscrição inválida para esta edição.',
               );

@@ -193,12 +193,30 @@ export class VisitorController {
     private readonly attendance: AttendanceService,
     private readonly operations: EventOperationsService,
   ) {}
-  @Post('registration') @HttpCode(200) register(
+  @Post('registration') @HttpCode(200) async register(
     @Body(validation) dto: RegisterVisitorDto,
     @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ) {
     requireOrigin(req);
-    return this.visitors.register(dto, req.ip || 'unknown');
+    const result = await this.visitors.register(
+      dto,
+      req.ip || 'unknown',
+      cookie(req),
+    );
+    res.cookie('event_visitor', result.token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      expires: result.expiresAt,
+    });
+    return {
+      success: true,
+      expiresAt: result.expiresAt,
+      registrationId: result.visitorId,
+      message: 'Identificação concluída.',
+    };
   }
   @Post('verify') @HttpCode(200) async verify(
     @Body(validation) dto: VerifyVisitorDto,
@@ -224,6 +242,9 @@ export class VisitorController {
       course: visitor.course,
       seriesId: visitor.seriesId,
       retentionAt: visitor.series.retentionAt,
+      identifiedAt: visitor.identifiedAt?.toISOString() || null,
+      verifiedAt: visitor.verifiedAt?.toISOString() || null,
+      isSelfDeclared: Boolean(visitor.identifiedAt && !visitor.verifiedAt),
     };
   }
   @Post('logout') @HttpCode(200) async logout(

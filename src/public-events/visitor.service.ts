@@ -1,17 +1,16 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   HttpException,
   Injectable,
   NotFoundException,
-  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import {
   createHash,
   createHmac,
   randomBytes,
-  randomInt,
   timingSafeEqual,
 } from 'node:crypto';
 import { loadAuthSecrets } from '../auth/auth.config';
@@ -61,7 +60,11 @@ export class VisitorService {
         429,
       );
   }
-  async register(dto: RegisterVisitorDto, ip: string) {
+  async register(
+    dto: RegisterVisitorDto,
+    ip: string,
+    existingSessionToken?: string,
+  ) {
     // Um auditório pode compartilhar o mesmo NAT/proxy; o limite por contato é o controle principal.
     await this.limit(`register:${ip}`, 1000, 600);
     const series = await this.prisma.eventSeries.findUnique({
@@ -77,15 +80,15 @@ export class VisitorService {
       throw new BadRequestException('Curso não pertence à edição.');
     const email = dto.email.trim().toLowerCase();
     const emailHash = visitorIdentityHash(email);
-    await this.limit(`contact:${emailHash}`, 15, 86400);
+    await this.limit(`contact:${emailHash}`, 60, 86400);
     const cpf = dto.cpf?.replace(/\D/g, '');
     if (series.cpfRequired && (!cpf || !validCpf(cpf)))
       throw new BadRequestException('CPF válido obrigatório para esta edição.');
     if (dto.cpf && !series.cpfRequired)
       throw new BadRequestException('Esta edição não solicita CPF.');
     const cpfHash = cpf ? visitorIdentityHash(`cpf:${cpf}`) : null;
-    const code = String(randomInt(100000, 1000000));
-    const registration = await this.prisma.$transaction(async (tx) => {
+
+    return this.prisma.$transaction(async (tx) => {
       const [locked] = await tx.$queryRaw<
         { purgedAt: Date | null; retentionAt: Date }[]
       >`SELECT "purgedAt", "retentionAt" FROM "EventSeries" WHERE "id" = ${dto.seriesId} FOR SHARE`;
@@ -94,67 +97,71 @@ export class VisitorService {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${dto.seriesId + emailHash}, 0))::text`;
       if (cpfHash)
         await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${dto.seriesId + cpfHash}, 0))::text`;
-      const existing = await tx.visitorRegistration.findUnique({
+
+      let existing = await tx.visitorRegistration.findUnique({
         where: { seriesId_emailHash: { seriesId: dto.seriesId, emailHash } },
       });
-      if (
-        existing?.lastChallengeAt &&
-        Date.now() - existing.lastChallengeAt.getTime() < 60000
-      )
-        throw new HttpException(
-          'Aguarde um minuto para solicitar outro código.',
-          429,
+      if (cpfHash) {
+        const existingByCpf = await tx.visitorRegistration.findFirst({
+          where: { seriesId: dto.seriesId, cpfHash },
+        });
+        if (existingByCpf) {
+          if (existing && existing.id !== existingByCpf.id) {
+            throw new ConflictException(
+              'Identificação já cadastrada nesta edição. Se você perdeu o acesso, procure o atendimento da Secretaria presencialmente.',
+            );
+          }
+          existing = existing || existingByCpf;
+        }
+      }
+
+      if (existing) {
+        if (existingSessionToken && /^[\w-]{43}$/.test(existingSessionToken)) {
+          const session = await tx.visitorSession.findUnique({
+            where: { tokenHash: tokenHash(existingSessionToken) },
+          });
+          if (
+            session &&
+            session.visitorId === existing.id &&
+            session.expiresAt > new Date()
+          ) {
+            return {
+              token: existingSessionToken,
+              expiresAt: session.expiresAt,
+              visitorId: existing.id,
+            };
+          }
+        }
+        throw new ConflictException(
+          'Identificação já cadastrada nesta edição. Se você perdeu o acesso, procure o atendimento da Secretaria presencialmente.',
         );
-      // O contato confirmado não pode ter seu nome alterado por uma inscrição não autenticada.
-      if (
-        cpfHash &&
-        (await tx.visitorRegistration.findFirst({
-          where: {
-            seriesId: dto.seriesId,
-            cpfHash,
-            emailHash: { not: emailHash },
-          },
-        }))
-      )
-        throw new BadRequestException(
-          'Não foi possível concluir. Procure a Secretaria para conferir os dados.',
-        );
-      return tx.visitorRegistration.upsert({
-        where: { seriesId_emailHash: { seriesId: dto.seriesId, emailHash } },
-        create: {
+      }
+
+      const registration = await tx.visitorRegistration.create({
+        data: {
           seriesId: dto.seriesId,
           name: dto.name.trim(),
           course: dto.course || null,
           email,
           emailHash,
           cpfHash,
-          otpHash: visitorIdentityHash(code),
-          otpExpiresAt: new Date(Date.now() + 600000),
-          lastChallengeAt: new Date(),
-        },
-        update: {
-          otpHash: visitorIdentityHash(code),
-          otpExpiresAt: new Date(Date.now() + 600000),
-          otpAttempts: 0,
-          lastChallengeAt: new Date(),
+          identifiedAt: new Date(),
+          verifiedAt: null,
         },
       });
-    });
-    try {
-      await this.mail.sendVisitorCode(email, code);
-    } catch {
-      await this.prisma.visitorRegistration.updateMany({
-        where: { id: registration.id, otpHash: visitorIdentityHash(code) },
-        data: { otpHash: null, otpExpiresAt: null },
-      });
-      throw new ServiceUnavailableException(
-        'Não foi possível enviar o código. Tente novamente em um minuto.',
+      const token = randomBytes(32).toString('base64url');
+      const expiresAt = new Date(
+        Math.min(Date.now() + 12 * 3600000, locked.retentionAt.getTime()),
       );
-    }
-    return {
-      registrationId: registration.id,
-      message: 'Enviamos um código para o e-mail informado.',
-    };
+      await tx.visitorSession.create({
+        data: {
+          visitorId: registration.id,
+          tokenHash: tokenHash(token),
+          expiresAt,
+        },
+      });
+      return { token, expiresAt, visitorId: registration.id };
+    });
   }
   async verify(dto: VerifyVisitorDto, ip: string) {
     await this.limit(`verify:${ip}`, 5000, 600);
@@ -172,13 +179,17 @@ export class VisitorService {
         include: { series: true },
       });
       if (
-        !row?.otpHash ||
-        !row.otpExpiresAt ||
-        row.otpExpiresAt <= new Date() ||
-        row.otpAttempts >= 5 ||
+        !row ||
         row.series.purgedAt ||
         row.series.retentionAt <= new Date() ||
         !row.series.published
+      )
+        return null;
+      if (
+        !row.otpHash ||
+        !row.otpExpiresAt ||
+        row.otpExpiresAt <= new Date() ||
+        row.otpAttempts >= 5
       )
         return null;
       await tx.visitorRegistration.update({
@@ -221,10 +232,10 @@ export class VisitorService {
       row.expiresAt <= new Date() ||
       row.visitor.series.retentionAt <= new Date() ||
       row.visitor.series.purgedAt ||
-      !row.visitor.verifiedAt
+      !(row.visitor.identifiedAt || row.visitor.verifiedAt)
     )
       throw new UnauthorizedException(
-        'Sua sessão expirou. Confirme seu e-mail novamente.',
+        'Sua sessão expirou. Identifique-se novamente.',
       );
     return row.visitor;
   }
@@ -243,7 +254,7 @@ export class VisitorService {
       where: { id: eventId },
     });
     if (
-      !visitor?.verifiedAt ||
+      !(visitor?.identifiedAt || visitor?.verifiedAt) ||
       visitor.series.purgedAt ||
       visitor.series.retentionAt <= new Date() ||
       !event?.visitorsAllowed ||

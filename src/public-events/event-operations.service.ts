@@ -299,7 +299,7 @@ export class EventOperationsService {
       where: { id: eventId },
     });
     if (
-      !visitor?.verifiedAt ||
+      !(visitor?.identifiedAt || visitor?.verifiedAt) ||
       visitor.series.purgedAt ||
       !event?.visitorsAllowed ||
       visitor.seriesId !== event.seriesId
@@ -366,6 +366,7 @@ export class EventOperationsService {
           email: null,
           name: 'Cadastro operacional encerrado',
           course: null,
+          identifiedAt: null,
           verifiedAt: null,
           emailHash: null,
           cpfHash: null,

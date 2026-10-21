@@ -24,7 +24,7 @@ export class MailService {
     await this.client.transactionalEmails.sendTransacEmail({
       subject: 'Seu certificado está disponível - Fatec Itaquera', to: [{ email }],
       sender: { name: 'Carteirinha Digital', email: process.env.EVENT_MAIL_SENDER || 'carteirinha.digital.fatec@gmail.com' },
-      textContent: `Seu certificado está disponível. Acesse a área de visitante e confirme seu e-mail: ${url}\nBaixe seu documento dentro do período informado pela organização.`,
+      textContent: `Seu certificado está disponível. Acesse a área de visitante para baixar seu documento: ${url}\nBaixe seu documento dentro do período informado pela organização.`,
     });
   }
 

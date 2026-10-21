@@ -204,6 +204,7 @@ model VisitorRegistration {
   emailHash       String?
   course          String?
   cpfHash         String?
+  identifiedAt    DateTime?
   verifiedAt      DateTime?
   otpHash         String?
   otpExpiresAt    DateTime?

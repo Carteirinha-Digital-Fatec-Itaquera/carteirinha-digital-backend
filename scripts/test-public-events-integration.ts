@@ -189,7 +189,20 @@ async function main() {
     catalog.configure(event.id, { ...config, geoPolicy: null }, 1),
   );
   await catalog.configure(event.id, config, 1);
-  await assert.rejects(catalog.series({ title: edition.title, slug: edition.slug, startsAt: new Date(Date.now() + 3 * 86400000).toISOString(), endsAt: new Date(Date.now() + 4 * 86400000).toISOString(), published: true, courses: ['DSM'] }, 1, edition.id));
+  await assert.rejects(
+    catalog.series(
+      {
+        title: edition.title,
+        slug: edition.slug,
+        startsAt: new Date(Date.now() + 3 * 86400000).toISOString(),
+        endsAt: new Date(Date.now() + 4 * 86400000).toISOString(),
+        published: true,
+        courses: ['DSM'],
+      },
+      1,
+      edition.id,
+    ),
+  );
   const module = await Test.createTestingModule({
     imports: [PublicEventsModule],
   })
@@ -253,15 +266,15 @@ async function main() {
       .set('Origin', origin)
       .send(payload)
       .expect(200);
-    const verifyHttp = await request(app.getHttpServer())
-      .post('/visitor/verify')
-      .set('Origin', origin)
-      .send({ registrationId: registrationHttp.body.registrationId, code: otp })
-      .expect(200);
-    const cookies = verifyHttp.headers['set-cookie'] as unknown as string[];
+    const cookies = registrationHttp.headers[
+      'set-cookie'
+    ] as unknown as string[];
     assert.match(cookies[0], /HttpOnly/);
     assert.match(cookies[0], /SameSite=Lax/);
-    assert.equal(JSON.stringify(verifyHttp.body).includes('token'), false);
+    assert.equal(
+      JSON.stringify(registrationHttp.body).includes('token'),
+      false,
+    );
     const sessionCookie = cookies[0].split(';')[0];
     await request(app.getHttpServer())
       .get('/visitor/session')
@@ -287,8 +300,22 @@ async function main() {
       .expect(401);
     if (process.env.PUBLIC_EVENTS_BROWSER === '1') {
       await app.listen(5309, '127.0.0.1');
-      const { chromium } =
-        require('../../carteirinha-digital-front-end-aluno/node_modules/playwright') as typeof import('../../carteirinha-digital-front-end-aluno/node_modules/playwright');
+      let playwrightPkg: any;
+      try {
+        playwrightPkg = require('playwright');
+      } catch {
+        try {
+          playwrightPkg = require('../../carteirinha-digital-front-end-aluno/node_modules/playwright');
+        } catch {
+          playwrightPkg = null;
+        }
+      }
+      if (!playwrightPkg) {
+        throw new Error(
+          'Playwright não encontrado para execução do PUBLIC_EVENTS_BROWSER=1.',
+        );
+      }
+      const { chromium } = playwrightPkg;
       const browser = await chromium.launch({
         headless: true,
         ...(process.env.PUBLIC_EVENTS_BROWSER_EXECUTABLE
@@ -312,17 +339,11 @@ async function main() {
           .fill(`browser-${run}@example.invalid`);
         await page
           .getByRole('button', {
-            name: 'Receber código de acesso',
-            exact: true,
+            name: /Continuar como visitante/i,
           })
           .click();
-        await page.getByLabel('Código recebido por e-mail').waitFor();
-        await page.getByLabel('Código recebido por e-mail').fill(otp);
         await page
-          .getByRole('button', { name: 'Confirmar e-mail', exact: true })
-          .click();
-        await page
-          .getByRole('heading', { name: 'Olá, Visitante navegador' })
+          .getByRole('heading', { name: /Olá, Visitante navegador/i })
           .waitFor();
         const browserEvent = await events.create(
           {
@@ -349,8 +370,12 @@ async function main() {
           });
           const reference = new URL(result.qrUrl!).pathname;
           await page.goto(`http://localhost:5187${reference}`);
+          await page.getByRole('button', { name: /Sou visitante/i }).click();
           await page
-            .getByRole('button', { name: 'Confirmar presença', exact: true })
+            .getByRole('button', {
+              name:
+                type === 'CHECK_IN' ? /Confirmar Entrada/i : /Confirmar Saída/i,
+            })
             .click();
           await page
             .getByRole('status')
@@ -368,12 +393,11 @@ async function main() {
         });
         await jobs.process(browserCert.artifact!.id);
         await page
-          .getByRole('button', { name: 'Atualizar certificados', exact: true })
+          .getByRole('button', { name: /Atualizar/i })
+          .first()
           .click();
         const fileDownload = page.waitForEvent('download');
-        await page
-          .getByRole('button', { name: 'Baixar PDF', exact: true })
-          .click();
+        await page.getByRole('button', { name: /Baixar PDF/i }).click();
         assert.equal(
           (await fileDownload).suggestedFilename(),
           'certificado.pdf',
@@ -402,20 +426,10 @@ async function main() {
           adminToken,
         );
         const admin = await adminContext.newPage();
-        await admin.goto('http://localhost:5188/eventos/publicos');
+        await admin.goto('http://localhost:5188/eventos');
         await admin
           .getByRole('heading', {
-            name: 'Eventos públicos e certificados',
-            exact: true,
-          })
-          .waitFor();
-        await admin
-          .getByRole('button', { name: 'Assinaturas', exact: true })
-          .click();
-        await admin
-          .getByRole('heading', {
-            name: 'Cadastrar responsável e assinatura',
-            exact: true,
+            name: /Gerenciar Eventos/i,
           })
           .waitFor();
         assert.equal(
@@ -444,7 +458,7 @@ async function main() {
         await adminContext.close();
         await context.close();
         console.log(
-          'PASS navegador: OTP, cookie via proxy, QR entrada/saída, localização simulada, PDF e telas sem overflow em desktop/mobile.',
+          'PASS navegador: identificação direta sem OTP, seletor de perfil, cookie de sessão, QR entrada/saída, localização simulada, PDF e telas sem overflow em desktop/mobile.',
         );
       } finally {
         await browser.close();
@@ -462,29 +476,13 @@ async function main() {
     },
     run,
   );
-  const correct = otp;
-  await assert.rejects(
-    visitors.verify(
-      { registrationId: registration.registrationId, code: '000000' },
-      run,
-    ),
-  );
-  const session = await visitors.verify(
-    { registrationId: registration.registrationId, code: correct },
-    run,
-  );
-  await assert.rejects(
-    visitors.verify(
-      { registrationId: registration.registrationId, code: correct },
-      run,
-    ),
-  );
+  const session = registration;
   assert.equal(
     (await visitors.session(session.token)).name,
     'Visitante de teste',
   );
   const participant = await visitors.participant(
-    registration.registrationId,
+    registration.visitorId,
     event.id,
   );
   assert.equal(
@@ -589,7 +587,7 @@ async function main() {
     jobs.process(cert.artifact!.id),
   ]);
   await jobs.process(cert.artifact!.id);
-  const file = await operations.download(cert.id, registration.registrationId);
+  const file = await operations.download(cert.id, registration.visitorId);
   assert.equal(file.buffer.subarray(0, 4).toString(), '%PDF');
   assert.equal(sent, sentBefore + 1);
   if (process.env.PUBLIC_EVENTS_PDF_EVIDENCE)
@@ -607,8 +605,7 @@ async function main() {
   assert.equal(
     createHash('sha256')
       .update(
-        (await operations.download(cert.id, registration.registrationId))
-          .buffer,
+        (await operations.download(cert.id, registration.visitorId)).buffer,
       )
       .digest('hex'),
     hash,
@@ -625,12 +622,8 @@ async function main() {
     },
     run,
   );
-  await visitors.verify(
-    { registrationId: speakerRegistration.registrationId, code: otp },
-    run,
-  );
   const speakerParticipant = await visitors.participant(
-    speakerRegistration.registrationId,
+    speakerRegistration.visitorId,
     event.id,
   );
   await operations.assignRole(
@@ -684,7 +677,7 @@ async function main() {
         (
           await operations.download(
             speakerCert.id,
-            speakerRegistration.registrationId,
+            speakerRegistration.visitorId,
           )
         ).buffer,
       )
@@ -704,7 +697,7 @@ async function main() {
   );
   await catalog.configure(secondActivity.id, config, 1);
   const secondParticipant = await visitors.participant(
-    registration.registrationId,
+    registration.visitorId,
     secondActivity.id,
   );
   assert.notEqual(secondParticipant.id, participant.id);
@@ -728,7 +721,7 @@ async function main() {
   );
   assert.equal(
     await client.certificate.count({
-      where: { participant: { visitorId: registration.registrationId } },
+      where: { participant: { visitorId: registration.visitorId } },
     }),
     2,
   );
@@ -762,7 +755,7 @@ async function main() {
   assert.equal(await operations.purge(edition.id), true);
   assert.equal(await operations.purge(edition.id), false);
   const purged = await client.visitorRegistration.findUniqueOrThrow({
-    where: { id: registration.registrationId },
+    where: { id: registration.visitorId },
   });
   for (const key of ['email', 'emailHash', 'cpfHash', 'otpHash'] as const)
     assert.equal(purged[key], null);
@@ -813,7 +806,7 @@ async function main() {
   assert.equal(files.has(orphanKey), false);
   assert.equal(files.has(kept.storageKey!), true);
   console.log(
-    'PASS: migrations, OTP único, visitante sem Student, GPS, nonce, janelas, presença, PDF, versão imutável, histórico, expurgo e revogação. E-mail/storage substituídos apenas neste teste.',
+    'PASS: migrations, identificação direta sem OTP, visitante sem Student, GPS, nonce, janelas, presença, PDF, versão imutável, histórico, expurgo e revogação. E-mail/storage substituídos apenas neste teste.',
   );
 }
 void main().finally(() => client.$disconnect());
