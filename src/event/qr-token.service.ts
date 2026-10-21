@@ -46,10 +46,10 @@ export class QrTokenService {
         checkpoint: payload.checkpoint,
         checkpointVersion: payload.checkpointVersion,
         iat: issuedAt,
-        exp: expiresAt,
       },
       {
         secret: this.attendanceQrSecret,
+        expiresIn: expiresInSeconds,
         jwtid: randomUUID(),
       },
     );

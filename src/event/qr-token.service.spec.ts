@@ -89,6 +89,31 @@ describe('QrTokenService', () => {
     }
   });
 
+  it('respeita a janela mesmo com expiresIn padrão do módulo de autenticação', async () => {
+    const jwt = new JwtService({
+      secret: process.env.JWT_SECRET,
+      signOptions: { expiresIn: '1h' },
+    });
+    const service = new QrTokenService(jwt);
+    const closesAt = new Date(Date.now() + 120000);
+    const response = await service.generate({
+      eventId: 'event-id',
+      checkpoint: CheckpointType.CHECK_IN,
+      checkpointVersion: 2,
+      closesAt,
+    });
+    const qrClaims = await jwt.verifyAsync<{ exp: number; iat: number }>(
+      response.qrToken,
+      { secret: process.env.ATTENDANCE_QR_SECRET },
+    );
+    expect(qrClaims.exp * 1000).toBeLessThanOrEqual(closesAt.getTime());
+    expect(qrClaims.exp - qrClaims.iat).toBeLessThanOrEqual(120);
+    const loginClaims = await jwt.verifyAsync<{ exp: number; iat: number }>(
+      await jwt.signAsync({ sub: 'test-student' }),
+    );
+    expect(loginClaims.exp - loginClaims.iat).toBe(3600);
+  });
+
   it('não valida o QR usando JWT_SECRET de login', async () => {
     const jwt = new JwtService();
     const service = new QrTokenService(jwt);
