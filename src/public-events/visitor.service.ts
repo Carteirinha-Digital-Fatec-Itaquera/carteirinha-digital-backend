@@ -82,10 +82,10 @@ export class VisitorService {
     const emailHash = visitorIdentityHash(email);
     await this.limit(`contact:${emailHash}`, 60, 86400);
     const cpf = dto.cpf?.replace(/\D/g, '');
-    if (series.cpfRequired && (!cpf || !validCpf(cpf)))
-      throw new BadRequestException('CPF válido obrigatório para esta edição.');
-    if (dto.cpf && !series.cpfRequired)
-      throw new BadRequestException('Esta edição não solicita CPF.');
+    if (!cpf || !validCpf(cpf))
+      throw new BadRequestException(
+        'Informe um CPF válido para recuperar seus certificados.',
+      );
     const cpfHash = cpf ? visitorIdentityHash(`cpf:${cpf}`) : null;
 
     return this.prisma.$transaction(async (tx) => {
@@ -243,6 +243,110 @@ export class VisitorService {
     if (token)
       await this.prisma.visitorSession.deleteMany({
         where: { tokenHash: tokenHash(token) },
+      });
+  }
+  async bindCpf(token: string | undefined, value: string) {
+    const visitor = await this.session(token);
+    await this.limit(`bind-cpf:${visitor.id}`, 10, 600);
+    const cpf = value.replace(/\D/g, '');
+    if (!validCpf(cpf)) throw new BadRequestException('Informe um CPF válido.');
+    const cpfHash = visitorIdentityHash(`cpf:${cpf}`);
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "EventSeries" WHERE "id" = ${visitor.seriesId} FOR SHARE`;
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${visitor.seriesId + cpfHash}, 0))::text`;
+      await tx.$queryRaw`SELECT "id" FROM "VisitorRegistration" WHERE "id" = ${visitor.id} FOR UPDATE`;
+      const current = await tx.visitorRegistration.findUnique({
+        where: { id: visitor.id },
+        include: { series: true },
+      });
+      if (
+        !current ||
+        current.series.purgedAt ||
+        current.series.retentionAt <= new Date()
+      )
+        throw new UnauthorizedException('Seu acesso expirou.');
+      if (current.cpfHash && current.cpfHash !== cpfHash)
+        throw new ConflictException(
+          'CPF já vinculado. Procure a Secretaria para correções.',
+        );
+      const other = await tx.visitorRegistration.findFirst({
+        where: { seriesId: visitor.seriesId, cpfHash },
+      });
+      if (other && other.id !== visitor.id)
+        throw new ConflictException(
+          'Não foi possível vincular o CPF. Procure a Secretaria.',
+        );
+      await tx.visitorRegistration.update({
+        where: { id: visitor.id },
+        data: { cpfHash },
+      });
+      return { success: true };
+    });
+  }
+  async recoverCertificates(value: string, ip: string) {
+    await this.limit(`certificate-recovery:${ip}`, 300, 600);
+    const cpf = value.replace(/\D/g, '');
+    if (!validCpf(cpf)) throw new BadRequestException('Informe um CPF válido.');
+    const cpfHash = visitorIdentityHash(`cpf:${cpf}`);
+    await this.limit(`certificate-identity:${cpfHash}`, 5, 600);
+    const visitor = await this.prisma.visitorRegistration.findFirst({
+      where: {
+        cpfHash,
+        series: { purgedAt: null, retentionAt: { gt: new Date() } },
+      },
+      include: { series: true },
+      orderBy: { series: { retentionAt: 'desc' } },
+    });
+    if (!visitor)
+      throw new UnauthorizedException(
+        'Acesso não disponível. Confira o CPF ou procure a Secretaria.',
+      );
+    const token = randomBytes(32).toString('base64url');
+    const expiresAt = new Date(
+      Math.min(Date.now() + 3600000, visitor.series.retentionAt.getTime()),
+    );
+    // A recuperação nunca cria uma sessão de presença: o hash tem um domínio separado.
+    await this.prisma.visitorSession.create({
+      data: {
+        visitorId: visitor.id,
+        tokenHash: tokenHash(`certificates:${token}`),
+        expiresAt,
+      },
+    });
+    return { token, expiresAt };
+  }
+  async certificateVisitorIds(
+    visitorToken?: string,
+    certificateToken?: string,
+  ) {
+    if (certificateToken && /^[\w-]{43}$/.test(certificateToken)) {
+      const row = await this.prisma.visitorSession.findUnique({
+        where: { tokenHash: tokenHash(`certificates:${certificateToken}`) },
+        include: { visitor: { include: { series: true } } },
+      });
+      if (
+        row &&
+        row.expiresAt > new Date() &&
+        row.visitor.cpfHash &&
+        !row.visitor.series.purgedAt &&
+        row.visitor.series.retentionAt > new Date()
+      ) {
+        const visitors = await this.prisma.visitorRegistration.findMany({
+          where: {
+            cpfHash: row.visitor.cpfHash,
+            series: { purgedAt: null, retentionAt: { gt: new Date() } },
+          },
+          select: { id: true },
+        });
+        return visitors.map((visitor) => visitor.id);
+      }
+    }
+    return [(await this.session(visitorToken)).id];
+  }
+  async logoutCertificates(token?: string) {
+    if (token)
+      await this.prisma.visitorSession.deleteMany({
+        where: { tokenHash: tokenHash(`certificates:${token}`) },
       });
   }
   async participant(visitorId: string, eventId: string) {

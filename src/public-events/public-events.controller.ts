@@ -41,6 +41,7 @@ import {
   SignerDto,
   TemplateDto,
   VerifyVisitorDto,
+  VisitorCpfDto,
   VisitorScanDto,
   StudentChallengeDto,
   SignerSelectionDto,
@@ -57,12 +58,12 @@ const validation = new ValidationPipe({
   forbidNonWhitelisted: true,
 });
 type AuthRequest = Request & { user: TokenPayload };
-function cookie(req: Request) {
+function cookie(req: Request, name = 'event_visitor') {
   return req.headers.cookie
     ?.split(';')
     .map((v) => v.trim())
-    .find((v) => v.startsWith('event_visitor='))
-    ?.slice(14);
+    .find((v) => v.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
 }
 function assertEventContext(expectedId: string | undefined, eventId: string) {
   if (expectedId && expectedId !== eventId) {
@@ -214,6 +215,7 @@ export class VisitorController {
       req.ip || 'unknown',
       cookie(req),
     );
+    res.clearCookie('event_certificates', { path: '/' });
     res.cookie('event_visitor', result.token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -255,6 +257,7 @@ export class VisitorController {
       identifiedAt: visitor.identifiedAt?.toISOString() || null,
       verifiedAt: visitor.verifiedAt?.toISOString() || null,
       isSelfDeclared: Boolean(visitor.identifiedAt && !visitor.verifiedAt),
+      hasCpf: Boolean(visitor.cpfHash),
     };
   }
   @Post('logout') @HttpCode(200) async logout(
@@ -263,7 +266,9 @@ export class VisitorController {
   ) {
     requireOrigin(req);
     await this.visitors.logout(cookie(req));
+    await this.visitors.logoutCertificates(cookie(req, 'event_certificates'));
     res.clearCookie('event_visitor', { path: '/' });
+    res.clearCookie('event_certificates', { path: '/' });
     return { success: true };
   }
   @Post('enroll/:eventId') async enroll(
@@ -343,10 +348,39 @@ export class VisitorController {
       orderBy: { createdAt: 'desc' },
     });
   }
+  @Post('cpf') @HttpCode(200) bindCpf(
+    @Body(validation) dto: VisitorCpfDto,
+    @Req() req: Request,
+  ) {
+    requireOrigin(req);
+    return this.visitors.bindCpf(cookie(req), dto.cpf);
+  }
+  @Post('certificates/access') @HttpCode(200) async recoverCertificates(
+    @Body(validation) dto: VisitorCpfDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    requireOrigin(req);
+    const result = await this.visitors.recoverCertificates(
+      dto.cpf,
+      req.ip || 'unknown',
+    );
+    res.cookie('event_certificates', result.token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      expires: result.expiresAt,
+    });
+    return { success: true, expiresAt: result.expiresAt };
+  }
   @Get('certificates') async certificates(@Req() req: Request) {
-    const visitor = await this.visitors.session(cookie(req));
+    const visitorIds = await this.visitors.certificateVisitorIds(
+      cookie(req),
+      cookie(req, 'event_certificates'),
+    );
     return this.prisma.certificate.findMany({
-      where: { participant: { visitorId: visitor.id } },
+      where: { participant: { visitorId: { in: visitorIds } } },
       select: {
         id: true,
         verificationCode: true,
@@ -363,8 +397,20 @@ export class VisitorController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const visitor = await this.visitors.session(cookie(req));
-    const file = await this.operations.download(id, visitor.id);
+    const visitorIds = await this.visitors.certificateVisitorIds(
+      cookie(req),
+      cookie(req, 'event_certificates'),
+    );
+    const certificate = await this.prisma.certificate.findFirst({
+      where: { id, participant: { visitorId: { in: visitorIds } } },
+      select: { participant: { select: { visitorId: true } } },
+    });
+    if (!certificate?.participant?.visitorId)
+      throw new NotFoundException('Certificado indisponível.');
+    const file = await this.operations.download(
+      id,
+      certificate.participant.visitorId,
+    );
     res
       .type('application/pdf')
       .setHeader(

@@ -12,7 +12,10 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { EventQueryDto } from './dto/event-query.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { lockEventForMutation } from './event-mutation-lock';
-import { assertGeoPolicy, type GeoPolicy } from '../public-events/presence-policy';
+import {
+  assertGeoPolicy,
+  type GeoPolicy,
+} from '../public-events/presence-policy';
 
 const eventInclude = {
   checkpoints: {
@@ -85,7 +88,7 @@ export class EventService {
               endsAt,
               retentionAt: new Date(endsAt.getTime() + 30 * 86400000),
               courses: dto.organizerCourse ? [dto.organizerCourse] : ['Geral'],
-              cpfRequired: false,
+              cpfRequired: true,
             },
           });
           seriesId = autoSeries.id;
@@ -346,11 +349,7 @@ export class EventService {
       }
 
       const certificatePolicies =
-        await this.validateAndBuildCertificatePolicies(
-          tx,
-          dto,
-          event.certificatePolicies,
-        );
+        await this.validateAndBuildCertificatePolicies(tx, dto);
 
       let seriesId = dto.seriesId !== undefined ? dto.seriesId : event.seriesId;
 
@@ -364,10 +363,11 @@ export class EventService {
             startsAt,
             endsAt,
             retentionAt: new Date(endsAt.getTime() + 30 * 86400000),
-            courses: (dto.organizerCourse ?? event.organizerCourse)
-              ? [dto.organizerCourse ?? event.organizerCourse!]
-              : ['Geral'],
-            cpfRequired: false,
+            courses:
+              (dto.organizerCourse ?? event.organizerCourse)
+                ? [dto.organizerCourse ?? event.organizerCourse!]
+                : ['Geral'],
+            cpfRequired: true,
           },
         });
         seriesId = autoSeries.id;
@@ -379,9 +379,11 @@ export class EventService {
           throw new BadRequestException('Edição inválida ou arquivada.');
         }
         if (series.isAutomatic) {
-          const courses = (dto.organizerCourse !== undefined
-            ? dto.organizerCourse
-            : event.organizerCourse)
+          const courses = (
+            dto.organizerCourse !== undefined
+              ? dto.organizerCourse
+              : event.organizerCourse
+          )
             ? [
                 (dto.organizerCourse !== undefined
                   ? dto.organizerCourse
@@ -539,7 +541,6 @@ export class EventService {
       speakerSignerIds?: string[];
       certificatePolicies?: unknown;
     },
-    _currentPolicies?: unknown,
   ): Promise<Record<string, unknown> | null | undefined> {
     const rawPolicies = dto.certificatePolicies as
       | Record<string, { templateId?: string; signerIds?: string[] }>
@@ -552,8 +553,7 @@ export class EventService {
 
     const attendeeTemplateId =
       dto.attendeeTemplateId ?? rawPolicies?.ATTENDEE?.templateId;
-    const signerIds =
-      dto.signerIds ?? rawPolicies?.ATTENDEE?.signerIds;
+    const signerIds = dto.signerIds ?? rawPolicies?.ATTENDEE?.signerIds;
     const speakerTemplateId =
       dto.speakerTemplateId ?? rawPolicies?.SPEAKER?.templateId;
     const speakerSignerIds =

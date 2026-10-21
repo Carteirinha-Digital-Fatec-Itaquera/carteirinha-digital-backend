@@ -42,11 +42,14 @@ export class RegisterVisitorDto {
   name: string;
   @IsEmail() @MaxLength(254) email: string;
   @IsOptional() @IsString() @MaxLength(120) course?: string;
-  @IsOptional() @IsString() @Length(11, 14) cpf?: string;
+  @IsString() @Matches(/^(?:\d{11}|\d{3}\.\d{3}\.\d{3}-\d{2})$/) cpf: string;
 }
 export class VerifyVisitorDto {
   @IsUUID() registrationId: string;
   @IsString() @Length(6, 6) code: string;
+}
+export class VisitorCpfDto {
+  @IsString() @Matches(/^(?:\d{11}|\d{3}\.\d{3}\.\d{3}-\d{2})$/) cpf: string;
 }
 export class TemplateDto {
   @IsString() @Length(3, 120) name: string;

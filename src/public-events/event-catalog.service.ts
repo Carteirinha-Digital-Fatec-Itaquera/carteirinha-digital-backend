@@ -5,7 +5,7 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import { Prisma, type Event } from '@prisma/client';
+import { type Event } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { EventStorageService } from './event-storage.service';
 import { EventService } from '../event/event.service';
@@ -15,7 +15,6 @@ import {
   SignerDto,
   TemplateDto,
 } from './public-events.dto';
-import { assertGeoPolicy } from './presence-policy';
 
 export interface TemplateConfig {
   heading: string;
@@ -72,6 +71,7 @@ export class EventCatalogService {
       }
       const data = {
         ...dto,
+        cpfRequired: true,
         startsAt,
         endsAt,
         retentionAt,
@@ -138,13 +138,15 @@ export class EventCatalogService {
         name: 'XIII Semana de Tecnologia — Participante',
         role: 'ATTENDEE',
         heading: 'CERTIFICADO',
-        edition: "XIII Semana de Tecnologia da Fatec Itaquera 'Professor Miguel Reale'",
+        edition:
+          "XIII Semana de Tecnologia da Fatec Itaquera 'Professor Miguel Reale'",
       },
       {
         name: 'XIII Semana de Tecnologia — Palestrante',
         role: 'SPEAKER',
         heading: 'CERTIFICADO',
-        edition: "XIII Semana de Tecnologia da Fatec Itaquera 'Professor Miguel Reale'",
+        edition:
+          "XIII Semana de Tecnologia da Fatec Itaquera 'Professor Miguel Reale'",
       },
     ];
 
