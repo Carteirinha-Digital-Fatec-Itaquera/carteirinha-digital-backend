@@ -250,6 +250,7 @@ async function main() {
     const payload = {
       seriesId: edition.id,
       name: 'Visitante HTTP',
+      cpf: '52998224725',
       email: `http-${run}@example.invalid`,
     };
     await request(app.getHttpServer())
@@ -269,13 +270,17 @@ async function main() {
     const cookies = registrationHttp.headers[
       'set-cookie'
     ] as unknown as string[];
-    assert.match(cookies[0], /HttpOnly/);
-    assert.match(cookies[0], /SameSite=Lax/);
+    const visitorCookie = cookies.find((cookie) =>
+      cookie.startsWith('event_visitor='),
+    );
+    assert.ok(visitorCookie);
+    assert.match(visitorCookie, /HttpOnly/);
+    assert.match(visitorCookie, /SameSite=Lax/);
     assert.equal(
       JSON.stringify(registrationHttp.body).includes('token'),
       false,
     );
-    const sessionCookie = cookies[0].split(';')[0];
+    const sessionCookie = visitorCookie.split(';')[0];
     await request(app.getHttpServer())
       .get('/visitor/session')
       .set('Cookie', sessionCookie)
@@ -526,6 +531,7 @@ async function main() {
     {
       seriesId: edition.id,
       name: 'Visitante de teste',
+      cpf: '11144477735',
       email: `${run}@example.invalid`,
       course: 'DSM',
     },
@@ -695,6 +701,7 @@ async function main() {
     {
       seriesId: edition.id,
       name: 'Palestrante visitante',
+      cpf: '12345678909',
       email: `speaker-${run}@example.invalid`,
     },
     run,

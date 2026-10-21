@@ -24,6 +24,7 @@ interface MockPrisma {
   visitorRegistration: {
     findUnique: jest.Mock;
     findFirst: jest.Mock;
+    findMany: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
   };
@@ -72,6 +73,7 @@ describe('VisitorService - Identificação sem OTP e Sessão Direta', () => {
       visitorRegistration: {
         findUnique: jest.fn(),
         findFirst: jest.fn(),
+        findMany: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
       },
@@ -117,6 +119,7 @@ describe('VisitorService - Identificação sem OTP e Sessão Direta', () => {
       name: 'Visitante Teste',
       email: 'visitante@example.com',
       course: 'DSM',
+      cpf: '52998224725',
     };
 
     it('cria identificação autodeclarada e sessão temporária diretamente sem enviar e-mail', async () => {
@@ -242,7 +245,7 @@ describe('VisitorService - Identificação sem OTP e Sessão Direta', () => {
       });
 
       await expect(
-        service.register({ ...validDto, cpf: undefined }, '127.0.0.1'),
+        service.register({ ...validDto, cpf: '' }, '127.0.0.1'),
       ).rejects.toThrow(BadRequestException);
 
       await expect(
@@ -250,7 +253,7 @@ describe('VisitorService - Identificação sem OTP e Sessão Direta', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('rejeita CPF se a edição não solicitar CPF', async () => {
+    it('exige CPF válido mesmo em edição antiga que não solicitava CPF', async () => {
       prismaMock.eventSeries.findUnique.mockResolvedValue({
         ...validSeries,
         cpfRequired: false,
@@ -258,6 +261,9 @@ describe('VisitorService - Identificação sem OTP e Sessão Direta', () => {
 
       await expect(
         service.register({ ...validDto, cpf: '12345678901' }, '127.0.0.1'),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.register({ ...validDto, cpf: '' }, '127.0.0.1'),
       ).rejects.toThrow(BadRequestException);
     });
 
