@@ -632,12 +632,40 @@ export class EventManagementController {
       dto.signerIds.length > 3
     )
       throw new BadRequestException('Selecione os assinantes para a prévia.');
+
+    if (new Set(dto.signerIds).size !== dto.signerIds.length) {
+      throw new BadRequestException('Selecione assinantes distintos.');
+    }
+
     const template = await this.prisma.certificateTemplate.findUniqueOrThrow({
       where: { id },
     });
+
     const signers = await this.prisma.certificateSigner.findMany({
       where: { id: { in: dto.signerIds }, archived: false },
     });
+
+    if (signers.length !== dto.signerIds.length) {
+      throw new BadRequestException('Assinante arquivado ou inexistente.');
+    }
+
+    const signersMap = new Map(signers.map((s) => [s.id, s]));
+    const orderedSigners = dto.signerIds
+      .map((signerId) => signersMap.get(signerId)!)
+      .filter(Boolean);
+
+    const isSpeaker = template.role === 'SPEAKER';
+    const studentName = isSpeaker
+      ? (dto.speaker?.trim() || 'Nome do Palestrante de Demonstração')
+      : 'Nome completo de demonstração';
+    const eventTitle =
+      dto.eventTitle?.trim() || 'Título da palestra de demonstração';
+    const promoter = dto.promoter?.trim() || '';
+    const startsAt = dto.startsAt || '2026-10-26T18:00:00Z';
+    const endsAt = dto.endsAt || '2026-10-26T20:00:00Z';
+    const eventDate = startsAt.slice(0, 10);
+    const workload = dto.workload?.trim() || '2 horas';
+
     const buffer = await this.pdf.render(
       {
         id: 'preview',
@@ -648,23 +676,24 @@ export class EventManagementController {
         revokedAt: null,
         payloadSnapshot: {
           version: 2,
-          studentName: 'Nome completo de demonstração',
+          studentName,
           studentRa: '',
           course: '',
-          eventTitle: 'Título da palestra de demonstração',
-          eventDate: '2026-10-26',
-          workload: '2 horas',
-          speaker: 'Palestrante de demonstração',
+          eventTitle,
+          eventDate,
+          workload,
+          speaker: dto.speaker?.trim() || 'Palestrante de demonstração',
           institution: 'Fatec Itaquera',
           role: template.role,
-          startsAt: '2026-10-26T18:00:00Z',
-          endsAt: '2026-10-26T20:00:00Z',
+          startsAt,
+          endsAt,
+          promoter,
           template: {
             id,
             version: template.version,
             ...(template.config as unknown as TemplateConfig),
           },
-          signers: signers.map((s) => ({
+          signers: orderedSigners.map((s) => ({
             id: s.id,
             name: s.name,
             title: s.title,

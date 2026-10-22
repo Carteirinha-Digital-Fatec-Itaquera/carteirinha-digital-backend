@@ -121,6 +121,34 @@ export class SignerSelectionDto {
   @ArrayMaxSize(3)
   @IsUUID('4', { each: true })
   signerIds: string[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  eventTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  speaker?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  promoter?: string;
+
+  @IsOptional()
+  @IsDateString()
+  startsAt?: string;
+
+  @IsOptional()
+  @IsDateString()
+  endsAt?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  workload?: string;
 }
 export class RoleMutationDto {
   @IsIn(['ATTENDEE', 'SPEAKER']) role: string;
