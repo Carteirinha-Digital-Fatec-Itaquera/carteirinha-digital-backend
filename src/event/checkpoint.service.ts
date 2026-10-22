@@ -76,10 +76,36 @@ export class CheckpointService {
       );
 
       const isReopening = Boolean(checkpoint.openedAt);
+      let effectiveOpenedAt = checkpoint.openedAt;
+      let effectiveClosesAt = checkpoint.closesAt;
 
       if (isReopening) {
+        // Consultar histórico de auditoria para validar a primeira abertura real comprovada
+        const openAudits = await tx.eventAudit.findMany({
+          where: {
+            eventId,
+            action: `CHECKPOINT_OPEN_${type}`,
+          },
+          orderBy: { createdAt: 'asc' },
+        });
+
+        if (openAudits.length > 0) {
+          const firstOpen = openAudits[0].createdAt;
+          const durationMinutes = event.windowMinutes ?? 15;
+          effectiveOpenedAt = firstOpen;
+          effectiveClosesAt = new Date(
+            firstOpen.getTime() + durationMinutes * 60000,
+          );
+        } else {
+          // Registro legado sem histórico de auditoria comprovado da primeira abertura
+          // Bloquear reabertura de legado sem prova conforme política
+          throw new ConflictException(
+            `Checkpoint legado sem histórico de auditoria comprovado não pode ser reaberto.`,
+          );
+        }
+
         // Validação de tempo da reabertura: estritamente dentro da janela original
-        if (!checkpoint.closesAt || now >= checkpoint.closesAt) {
+        if (!effectiveClosesAt || now >= effectiveClosesAt) {
           throw new ConflictException(
             `Janela do ${type} expirada. Não é possível reabrir.`,
           );
@@ -87,7 +113,21 @@ export class CheckpointService {
       }
 
       if (type === CheckpointType.CHECK_IN) {
-        if (event.status === EventStatus.COMPLETED || checkOut?.openedAt) {
+        const checkOutAudit = await tx.eventAudit.findMany({
+          where: {
+            eventId,
+            action: {
+              in: ['CHECKPOINT_OPEN_CHECK_OUT', 'CHECKPOINT_REOPEN_CHECK_OUT'],
+            },
+          },
+          take: 1,
+        });
+
+        if (
+          event.status === EventStatus.COMPLETED ||
+          checkOut?.openedAt ||
+          checkOutAudit.length > 0
+        ) {
           throw new ConflictException(
             'CHECK_IN não pode ser reaberto após o início do CHECK_OUT',
           );
@@ -125,9 +165,9 @@ export class CheckpointService {
       }
 
       const durationMinutes = event.windowMinutes ?? 15;
-      const openedAt = isReopening ? checkpoint.openedAt! : now;
+      const openedAt = isReopening ? effectiveOpenedAt! : now;
       const closesAt = isReopening
-        ? checkpoint.closesAt!
+        ? effectiveClosesAt!
         : new Date(now.getTime() + durationMinutes * 60000);
 
       const result = await tx.eventCheckpoint.updateMany({

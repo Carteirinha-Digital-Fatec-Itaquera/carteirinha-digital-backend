@@ -54,7 +54,13 @@ function createPrisma(eventOverrides: Partial<MockEvent> = {}) {
     checkpoints,
     ...eventOverrides,
   };
-  const audits: Array<{ action: string; eventId: string; reason?: string }> = [];
+  const audits: Array<{
+    action: string;
+    eventId: string;
+    reason?: string;
+    secretaryId?: number;
+    createdAt: Date;
+  }> = [];
   const state = {
     event,
     updatedEventStatus: undefined as EventStatus | undefined,
@@ -65,10 +71,51 @@ function createPrisma(eventOverrides: Partial<MockEvent> = {}) {
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue([]),
     eventAudit: {
-      create: jest.fn().mockImplementation(({ data }: { data: any }) => {
-        audits.push(data);
-        return data;
-      }),
+      create: jest.fn().mockImplementation(
+        ({
+          data,
+        }: {
+          data: {
+            action: string;
+            eventId: string;
+            reason?: string;
+            secretaryId?: number;
+            createdAt?: Date;
+          };
+        }) => {
+          const entry = {
+            ...data,
+            createdAt: data.createdAt || new Date(),
+          };
+          audits.push(entry);
+          return entry;
+        },
+      ),
+      findMany: jest.fn().mockImplementation(
+        ({
+          where,
+        }: {
+          where?: {
+            eventId?: string;
+            action?: string | { in: string[] };
+          };
+        } = {}) => {
+          return audits.filter((a) => {
+            if (where?.eventId && a.eventId !== where.eventId) return false;
+            if (where?.action) {
+              if (typeof where.action === 'string' && a.action !== where.action)
+                return false;
+              if (
+                typeof where.action === 'object' &&
+                'in' in where.action &&
+                !where.action.in.includes(a.action)
+              )
+                return false;
+            }
+            return true;
+          });
+        },
+      ),
     },
     event: {
       findUnique: jest.fn().mockImplementation(() => state.event),
@@ -285,6 +332,11 @@ describe('CheckpointService', () => {
     const { prisma, state } = createPrisma({
       status: EventStatus.IN_PROGRESS,
     });
+    state.audits.push({
+      action: 'CHECKPOINT_OPEN_CHECK_IN',
+      eventId: 'event-id',
+      createdAt: originalOpenedAt,
+    });
     const checkIn = state.event.checkpoints[0];
     checkIn.isOpen = false;
     checkIn.openedAt = originalOpenedAt;
@@ -298,9 +350,9 @@ describe('CheckpointService', () => {
     expect(result.closedAt).toBeNull();
     expect(result.openedAt).toBe(originalOpenedAt.toISOString());
     expect(result.closesAt).toBe(originalClosesAt.toISOString());
-    expect(state.audits).toHaveLength(1);
-    expect(state.audits[0].action).toBe('CHECKPOINT_REOPEN_CHECK_IN');
-    expect(state.audits[0].secretaryId).toBe(99);
+    expect(state.audits).toHaveLength(2);
+    expect(state.audits[1].action).toBe('CHECKPOINT_REOPEN_CHECK_IN');
+    expect(state.audits[1].secretaryId).toBe(99);
   });
 
   it('bloqueia reabertura de CHECK_IN se a janela original tiver expirado', async () => {
@@ -308,6 +360,11 @@ describe('CheckpointService', () => {
     const expiredClosesAt = new Date(Date.now() - 5 * 60 * 1000);
     const { prisma, state } = createPrisma({
       status: EventStatus.IN_PROGRESS,
+    });
+    state.audits.push({
+      action: 'CHECKPOINT_OPEN_CHECK_IN',
+      eventId: 'event-id',
+      createdAt: expiredOpenedAt,
     });
     const checkIn = state.event.checkpoints[0];
     checkIn.isOpen = false;
@@ -321,11 +378,56 @@ describe('CheckpointService', () => {
     ).rejects.toThrow(ConflictException);
   });
 
+  it('bloqueia reabertura de checkpoint legado sem histórico de auditoria comprovado', async () => {
+    const { prisma, state } = createPrisma({
+      status: EventStatus.IN_PROGRESS,
+    });
+    const checkIn = state.event.checkpoints[0];
+    checkIn.isOpen = false;
+    checkIn.openedAt = new Date(Date.now() - 5 * 60 * 1000);
+    checkIn.closesAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    const service = new CheckpointService(prisma);
+    await expect(
+      service.open('event-id', CheckpointType.CHECK_IN),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('reconstrói primeira abertura de 20 min atrás pela auditoria e rejeita reabertura mesmo com openedAt recente', async () => {
+    const { prisma, state } = createPrisma({
+      status: EventStatus.IN_PROGRESS,
+    });
+    const now = Date.now();
+    const firstOpen = new Date(now - 20 * 60 * 1000);
+    const overwrittenOpen = new Date(now - 10 * 60 * 1000);
+
+    state.audits.push({
+      action: 'CHECKPOINT_OPEN_CHECK_IN',
+      eventId: 'event-id',
+      createdAt: firstOpen,
+    });
+
+    const checkIn = state.event.checkpoints[0];
+    checkIn.isOpen = false;
+    checkIn.openedAt = overwrittenOpen;
+    checkIn.closesAt = new Date(now + 5 * 60 * 1000);
+
+    const service = new CheckpointService(prisma);
+    await expect(
+      service.open('event-id', CheckpointType.CHECK_IN),
+    ).rejects.toThrow(ConflictException);
+  });
+
   it('reabre CHECK_OUT em evento COMPLETED dentro da janela original e transiciona para IN_PROGRESS', async () => {
     const originalOpenedAt = new Date(Date.now() - 4 * 60 * 1000);
     const originalClosesAt = new Date(Date.now() + 11 * 60 * 1000);
     const { prisma, state } = createPrisma({
       status: EventStatus.COMPLETED,
+    });
+    state.audits.push({
+      action: 'CHECKPOINT_OPEN_CHECK_OUT',
+      eventId: 'event-id',
+      createdAt: originalOpenedAt,
     });
     const checkIn = state.event.checkpoints[0];
     checkIn.isOpen = false;
@@ -347,7 +449,7 @@ describe('CheckpointService', () => {
     expect(result.openedAt).toBe(originalOpenedAt.toISOString());
     expect(result.closesAt).toBe(originalClosesAt.toISOString());
     expect(state.event.status).toBe(EventStatus.IN_PROGRESS);
-    expect(state.audits[0].action).toBe('CHECKPOINT_REOPEN_CHECK_OUT');
+    expect(state.audits[1].action).toBe('CHECKPOINT_REOPEN_CHECK_OUT');
   });
 
   it('fecha CHECK_OUT reaberto e retorna o evento para COMPLETED', async () => {
@@ -360,7 +462,11 @@ describe('CheckpointService', () => {
     checkOut.closesAt = new Date(Date.now() + 10 * 60 * 1000);
 
     const service = new CheckpointService(prisma);
-    const result = await service.close('event-id', CheckpointType.CHECK_OUT, 12);
+    const result = await service.close(
+      'event-id',
+      CheckpointType.CHECK_OUT,
+      12,
+    );
 
     expect(result.isOpen).toBe(false);
     expect(state.event.status).toBe(EventStatus.COMPLETED);
