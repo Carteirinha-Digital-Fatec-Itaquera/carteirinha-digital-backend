@@ -222,6 +222,18 @@ export class CertificateService {
         }
       }
 
+      if (certificate && client.certificateArtifact?.create) {
+        await client.certificateArtifact
+          .create({
+            data: {
+              certificateId: certificate.id,
+              state: 'PENDING_RENDER',
+              deliveryState: 'PENDING',
+            },
+          })
+          .catch(() => {});
+      }
+
       return certificate;
     };
 

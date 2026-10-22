@@ -176,6 +176,7 @@ export class EventJobsService {
         include: {
           certificate: {
             include: {
+              event: true,
               participant: {
                 include: { visitor: { include: { series: true } } },
               },
@@ -193,31 +194,83 @@ export class EventJobsService {
         });
         return;
       }
-      const visitor = latest.certificate.participant?.visitor;
-      if (
-        visitor?.email &&
-        !visitor.series.purgedAt &&
-        visitor.series.retentionAt > new Date() &&
-        job.deliveryAttempts < 5
-      ) {
-        const current = await this.prisma.certificate.findUniqueOrThrow({
-          where: { id: cert.id },
-        });
-        if (!current.revokedAt) {
-          await this.mail.sendVisitorCertificate(
-            visitor.email,
-            `${(process.env.STUDENT_APP_URL || 'https://carteirinha-digital-front-end-aluno.vercel.app').replace(/\/$/, '')}/visitantes`,
-          );
-          await this.prisma.certificateArtifact.updateMany({
-            where: { id, leaseToken, deliveryState: 'PENDING' },
-            data: { deliveryState: 'SENT' },
-          });
-        }
-      } else
+      const studentAppUrl = (
+        process.env.STUDENT_APP_URL ||
+        'https://carteirinha-digital-front-end-aluno.vercel.app'
+      ).replace(/\/$/, '');
+      const current = await this.prisma.certificate.findUniqueOrThrow({
+        where: { id: cert.id },
+      });
+      if (current.revokedAt || latest.certificate.event?.status === 'CANCELLED') {
         await this.prisma.certificateArtifact.updateMany({
           where: { id, leaseToken },
-          data: { deliveryState: visitor ? 'EXPIRED' : 'NONE' },
+          data: { deliveryState: 'EXPIRED', leaseUntil: null, leaseToken: null },
         });
+        return;
+      }
+      const studentAccountId =
+        latest.certificate.studentAccountId ||
+        latest.certificate.participant?.accountId;
+      const visitor = latest.certificate.participant?.visitor;
+
+      if (studentAccountId) {
+        const student = await this.prisma.student.findUnique({
+          where: { accountId: studentAccountId },
+          select: { ra: true, name: true, email: true, status: true },
+        });
+        if (!student || !student.email) {
+          await this.prisma.certificateArtifact.updateMany({
+            where: { id, leaseToken },
+            data: { deliveryState: 'FAILED', leaseUntil: null, leaseToken: null },
+          });
+          return;
+        }
+        await this.mail.sendCertificateNotification({
+          email: student.email,
+          recipientName: student.name,
+          eventTitle: latest.certificate.event.title,
+          accessUrl: `${studentAppUrl}/certificados`,
+          profile: 'ALUNO',
+        });
+        await this.prisma.certificateArtifact.updateMany({
+          where: { id, leaseToken, deliveryState: 'PENDING' },
+          data: { deliveryState: 'SENT' },
+        });
+      } else if (visitor) {
+        if (!visitor.email) {
+          await this.prisma.certificateArtifact.updateMany({
+            where: { id, leaseToken },
+            data: { deliveryState: 'FAILED', leaseUntil: null, leaseToken: null },
+          });
+          return;
+        }
+        if (
+          visitor.series.purgedAt ||
+          visitor.series.retentionAt <= new Date()
+        ) {
+          await this.prisma.certificateArtifact.updateMany({
+            where: { id, leaseToken },
+            data: { deliveryState: 'EXPIRED', leaseUntil: null, leaseToken: null },
+          });
+          return;
+        }
+        await this.mail.sendCertificateNotification({
+          email: visitor.email,
+          recipientName: visitor.name,
+          eventTitle: latest.certificate.event.title,
+          accessUrl: `${studentAppUrl}/visitantes/certificados`,
+          profile: 'VISITANTE',
+        });
+        await this.prisma.certificateArtifact.updateMany({
+          where: { id, leaseToken, deliveryState: 'PENDING' },
+          data: { deliveryState: 'SENT' },
+        });
+      } else {
+        await this.prisma.certificateArtifact.updateMany({
+          where: { id, leaseToken },
+          data: { deliveryState: 'NONE' },
+        });
+      }
       await this.prisma.certificateArtifact.updateMany({
         where: { id, leaseToken },
         data: { leaseUntil: null, leaseToken: null },
