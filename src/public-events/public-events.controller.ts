@@ -27,6 +27,12 @@ import { PrismaService } from '../database/prisma.service';
 import { AttendanceQrReferenceService } from '../attendance/attendance-qr-reference.service';
 import { AttendanceService } from '../attendance/attendance.service';
 import { TechnologyPdfService } from '../certificate/technology-pdf.service';
+import { PdfGeneratorService } from '../certificate/pdf-generator.service';
+import {
+  formatCertificateDate,
+  formatCertificateWorkload,
+} from '../certificate/certificate.snapshot';
+import { isUUID } from 'class-validator';
 import {
   EventCatalogService,
   type TemplateConfig,
@@ -470,6 +476,7 @@ export class EventManagementController {
     private readonly operations: EventOperationsService,
     private readonly pdf: TechnologyPdfService,
     private readonly storage: EventStorageService,
+    private readonly pdfGenerator: PdfGeneratorService,
   ) {}
   @Get('catalog') async catalogData() {
     await this.catalog.ensureDefaultTemplates();
@@ -622,10 +629,58 @@ export class EventManagementController {
     return this.operations.correct(id, dto, Number(req.user.sub));
   }
   @Post('templates/:id/preview') async preview(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
     @Body(validation) dto: SignerSelectionDto,
     @Res() res: Response,
   ) {
+    const isDefault = id === 'default' || id === 'institutional';
+    if (isDefault) {
+      const isSpeaker = dto.role === 'SPEAKER';
+      const studentName = isSpeaker
+        ? dto.speaker?.trim() || 'Nome do Palestrante de Demonstração'
+        : 'Nome completo de demonstração';
+      const eventTitle =
+        dto.eventTitle?.trim() || 'Título da palestra de demonstração';
+      const startsAt = dto.startsAt || '2026-10-26T21:00:00.000Z';
+      const eventDate = formatCertificateDate(startsAt);
+      const workload =
+        dto.workload?.trim() ||
+        (dto.workloadMinutes
+          ? formatCertificateWorkload(dto.workloadMinutes)
+          : '2 horas');
+      const speaker = dto.speaker?.trim() || 'Palestrante de demonstração';
+
+      const buffer = await this.pdfGenerator.generatePdf({
+        id: 'preview',
+        eventId: 'preview',
+        attendanceId: 'preview',
+        verificationCode: 'DEMONSTRACAO-SEM-VALIDADE',
+        issuedAt: new Date().toISOString(),
+        revokedAt: null,
+        payloadSnapshot: {
+          studentName,
+          studentRa: isSpeaker ? '' : '0000000000000',
+          course: isSpeaker ? '' : 'Curso de Demonstração',
+          eventTitle,
+          eventDate,
+          workload,
+          speaker,
+          institution: 'FATEC Itaquera - Centro Paula Souza',
+        },
+      });
+
+      res.type('application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        'inline; filename="previa-certificado-institucional.pdf"',
+      );
+      return res.send(buffer);
+    }
+
+    if (!isUUID(id)) {
+      throw new BadRequestException('ID do modelo inválido.');
+    }
+
     if (
       !Array.isArray(dto.signerIds) ||
       dto.signerIds.length < 1 ||
@@ -654,17 +709,21 @@ export class EventManagementController {
       .map((signerId) => signersMap.get(signerId)!)
       .filter(Boolean);
 
-    const isSpeaker = template.role === 'SPEAKER';
+    const isSpeaker = template.role === 'SPEAKER' || dto.role === 'SPEAKER';
     const studentName = isSpeaker
-      ? (dto.speaker?.trim() || 'Nome do Palestrante de Demonstração')
+      ? dto.speaker?.trim() || 'Nome do Palestrante de Demonstração'
       : 'Nome completo de demonstração';
     const eventTitle =
       dto.eventTitle?.trim() || 'Título da palestra de demonstração';
     const promoter = dto.promoter?.trim() || '';
-    const startsAt = dto.startsAt || '2026-10-26T18:00:00Z';
-    const endsAt = dto.endsAt || '2026-10-26T20:00:00Z';
-    const eventDate = startsAt.slice(0, 10);
-    const workload = dto.workload?.trim() || '2 horas';
+    const startsAt = dto.startsAt || '2026-10-26T21:00:00.000Z';
+    const endsAt = dto.endsAt || '2026-10-26T23:00:00.000Z';
+    const eventDate = formatCertificateDate(startsAt);
+    const workload =
+      dto.workload?.trim() ||
+      (dto.workloadMinutes
+        ? formatCertificateWorkload(dto.workloadMinutes)
+        : '2 horas');
 
     const buffer = await this.pdf.render(
       {

@@ -116,11 +116,15 @@ export class StudentChallengeDto {
   @IsOptional() @IsJWT() @MaxLength(8192) qrToken?: string;
 }
 export class SignerSelectionDto {
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @ArrayMaxSize(3)
   @IsUUID('4', { each: true })
-  signerIds: string[];
+  signerIds?: string[];
+
+  @IsOptional()
+  @IsIn(['ATTENDEE', 'SPEAKER'])
+  role?: string;
 
   @IsOptional()
   @IsString()
@@ -134,7 +138,7 @@ export class SignerSelectionDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(120)
+  @MaxLength(160)
   promoter?: string;
 
   @IsOptional()
@@ -144,6 +148,11 @@ export class SignerSelectionDto {
   @IsOptional()
   @IsDateString()
   endsAt?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  workloadMinutes?: number;
 
   @IsOptional()
   @IsString()
