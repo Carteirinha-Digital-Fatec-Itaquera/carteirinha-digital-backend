@@ -24,6 +24,13 @@ describe('CertificateService Unit Tests', () => {
       student: {
         findUnique: jest.fn(),
       },
+      certificateArtifact: {
+        create: jest.fn().mockImplementation(({ data }: { data: any }) => ({
+          id: 'art-1',
+          ...data,
+        })),
+        findUnique: jest.fn(),
+      },
       $queryRaw: jest.fn(),
     };
 
@@ -258,6 +265,45 @@ describe('CertificateService Unit Tests', () => {
 
     await expect(service.issueCertificate('att-1', prismaMock)).rejects.toThrow(
       ConflictException,
+    );
+  });
+
+  it('propaga erro e aborta transação se criação do certificateArtifact falhar', async () => {
+    prismaMock.attendance.findUnique.mockResolvedValue({
+      id: 'att-1',
+      eventId: 'evt-1',
+      studentRa: '0123456789',
+      studentName: 'Nome Histórico do Aluno',
+      studentCourse: 'DSM',
+      studentAccountId: 'acc-1',
+      status: 'CONFIRMED',
+      checkInAt: new Date('2026-10-05T19:00:00.000Z'),
+      checkOutAt: new Date('2026-10-05T21:00:00.000Z'),
+      event: {
+        id: 'evt-1',
+        title: 'Palestra de Arquitetura',
+        speaker: 'Prof. Exemplo',
+        startsAt: new Date('2026-10-05T19:00:00.000Z'),
+        workloadMinutes: 90,
+        certificateEnabled: true,
+        status: 'COMPLETED',
+      },
+    });
+    prismaMock.certificate.findUnique.mockResolvedValue(null);
+    prismaMock.student.findUnique.mockResolvedValue({
+      ra: '0123456789',
+      accountId: 'acc-1',
+    });
+    prismaMock.certificate.create.mockResolvedValue({
+      id: 'cert-fail',
+      verificationCode: 'FATEC-EVT-0123456789ABCDEF',
+    });
+    prismaMock.certificateArtifact.create.mockRejectedValueOnce(
+      new Error('Falha simulada na fila persistente'),
+    );
+
+    await expect(service.issueCertificate('att-1', prismaMock)).rejects.toThrow(
+      'Falha simulada na fila persistente',
     );
   });
 });
