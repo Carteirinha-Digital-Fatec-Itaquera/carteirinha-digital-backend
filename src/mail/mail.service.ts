@@ -1,6 +1,27 @@
 import { Injectable } from '@nestjs/common';
 import { BrevoClient, BrevoEnvironment } from '@getbrevo/brevo';
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function sanitizeUrl(urlString: string): string {
+  try {
+    const url = new URL(urlString);
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      return url.toString();
+    }
+  } catch {
+    // URL inválida
+  }
+  return '#';
+}
+
 @Injectable()
 export class MailService {
   private client: BrevoClient;
@@ -14,16 +35,28 @@ export class MailService {
 
   async sendVisitorCode(email: string, code: string) {
     await this.client.transactionalEmails.sendTransacEmail({
-      subject: 'Seu acesso aos eventos da Fatec Itaquera', to: [{ email }],
-      sender: { name: 'Carteirinha Digital', email: process.env.EVENT_MAIL_SENDER || 'carteirinha.digital.fatec@gmail.com' },
+      subject: 'Seu acesso aos eventos da Fatec Itaquera',
+      to: [{ email }],
+      sender: {
+        name: 'Carteirinha Digital',
+        email:
+          process.env.EVENT_MAIL_SENDER ||
+          'carteirinha.digital.fatec@gmail.com',
+      },
       textContent: `Seu código de acesso é ${code}. Válido por 10 minutos. Não compartilhe. Este acesso não cria uma conta de aluno.`,
     });
   }
 
   async sendVisitorCertificate(email: string, url: string) {
     await this.client.transactionalEmails.sendTransacEmail({
-      subject: 'Seu certificado está disponível - Fatec Itaquera', to: [{ email }],
-      sender: { name: 'Carteirinha Digital', email: process.env.EVENT_MAIL_SENDER || 'carteirinha.digital.fatec@gmail.com' },
+      subject: 'Seu certificado está disponível - Fatec Itaquera',
+      to: [{ email }],
+      sender: {
+        name: 'Carteirinha Digital',
+        email:
+          process.env.EVENT_MAIL_SENDER ||
+          'carteirinha.digital.fatec@gmail.com',
+      },
       textContent: `Seu certificado está disponível. Acesse a área de visitante para baixar seu documento: ${url}\nBaixe seu documento dentro do período informado pela organização.`,
     });
   }
@@ -41,12 +74,18 @@ export class MailService {
         ? 'Acesse a área de certificados na Carteirinha Digital para visualizar ou baixar seu certificado oficial.'
         : 'Acesse a área de visitantes com seu CPF cadastrado para visualizar ou baixar seu certificado durante o período de retenção da edição.';
 
-    await this.client.transactionalEmails.sendTransacEmail({
+    const safeRecipientName = escapeHtml(params.recipientName);
+    const safeEventTitle = escapeHtml(params.eventTitle);
+    const safeUrl = sanitizeUrl(params.accessUrl);
+
+    return await this.client.transactionalEmails.sendTransacEmail({
       subject,
       to: [{ email: params.email, name: params.recipientName }],
       sender: {
         name: 'Carteirinha Digital - Fatec Itaquera',
-        email: process.env.EVENT_MAIL_SENDER || 'carteirinha.digital.fatec@gmail.com',
+        email:
+          process.env.EVENT_MAIL_SENDER ||
+          'carteirinha.digital.fatec@gmail.com',
       },
       htmlContent: `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 16px; overflow: hidden;">
@@ -55,15 +94,15 @@ export class MailService {
             <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 14px;">Fatec Itaquera — Professor Miguel Reale</p>
           </div>
           <div style="background: white; padding: 30px;">
-            <p style="font-size: 16px; color: #333; margin: 0 0 10px 0;">Olá, <strong>${params.recipientName}</strong>!</p>
+            <p style="font-size: 16px; color: #333; margin: 0 0 10px 0;">Olá, <strong>${safeRecipientName}</strong>!</p>
             <p style="font-size: 14px; color: #555; line-height: 1.6;">
-              Sua participação na atividade <strong>"${params.eventTitle}"</strong> foi confirmada e o seu certificado de participação já se encontra emitido e disponível para consulta.
+              Sua participação na atividade <strong>"${safeEventTitle}"</strong> foi confirmada e o seu certificado de participação já se encontra emitido e disponível para consulta.
             </p>
             <p style="font-size: 14px; color: #666; margin: 20px 0;">
               ${instructions}
             </p>
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${params.accessUrl}" 
+              <a href="${escapeHtml(safeUrl)}" 
                  style="background-color: #CC092F; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; display: inline-block;">
                 Acessar Meus Certificados
               </a>
@@ -80,7 +119,7 @@ export class MailService {
           </div>
         </div>
       `,
-      textContent: `Olá, ${params.recipientName}!\n\nSua participação na atividade "${params.eventTitle}" foi confirmada e seu certificado já está disponível.\n\n${instructions}\n\nAcesse seus certificados pelo link seguro:\n${params.accessUrl}\n\nFatec Itaquera - Centro Paula Souza`,
+      textContent: `Olá, ${params.recipientName}!\n\nSua participação na atividade "${params.eventTitle}" foi confirmada e seu certificado já está disponível.\n\n${instructions}\n\nAcesse seus certificados pelo link seguro:\n${safeUrl}\n\nFatec Itaquera - Centro Paula Souza`,
     });
   }
 
@@ -89,7 +128,10 @@ export class MailService {
       await this.client.transactionalEmails.sendTransacEmail({
         subject: 'Código de Verificação - Carteirinha Digital Fatec',
         to: [{ email }],
-        sender: { name: 'Carteirinha Digital', email: 'carteirinha.digital.fatec@gmail.com' },
+        sender: {
+          name: 'Carteirinha Digital',
+          email: 'carteirinha.digital.fatec@gmail.com',
+        },
         htmlContent: `
           <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 16px; overflow: hidden;">
             <div style="background-color: #CC092F; padding: 25px; text-align: center;">
@@ -119,18 +161,26 @@ export class MailService {
       });
       console.log(`✅ Email enviado para: ${email}`);
       return { success: true };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Erro:', error);
-      throw new Error(`Não foi possível enviar o email: ${error.message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Não foi possível enviar o email: ${message}`);
     }
   }
 
-  async sendResetPasswordEmail(email: string, userName: string, resetLink: string) {
+  async sendResetPasswordEmail(
+    email: string,
+    userName: string,
+    resetLink: string,
+  ) {
     try {
       await this.client.transactionalEmails.sendTransacEmail({
         subject: 'Recuperação de Senha',
         to: [{ email }],
-        sender: { name: 'Carteirinha Digital', email: 'carteirinha.digital.fatec@gmail.com' },
+        sender: {
+          name: 'Carteirinha Digital',
+          email: 'carteirinha.digital.fatec@gmail.com',
+        },
         htmlContent: `
           <div style="font-family: Arial, sans-serif; max-width: 600px;">
             <h2>Olá, ${userName}!</h2>
@@ -146,9 +196,10 @@ export class MailService {
         `,
       });
       console.log(`✅ Email de recuperação enviado para: ${email}`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Erro:', error);
-      throw new Error(`Não foi possível enviar o email: ${error.message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Não foi possível enviar o email: ${message}`);
     }
   }
 }

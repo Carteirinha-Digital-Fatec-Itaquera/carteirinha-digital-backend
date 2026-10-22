@@ -6,6 +6,13 @@ import { EventStorageService } from './event-storage.service';
 import { EventOperationsService } from './event-operations.service';
 import { MailService } from '../mail/mail.service';
 
+const matchAnyString = expect.any(String) as unknown as string;
+const matchAnyDate = expect.any(Date) as unknown as Date;
+const matchString = (re: RegExp) =>
+  expect.stringMatching(re) as unknown as string;
+const matchObject = (val: Record<string, unknown>) =>
+  expect.objectContaining(val) as unknown as Record<string, unknown>;
+
 describe('EventJobsService', () => {
   let service: EventJobsService;
   let prisma: {
@@ -107,7 +114,9 @@ describe('EventJobsService', () => {
     };
 
     storage = {
-      put: jest.fn().mockResolvedValue({ storageKey: 'test.pdf', sha256: 'abc' }),
+      put: jest
+        .fn()
+        .mockResolvedValue({ storageKey: 'test.pdf', sha256: 'abc' }),
       remove: jest.fn().mockResolvedValue(undefined),
     };
 
@@ -183,17 +192,21 @@ describe('EventJobsService', () => {
     });
 
     expect(mail.sendCertificateNotification).toHaveBeenCalledWith(
-      expect.objectContaining({
+      matchObject({
         email: 'joao@fatec.sp.gov.br',
         recipientName: 'João Estudante',
         eventTitle: 'Palestra de Inovação',
-        accessUrl: expect.stringMatching(/\/certificados$/),
+        accessUrl: matchString(/\/certificados$/),
         profile: 'ALUNO',
       }),
     );
 
     expect(prisma.certificateArtifact.updateMany).toHaveBeenCalledWith({
-      where: { id: artifactId, leaseToken: expect.any(String), deliveryState: 'PENDING' },
+      where: {
+        id: artifactId,
+        leaseToken: matchAnyString,
+        deliveryState: 'PENDING',
+      },
       data: { deliveryState: 'SENT' },
     });
   });
@@ -245,17 +258,21 @@ describe('EventJobsService', () => {
     await service.process(artifactId);
 
     expect(mail.sendCertificateNotification).toHaveBeenCalledWith(
-      expect.objectContaining({
+      matchObject({
         email: 'maria@gmail.com',
         recipientName: 'Maria Visitante',
         eventTitle: 'Semana de Tecnologia',
-        accessUrl: expect.stringMatching(/\/visitantes\/certificados$/),
+        accessUrl: matchString(/\/visitantes\/certificados$/),
         profile: 'VISITANTE',
       }),
     );
 
     expect(prisma.certificateArtifact.updateMany).toHaveBeenCalledWith({
-      where: { id: artifactId, leaseToken: expect.any(String), deliveryState: 'PENDING' },
+      where: {
+        id: artifactId,
+        leaseToken: matchAnyString,
+        deliveryState: 'PENDING',
+      },
       data: { deliveryState: 'SENT' },
     });
   });
@@ -308,7 +325,7 @@ describe('EventJobsService', () => {
 
     expect(mail.sendCertificateNotification).not.toHaveBeenCalled();
     expect(prisma.certificateArtifact.updateMany).toHaveBeenCalledWith({
-      where: { id: artifactId, leaseToken: expect.any(String) },
+      where: { id: artifactId, leaseToken: matchAnyString },
       data: { deliveryState: 'EXPIRED', leaseUntil: null, leaseToken: null },
     });
   });
@@ -335,7 +352,7 @@ describe('EventJobsService', () => {
 
     expect(mail.sendCertificateNotification).not.toHaveBeenCalled();
     expect(prisma.certificateArtifact.updateMany).toHaveBeenCalledWith({
-      where: { id: artifactId, leaseToken: expect.any(String) },
+      where: { id: artifactId, leaseToken: matchAnyString },
       data: {
         state: 'REVOKED',
         deliveryState: 'EXPIRED',
@@ -389,7 +406,7 @@ describe('EventJobsService', () => {
 
     expect(mail.sendCertificateNotification).not.toHaveBeenCalled();
     expect(prisma.certificateArtifact.updateMany).toHaveBeenCalledWith({
-      where: { id: artifactId, leaseToken: expect.any(String) },
+      where: { id: artifactId, leaseToken: matchAnyString },
       data: { deliveryState: 'FAILED', leaseUntil: null, leaseToken: null },
     });
   });
@@ -442,7 +459,9 @@ describe('EventJobsService', () => {
       status: 'MATRICULADO',
     });
 
-    mail.sendCertificateNotification.mockRejectedValue(new Error('Brevo connection timeout'));
+    mail.sendCertificateNotification.mockRejectedValue(
+      new Error('Brevo connection timeout'),
+    );
 
     prisma.certificateArtifact.findUnique.mockResolvedValue({
       id: artifactId,
@@ -455,17 +474,199 @@ describe('EventJobsService', () => {
     await service.process(artifactId);
 
     expect(prisma.certificateArtifact.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: artifactId, leaseToken: expect.any(String) },
-        data: expect.objectContaining({
+      matchObject({
+        where: { id: artifactId, leaseToken: matchAnyString },
+        data: matchObject({
           state: 'READY',
           deliveryAttempts: { increment: 1 },
           deliveryState: 'PENDING',
-          nextAttemptAt: expect.any(Date),
+          nextAttemptAt: matchAnyDate,
           leaseUntil: null,
           leaseToken: null,
         }),
       }),
     );
+  });
+
+  it('rejeita e marca FAILED se o aluno estiver com status INATIVO ou trancado', async () => {
+    const artifactId = 'art-inactive';
+    const certId = 'cert-inactive';
+    const studentAccountId = 'acc-inactive';
+
+    prisma.certificateArtifact.findUniqueOrThrow.mockResolvedValue({
+      id: artifactId,
+      state: 'READY',
+      deliveryState: 'PENDING',
+      deliveryAttempts: 0,
+      certificate: {
+        id: certId,
+        studentAccountId,
+        revokedAt: null,
+        event: { status: 'COMPLETED', title: 'Atividade' },
+        participant: null,
+      },
+    });
+
+    prisma.certificateArtifact.findFirst.mockResolvedValue({
+      id: artifactId,
+      state: 'READY',
+      deliveryState: 'PENDING',
+      deliveryAttempts: 0,
+      certificate: {
+        id: certId,
+        studentAccountId,
+        revokedAt: null,
+        event: { status: 'COMPLETED', title: 'Atividade' },
+        participant: null,
+      },
+    });
+
+    prisma.certificate.findUniqueOrThrow.mockResolvedValue({
+      id: certId,
+      revokedAt: null,
+    });
+
+    prisma.student.findUnique.mockResolvedValue({
+      ra: '123456',
+      accountId: studentAccountId,
+      name: 'Aluno Inativo',
+      email: 'inativo@fatec.sp.gov.br',
+      status: 'INATIVO',
+    });
+
+    await service.process(artifactId);
+
+    expect(mail.sendCertificateNotification).not.toHaveBeenCalled();
+    expect(prisma.certificateArtifact.updateMany).toHaveBeenCalledWith({
+      where: { id: artifactId, leaseToken: matchAnyString },
+      data: { deliveryState: 'FAILED', leaseUntil: null, leaseToken: null },
+    });
+  });
+
+  it('aceita aluno com status Ativo ou Em curso', async () => {
+    const artifactId = 'art-ativo';
+    const certId = 'cert-ativo';
+    const studentAccountId = 'acc-ativo';
+
+    prisma.certificateArtifact.findUniqueOrThrow.mockResolvedValue({
+      id: artifactId,
+      state: 'READY',
+      deliveryState: 'PENDING',
+      deliveryAttempts: 0,
+      certificate: {
+        id: certId,
+        studentAccountId,
+        revokedAt: null,
+        event: { status: 'COMPLETED', title: 'Atividade Ativo' },
+        participant: null,
+      },
+    });
+
+    prisma.certificateArtifact.findFirst.mockResolvedValue({
+      id: artifactId,
+      state: 'READY',
+      deliveryState: 'PENDING',
+      deliveryAttempts: 0,
+      certificate: {
+        id: certId,
+        studentAccountId,
+        revokedAt: null,
+        event: { status: 'COMPLETED', title: 'Atividade Ativo' },
+        participant: null,
+      },
+    });
+
+    prisma.certificate.findUniqueOrThrow.mockResolvedValue({
+      id: certId,
+      revokedAt: null,
+    });
+
+    prisma.student.findUnique.mockResolvedValue({
+      ra: '123456',
+      accountId: studentAccountId,
+      name: 'Aluno Em Curso',
+      email: 'emcurso@fatec.sp.gov.br',
+      status: 'Em curso',
+    });
+
+    await service.process(artifactId);
+
+    expect(mail.sendCertificateNotification).toHaveBeenCalledTimes(1);
+    expect(prisma.certificateArtifact.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: artifactId,
+        leaseToken: matchAnyString,
+        deliveryState: 'PENDING',
+      },
+      data: { deliveryState: 'SENT' },
+    });
+  });
+
+  it('reconcilia status para SENT quando aceite remoto sucede mas gravacao local lanca erro', async () => {
+    const artifactId = 'art-reconcile';
+    const certId = 'cert-reconcile';
+    const studentAccountId = 'acc-reconcile';
+
+    prisma.certificateArtifact.findUniqueOrThrow.mockResolvedValue({
+      id: artifactId,
+      state: 'READY',
+      deliveryState: 'PENDING',
+      deliveryAttempts: 0,
+      certificate: {
+        id: certId,
+        studentAccountId,
+        revokedAt: null,
+        event: { status: 'COMPLETED', title: 'Atividade Reconciliada' },
+        participant: null,
+      },
+    });
+
+    prisma.certificateArtifact.findFirst.mockResolvedValue({
+      id: artifactId,
+      state: 'READY',
+      deliveryState: 'PENDING',
+      deliveryAttempts: 0,
+      certificate: {
+        id: certId,
+        studentAccountId,
+        revokedAt: null,
+        event: { status: 'COMPLETED', title: 'Atividade Reconciliada' },
+        participant: null,
+      },
+    });
+
+    prisma.certificate.findUniqueOrThrow.mockResolvedValue({
+      id: certId,
+      revokedAt: null,
+    });
+
+    prisma.student.findUnique.mockResolvedValue({
+      ra: '123456',
+      accountId: studentAccountId,
+      name: 'Aluno Teste',
+      email: 'teste@fatec.sp.gov.br',
+      status: 'Ativo',
+    });
+
+    // updateMany falha na primeira tentativa de gravar SENT após aceite, mas sucede na reconciliação
+    let failOnce = true;
+    prisma.certificateArtifact.updateMany.mockImplementation(
+      (args: { data?: { deliveryState?: string } }) => {
+        if (args.data?.deliveryState === 'SENT' && failOnce) {
+          failOnce = false;
+          throw new Error('Falha simulada de persistência pós-aceite');
+        }
+        return Promise.resolve({ count: 1 });
+      },
+    );
+
+    await service.process(artifactId);
+
+    expect(mail.sendCertificateNotification).toHaveBeenCalledTimes(1);
+    // Deve ter chamado a reconciliação para SENT
+    expect(prisma.certificateArtifact.updateMany).toHaveBeenCalledWith({
+      where: { id: artifactId },
+      data: { deliveryState: 'SENT', leaseUntil: null, leaseToken: null },
+    });
   });
 });
