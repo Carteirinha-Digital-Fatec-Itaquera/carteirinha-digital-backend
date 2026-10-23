@@ -11,11 +11,7 @@ const TEXT_SECONDARY = '#5F6368';
 const BORDER_LIGHT = '#D9D9D9';
 const PANEL_BACKGROUND = '#F7F7F7';
 
-const CPS_LOGO_PATH = join(
-  __dirname,
-  'assets',
-  'cps_logo_cor.png',
-);
+const CPS_LOGO_PATH = join(__dirname, 'assets', 'cps_logo_cor.png');
 
 const FATEC_LOGO_PATH = join(
   __dirname,
@@ -35,7 +31,9 @@ interface FitTextOptions {
 
 @Injectable()
 export class PdfGeneratorService {
-  constructor(@Optional() private readonly technologyPdf?: TechnologyPdfService) {}
+  constructor(
+    @Optional() private readonly technologyPdf?: TechnologyPdfService,
+  ) {}
   private getVerificationUrl(code: string): string {
     const rawBaseUrl =
       process.env.CERTIFICATE_VERIFICATION_BASE_URL?.trim() ||
@@ -82,11 +80,7 @@ export class PdfGeneratorService {
     const align = options.align ?? 'center';
     const lineGap = options.lineGap ?? 0;
 
-    for (
-      let size = options.maxSize;
-      size >= options.minSize;
-      size -= 0.5
-    ) {
+    for (let size = options.maxSize; size >= options.minSize; size -= 0.5) {
       doc.font(font).fontSize(size);
 
       const height = doc.heightOfString(text, {
@@ -121,19 +115,15 @@ export class PdfGeneratorService {
         characterSpacing: 0.8,
       });
 
-    const valueFontSize = this.fitFontSize(
-      doc,
-      value,
-      {
-        width,
-        maxHeight: 27,
-        maxSize: 11.5,
-        minSize: 9,
-        font: 'Helvetica-Bold',
-        align: 'center',
-        lineGap: 1,
-      },
-    );
+    const valueFontSize = this.fitFontSize(doc, value, {
+      width,
+      maxHeight: 27,
+      maxSize: 11.5,
+      minSize: 9,
+      font: 'Helvetica-Bold',
+      align: 'center',
+      lineGap: 1,
+    });
 
     doc
       .font('Helvetica-Bold')
@@ -147,12 +137,11 @@ export class PdfGeneratorService {
       });
   }
 
-  public async generatePdf(
-    certificate: CertificateView,
-  ): Promise<Buffer> {
+  public async generatePdf(certificate: CertificateView): Promise<Buffer> {
     const snapshot = certificate.payloadSnapshot;
     if (snapshot.version === 2) {
-      if (!this.technologyPdf) throw new BadRequestException('Renderizador da Semana indisponível.');
+      if (!this.technologyPdf)
+        throw new BadRequestException('Renderizador da Semana indisponível.');
       return this.technologyPdf.render(certificate);
     }
 
@@ -160,15 +149,12 @@ export class PdfGeneratorService {
       certificate.verificationCode,
     );
 
-    const qrBuffer = await QRCode.toBuffer(
-      verificationUrl,
-      {
-        type: 'png',
-        width: 220,
-        margin: 1,
-        errorCorrectionLevel: 'M',
-      },
-    );
+    const qrBuffer = await QRCode.toBuffer(verificationUrl, {
+      type: 'png',
+      width: 220,
+      margin: 1,
+      errorCorrectionLevel: 'M',
+    });
 
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({
@@ -185,8 +171,7 @@ export class PdfGeneratorService {
         info: {
           Title: `Certificado - ${snapshot.eventTitle}`,
           Author: snapshot.institution,
-          Subject:
-            'Certificado de Participação em Evento Acadêmico',
+          Subject: 'Certificado de Participação em Evento Acadêmico',
         },
       });
 
@@ -196,9 +181,7 @@ export class PdfGeneratorService {
         if (Buffer.isBuffer(chunk)) {
           chunks.push(chunk);
         } else if (chunk) {
-          chunks.push(
-            Buffer.from(chunk as Uint8Array),
-          );
+          chunks.push(Buffer.from(chunk as Uint8Array));
         }
       });
 
@@ -214,8 +197,7 @@ export class PdfGeneratorService {
       const pageHeight = doc.page.height;
 
       const contentX = 55;
-      const contentWidth =
-        pageWidth - contentX * 2;
+      const contentWidth = pageWidth - contentX * 2;
 
       /*
        * ==========================================================
@@ -226,23 +208,13 @@ export class PdfGeneratorService {
       doc
         .lineWidth(2.5)
         .strokeColor(CPS_RED)
-        .rect(
-          24,
-          24,
-          pageWidth - 48,
-          pageHeight - 48,
-        )
+        .rect(24, 24, pageWidth - 48, pageHeight - 48)
         .stroke();
 
       doc
         .lineWidth(0.7)
         .strokeColor(BORDER_LIGHT)
-        .rect(
-          31,
-          31,
-          pageWidth - 62,
-          pageHeight - 62,
-        )
+        .rect(31, 31, pageWidth - 62, pageHeight - 62)
         .stroke();
 
       /*
@@ -260,42 +232,21 @@ export class PdfGeneratorService {
         .stroke();
 
       doc
-        .moveTo(
-          pageWidth - 31 - decorationLength,
-          31,
-        )
+        .moveTo(pageWidth - 31 - decorationLength, 31)
         .lineTo(pageWidth - 31, 31)
-        .lineTo(
-          pageWidth - 31,
-          31 + decorationLength,
-        )
+        .lineTo(pageWidth - 31, 31 + decorationLength)
         .stroke();
 
       doc
-        .moveTo(
-          31,
-          pageHeight - 31 - decorationLength,
-        )
+        .moveTo(31, pageHeight - 31 - decorationLength)
         .lineTo(31, pageHeight - 31)
-        .lineTo(
-          31 + decorationLength,
-          pageHeight - 31,
-        )
+        .lineTo(31 + decorationLength, pageHeight - 31)
         .stroke();
 
       doc
-        .moveTo(
-          pageWidth - 31 - decorationLength,
-          pageHeight - 31,
-        )
-        .lineTo(
-          pageWidth - 31,
-          pageHeight - 31,
-        )
-        .lineTo(
-          pageWidth - 31,
-          pageHeight - 31 - decorationLength,
-        )
+        .moveTo(pageWidth - 31 - decorationLength, pageHeight - 31)
+        .lineTo(pageWidth - 31, pageHeight - 31)
+        .lineTo(pageWidth - 31, pageHeight - 31 - decorationLength)
         .stroke();
 
       /*
@@ -308,30 +259,20 @@ export class PdfGeneratorService {
        * Logo FATEC Itaquera.
        */
 
-      doc.image(
-        FATEC_LOGO_PATH,
-        contentX,
-        45,
-        {
-          fit: [135, 62],
-          valign: 'center',
-        },
-      );
+      doc.image(FATEC_LOGO_PATH, contentX, 45, {
+        fit: [135, 62],
+        valign: 'center',
+      });
 
       /*
        * Logo Centro Paula Souza.
        */
 
-      doc.image(
-        CPS_LOGO_PATH,
-        pageWidth - contentX - 92,
-        49,
-        {
-          fit: [92, 58],
-          align: 'right',
-          valign: 'center',
-        },
-      );
+      doc.image(CPS_LOGO_PATH, pageWidth - contentX - 92, 49, {
+        fit: [92, 58],
+        align: 'right',
+        valign: 'center',
+      });
 
       /*
        * Identificação central.
@@ -341,30 +282,20 @@ export class PdfGeneratorService {
         .font('Helvetica-Bold')
         .fontSize(10.5)
         .fillColor(TEXT_PRIMARY)
-        .text(
-          'FACULDADE DE TECNOLOGIA DE ITAQUERA',
-          215,
-          57,
-          {
-            width: pageWidth - 430,
-            align: 'center',
-            characterSpacing: 0.5,
-          },
-        );
+        .text('FACULDADE DE TECNOLOGIA DE ITAQUERA', 215, 57, {
+          width: pageWidth - 430,
+          align: 'center',
+          characterSpacing: 0.5,
+        });
 
       doc
         .font('Helvetica')
         .fontSize(8.5)
         .fillColor(TEXT_SECONDARY)
-        .text(
-          'Centro Estadual de Educação Tecnológica Paula Souza',
-          215,
-          77,
-          {
-            width: pageWidth - 430,
-            align: 'center',
-          },
-        );
+        .text('Centro Estadual de Educação Tecnológica Paula Souza', 215, 77, {
+          width: pageWidth - 430,
+          align: 'center',
+        });
 
       /*
        * Linha abaixo do cabeçalho.
@@ -372,20 +303,14 @@ export class PdfGeneratorService {
 
       doc
         .moveTo(contentX, 113)
-        .lineTo(
-          pageWidth - contentX,
-          113,
-        )
+        .lineTo(pageWidth - contentX, 113)
         .lineWidth(0.8)
         .strokeColor(BORDER_LIGHT)
         .stroke();
 
       doc
         .moveTo(contentX, 113)
-        .lineTo(
-          contentX + 115,
-          113,
-        )
+        .lineTo(contentX + 115, 113)
         .lineWidth(2.5)
         .strokeColor(CPS_RED)
         .stroke();
@@ -400,31 +325,21 @@ export class PdfGeneratorService {
         .font('Helvetica-Bold')
         .fontSize(31)
         .fillColor(CPS_RED)
-        .text(
-          'CERTIFICADO',
-          contentX,
-          128,
-          {
-            width: contentWidth,
-            align: 'center',
-            characterSpacing: 2,
-          },
-        );
+        .text('CERTIFICADO', contentX, 128, {
+          width: contentWidth,
+          align: 'center',
+          characterSpacing: 2,
+        });
 
       doc
         .font('Helvetica-Bold')
         .fontSize(9.5)
         .fillColor(TEXT_SECONDARY)
-        .text(
-          'DE PARTICIPAÇÃO',
-          contentX,
-          166,
-          {
-            width: contentWidth,
-            align: 'center',
-            characterSpacing: 2.6,
-          },
-        );
+        .text('DE PARTICIPAÇÃO', contentX, 166, {
+          width: contentWidth,
+          align: 'center',
+          characterSpacing: 2.6,
+        });
 
       /*
        * ==========================================================
@@ -436,15 +351,10 @@ export class PdfGeneratorService {
         .font('Helvetica')
         .fontSize(10.5)
         .fillColor(TEXT_SECONDARY)
-        .text(
-          'Certificamos que',
-          contentX,
-          196,
-          {
-            width: contentWidth,
-            align: 'center',
-          },
-        );
+        .text('Certificamos que', contentX, 196, {
+          width: contentWidth,
+          align: 'center',
+        });
 
       /*
        * Nome do aluno.
@@ -453,52 +363,34 @@ export class PdfGeneratorService {
        * seja muito grande.
        */
 
-      const studentNameSize =
-        this.fitFontSize(
-          doc,
-          snapshot.studentName,
-          {
-            width:
-              contentWidth - 90,
-            maxHeight: 46,
-            maxSize: 25,
-            minSize: 17,
-            font: 'Helvetica-Bold',
-            align: 'center',
-            lineGap: 1,
-          },
-        );
+      const studentNameSize = this.fitFontSize(doc, snapshot.studentName, {
+        width: contentWidth - 90,
+        maxHeight: 46,
+        maxSize: 25,
+        minSize: 17,
+        font: 'Helvetica-Bold',
+        align: 'center',
+        lineGap: 1,
+      });
 
       doc
         .font('Helvetica-Bold')
         .fontSize(studentNameSize)
         .fillColor(TEXT_PRIMARY)
-        .text(
-          snapshot.studentName,
-          contentX + 45,
-          215,
-          {
-            width:
-              contentWidth - 90,
-            height: 48,
-            align: 'center',
-            lineGap: 1,
-          },
-        );
+        .text(snapshot.studentName, contentX + 45, 215, {
+          width: contentWidth - 90,
+          height: 48,
+          align: 'center',
+          lineGap: 1,
+        });
 
       /*
        * Linha decorativa abaixo do nome.
        */
 
       doc
-        .moveTo(
-          pageWidth / 2 - 120,
-          263,
-        )
-        .lineTo(
-          pageWidth / 2 + 120,
-          263,
-        )
+        .moveTo(pageWidth / 2 - 120, 263)
+        .lineTo(pageWidth / 2 + 120, 263)
         .lineWidth(0.7)
         .strokeColor(BORDER_LIGHT)
         .stroke();
@@ -507,39 +399,26 @@ export class PdfGeneratorService {
        * RA + curso.
        */
 
-      const studentInfo =
-        `RA ${snapshot.studentRa}  •  ${snapshot.course}`;
+      const studentInfo = `RA ${snapshot.studentRa}  •  ${snapshot.course}`;
 
-      const studentInfoSize =
-        this.fitFontSize(
-          doc,
-          studentInfo,
-          {
-            width:
-              contentWidth - 120,
-            maxHeight: 23,
-            maxSize: 10,
-            minSize: 8,
-            font: 'Helvetica',
-            align: 'center',
-          },
-        );
+      const studentInfoSize = this.fitFontSize(doc, studentInfo, {
+        width: contentWidth - 120,
+        maxHeight: 23,
+        maxSize: 10,
+        minSize: 8,
+        font: 'Helvetica',
+        align: 'center',
+      });
 
       doc
         .font('Helvetica')
         .fontSize(studentInfoSize)
         .fillColor(TEXT_SECONDARY)
-        .text(
-          studentInfo,
-          contentX + 60,
-          271,
-          {
-            width:
-              contentWidth - 120,
-            height: 23,
-            align: 'center',
-          },
-        );
+        .text(studentInfo, contentX + 60, 271, {
+          width: contentWidth - 120,
+          height: 23,
+          align: 'center',
+        });
 
       /*
        * ==========================================================
@@ -551,15 +430,10 @@ export class PdfGeneratorService {
         .font('Helvetica')
         .fontSize(10.5)
         .fillColor(TEXT_SECONDARY)
-        .text(
-          'participou do evento',
-          contentX,
-          301,
-          {
-            width: contentWidth,
-            align: 'center',
-          },
-        );
+        .text('participou do evento', contentX, 301, {
+          width: contentWidth,
+          align: 'center',
+        });
 
       /*
        * Título do evento.
@@ -568,76 +442,51 @@ export class PdfGeneratorService {
        * maiores sem sair da página.
        */
 
-      const eventTitleSize =
-        this.fitFontSize(
-          doc,
-          snapshot.eventTitle,
-          {
-            width:
-              contentWidth - 120,
-            maxHeight: 50,
-            maxSize: 17,
-            minSize: 11,
-            font: 'Helvetica-Bold',
-            align: 'center',
-            lineGap: 2,
-          },
-        );
+      const eventTitleSize = this.fitFontSize(doc, snapshot.eventTitle, {
+        width: contentWidth - 120,
+        maxHeight: 50,
+        maxSize: 17,
+        minSize: 11,
+        font: 'Helvetica-Bold',
+        align: 'center',
+        lineGap: 2,
+      });
 
       doc
         .font('Helvetica-Bold')
         .fontSize(eventTitleSize)
         .fillColor(CPS_RED)
-        .text(
-          snapshot.eventTitle,
-          contentX + 60,
-          320,
-          {
-            width:
-              contentWidth - 120,
-            height: 52,
-            align: 'center',
-            lineGap: 2,
-          },
-        );
+        .text(snapshot.eventTitle, contentX + 60, 320, {
+          width: contentWidth - 120,
+          height: 52,
+          align: 'center',
+          lineGap: 2,
+        });
 
       /*
        * Palestrante/responsável.
        */
 
-      const speakerText =
-        `Ministrado por ${snapshot.speaker}`;
+      const speakerText = `Ministrado por ${snapshot.speaker}`;
 
-      const speakerSize =
-        this.fitFontSize(
-          doc,
-          speakerText,
-          {
-            width:
-              contentWidth - 160,
-            maxHeight: 22,
-            maxSize: 10,
-            minSize: 8,
-            font: 'Helvetica',
-            align: 'center',
-          },
-        );
+      const speakerSize = this.fitFontSize(doc, speakerText, {
+        width: contentWidth - 160,
+        maxHeight: 22,
+        maxSize: 10,
+        minSize: 8,
+        font: 'Helvetica',
+        align: 'center',
+      });
 
       doc
         .font('Helvetica')
         .fontSize(speakerSize)
         .fillColor(TEXT_SECONDARY)
-        .text(
-          speakerText,
-          contentX + 80,
-          377,
-          {
-            width:
-              contentWidth - 160,
-            height: 22,
-            align: 'center',
-          },
-        );
+        .text(speakerText, contentX + 80, 377, {
+          width: contentWidth - 160,
+          height: 22,
+          align: 'center',
+        });
 
       /*
        * ==========================================================
@@ -650,21 +499,12 @@ export class PdfGeneratorService {
       const metaWidth = 210;
       const metaGap = 24;
 
-      const metaStartX =
-        (
-          pageWidth -
-          (
-            metaWidth * 2 +
-            metaGap
-          )
-        ) / 2;
+      const metaStartX = (pageWidth - (metaWidth * 2 + metaGap)) / 2;
 
       this.drawMetaItem(
         doc,
         'Data do evento',
-        this.formatSnapshotDate(
-          snapshot.eventDate,
-        ),
+        this.formatSnapshotDate(snapshot.eventDate),
         metaStartX,
         metaY,
         metaWidth,
@@ -674,9 +514,7 @@ export class PdfGeneratorService {
         doc,
         'Carga horária',
         snapshot.workload,
-        metaStartX +
-          metaWidth +
-          metaGap,
+        metaStartX + metaWidth + metaGap,
         metaY,
         metaWidth,
       );
@@ -686,14 +524,8 @@ export class PdfGeneratorService {
        */
 
       doc
-        .moveTo(
-          pageWidth / 2,
-          metaY + 1,
-        )
-        .lineTo(
-          pageWidth / 2,
-          metaY + 42,
-        )
+        .moveTo(pageWidth / 2, metaY + 1)
+        .lineTo(pageWidth / 2, metaY + 42)
         .lineWidth(0.7)
         .strokeColor(BORDER_LIGHT)
         .stroke();
@@ -707,23 +539,13 @@ export class PdfGeneratorService {
       const panelX = 50;
       const panelY = 470;
 
-      const panelWidth =
-        pageWidth - 100;
+      const panelWidth = pageWidth - 100;
 
       const panelHeight = 82;
 
       doc
-        .roundedRect(
-          panelX,
-          panelY,
-          panelWidth,
-          panelHeight,
-          8,
-        )
-        .fillAndStroke(
-          PANEL_BACKGROUND,
-          BORDER_LIGHT,
-        );
+        .roundedRect(panelX, panelY, panelWidth, panelHeight, 8)
+        .fillAndStroke(PANEL_BACKGROUND, BORDER_LIGHT);
 
       /*
        * QR Code.
@@ -731,40 +553,27 @@ export class PdfGeneratorService {
 
       const qrSize = 64;
 
-      doc.image(
-        qrBuffer,
-        panelX + 12,
-        panelY + 9,
-        {
-          width: qrSize,
-          height: qrSize,
-        },
-      );
+      doc.image(qrBuffer, panelX + 12, panelY + 9, {
+        width: qrSize,
+        height: qrSize,
+      });
 
       /*
        * Informações de autenticação.
        */
 
-      const verificationX =
-        panelX + 91;
+      const verificationX = panelX + 91;
 
-      const verificationWidth =
-        panelWidth - 108;
+      const verificationWidth = panelWidth - 108;
 
       doc
         .font('Helvetica-Bold')
         .fontSize(8.5)
         .fillColor(TEXT_PRIMARY)
-        .text(
-          'VERIFICAÇÃO DE AUTENTICIDADE',
-          verificationX,
-          panelY + 11,
-          {
-            width:
-              verificationWidth,
-            characterSpacing: 0.6,
-          },
-        );
+        .text('VERIFICAÇÃO DE AUTENTICIDADE', verificationX, panelY + 11, {
+          width: verificationWidth,
+          characterSpacing: 0.6,
+        });
 
       doc
         .font('Helvetica')
@@ -775,20 +584,13 @@ export class PdfGeneratorService {
           verificationX,
           panelY + 29,
           {
-            width:
-              verificationWidth,
+            width: verificationWidth,
           },
         );
 
-      doc
-        .text(
-          'Validação pública:',
-          verificationX,
-          panelY + 44,
-          {
-            width: 86,
-          },
-        );
+      doc.text('Validação pública:', verificationX, panelY + 44, {
+        width: 86,
+      });
 
       /*
        * Link clicável.
@@ -796,18 +598,11 @@ export class PdfGeneratorService {
 
       doc
         .fillColor(CPS_RED)
-        .text(
-          verificationUrl,
-          verificationX + 86,
-          panelY + 44,
-          {
-            width:
-              verificationWidth -
-              86,
-            link: verificationUrl,
-            underline: false,
-          },
-        );
+        .text(verificationUrl, verificationX + 86, panelY + 44, {
+          width: verificationWidth - 86,
+          link: verificationUrl,
+          underline: false,
+        });
 
       /*
        * Data de emissão.
@@ -816,18 +611,30 @@ export class PdfGeneratorService {
       doc
         .fillColor(TEXT_SECONDARY)
         .text(
-          `Emitido em ${new Date(
-            certificate.issuedAt,
-          ).toLocaleDateString(
+          `Emitido em ${new Date(certificate.issuedAt).toLocaleDateString(
             'pt-BR',
           )}`,
           verificationX,
           panelY + 60,
           {
-            width:
-              verificationWidth,
+            width: verificationWidth,
           },
         );
+
+      if (certificate.verificationCode === 'DEMONSTRACAO-SEM-VALIDADE') {
+        doc
+          .save()
+          .fillOpacity(0.25)
+          .fillColor(CPS_RED)
+          .font('Helvetica-Bold')
+          .fontSize(48)
+          .rotate(-25, { origin: [pageWidth / 2, pageHeight / 2] })
+          .text('PRÉVIA — SEM VALIDADE', 120, pageHeight / 2 - 20, {
+            width: pageWidth - 240,
+            align: 'center',
+          })
+          .restore();
+      }
 
       doc.end();
     });

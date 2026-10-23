@@ -116,11 +116,48 @@ export class StudentChallengeDto {
   @IsOptional() @IsJWT() @MaxLength(8192) qrToken?: string;
 }
 export class SignerSelectionDto {
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @ArrayMaxSize(3)
   @IsUUID('4', { each: true })
-  signerIds: string[];
+  signerIds?: string[];
+
+  @IsOptional()
+  @IsIn(['ATTENDEE', 'SPEAKER'])
+  role?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  eventTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  speaker?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  promoter?: string;
+
+  @IsOptional()
+  @IsDateString()
+  startsAt?: string;
+
+  @IsOptional()
+  @IsDateString()
+  endsAt?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  workloadMinutes?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  workload?: string;
 }
 export class RoleMutationDto {
   @IsIn(['ATTENDEE', 'SPEAKER']) role: string;
@@ -147,4 +184,13 @@ export class CreateEventFeedbackDto {
   @IsString()
   @MaxLength(1000)
   suggestions?: string;
+}
+
+export class ReconcileDeliveryDto {
+  @IsIn(['CONFIRM_SENT', 'RESCHEDULE_SEND', 'KEEP_AMBIGUOUS'])
+  resolution: 'CONFIRM_SENT' | 'RESCHEDULE_SEND' | 'KEEP_AMBIGUOUS';
+
+  @IsString()
+  @Length(5, 1000)
+  reason: string;
 }

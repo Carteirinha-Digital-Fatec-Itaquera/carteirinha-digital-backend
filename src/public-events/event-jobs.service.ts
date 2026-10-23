@@ -20,12 +20,71 @@ export class EventJobsService {
     private readonly operations: EventOperationsService,
     private readonly mail: MailService,
   ) {}
-  @Cron('*/10 * * * * *')
+  private isPreSendError(err: unknown): boolean {
+    if (!err || typeof err !== 'object') return false;
+    const anyErr = err as Record<string, unknown>;
+    const code = typeof anyErr.code === 'string' ? anyErr.code : '';
+    const preSendCodes = [
+      'ENOTFOUND',
+      'ECONNREFUSED',
+      'EAI_AGAIN',
+      'ENETUNREACH',
+      'EHOSTUNREACH',
+    ];
+    return preSendCodes.includes(code);
+  }
+
+  private activeTasks = 0;
+
+  getActiveTasksCount(): number {
+    return this.activeTasks;
+  }
+
+  private async processWithConcurrency(
+    jobs: { id: string }[],
+    concurrency = 5,
+  ): Promise<void> {
+    const executing = new Set<Promise<void>>();
+
+    for (const job of jobs) {
+      while (executing.size >= concurrency) {
+        await Promise.race(executing);
+      }
+
+      const taskPromise = (async () => {
+        this.activeTasks++;
+        try {
+          await this.process(job.id);
+        } catch (err: unknown) {
+          this.logger.error(
+            `Falha no processamento do job ${job.id}:`,
+            err instanceof Error ? err.stack : err,
+          );
+        } finally {
+          this.activeTasks = Math.max(0, this.activeTasks - 1);
+        }
+      })();
+
+      executing.add(taskPromise);
+      const onDone = () => {
+        executing.delete(taskPromise);
+      };
+      void taskPromise.then(onDone, onDone);
+    }
+
+    await Promise.all(executing);
+  }
+
+  @Cron('*/5 * * * * *')
   async tick() {
     if (this.running) return;
     this.running = true;
     try {
       await this.closeWindows();
+      const batchSize = Math.max(
+        1,
+        parseInt(process.env.CERTIFICATE_JOB_BATCH_SIZE || '15', 10),
+      );
       const pending = await this.prisma.certificateArtifact.findMany({
         where: {
           state: {
@@ -36,12 +95,14 @@ export class EventJobsService {
           OR: [{ leaseUntil: null }, { leaseUntil: { lt: new Date() } }],
           NOT: {
             state: 'READY',
-            deliveryState: { in: ['SENT', 'EXPIRED', 'NONE', 'FAILED'] },
+            deliveryState: {
+              in: ['SENT', 'EXPIRED', 'NONE', 'FAILED', 'AMBIGUOUS'],
+            },
           },
         },
-        take: 3,
+        take: batchSize,
       });
-      for (const job of pending) await this.process(job.id);
+      await this.processWithConcurrency(pending, 5);
       for (const series of await this.prisma.eventSeries.findMany({
         where: { purgedAt: null, retentionAt: { lte: new Date() } },
         select: { id: true },
@@ -176,6 +237,7 @@ export class EventJobsService {
         include: {
           certificate: {
             include: {
+              event: true,
               participant: {
                 include: { visitor: { include: { series: true } } },
               },
@@ -185,7 +247,9 @@ export class EventJobsService {
       });
       if (!latest) return;
       if (
-        ['SENT', 'EXPIRED', 'NONE', 'FAILED'].includes(latest.deliveryState)
+        ['SENT', 'EXPIRED', 'NONE', 'FAILED', 'AMBIGUOUS'].includes(
+          latest.deliveryState,
+        )
       ) {
         await this.prisma.certificateArtifact.updateMany({
           where: { id, leaseToken },
@@ -193,31 +257,347 @@ export class EventJobsService {
         });
         return;
       }
-      const visitor = latest.certificate.participant?.visitor;
-      if (
-        visitor?.email &&
-        !visitor.series.purgedAt &&
-        visitor.series.retentionAt > new Date() &&
-        job.deliveryAttempts < 5
-      ) {
-        const current = await this.prisma.certificate.findUniqueOrThrow({
-          where: { id: cert.id },
-        });
-        if (!current.revokedAt) {
-          await this.mail.sendVisitorCertificate(
-            visitor.email,
-            `${(process.env.STUDENT_APP_URL || 'https://carteirinha-digital-front-end-aluno.vercel.app').replace(/\/$/, '')}/visitantes`,
-          );
-          await this.prisma.certificateArtifact.updateMany({
-            where: { id, leaseToken, deliveryState: 'PENDING' },
-            data: { deliveryState: 'SENT' },
-          });
-        }
-      } else
+      if (latest.deliveryState === 'DISPATCHING') {
+        this.logger.warn(
+          `Artefato ${id} encontrado em DISPATCHING com lease expirado. Marcando AMBIGUOUS para evitar envio duplicado.`,
+        );
         await this.prisma.certificateArtifact.updateMany({
           where: { id, leaseToken },
-          data: { deliveryState: visitor ? 'EXPIRED' : 'NONE' },
+          data: {
+            deliveryState: 'AMBIGUOUS',
+            leaseUntil: null,
+            leaseToken: null,
+          },
         });
+        return;
+      }
+      const studentAppUrl = (
+        process.env.STUDENT_APP_URL ||
+        'https://carteirinha-digital-front-end-aluno.vercel.app'
+      ).replace(/\/$/, '');
+      const current = await this.prisma.certificate.findUniqueOrThrow({
+        where: { id: cert.id },
+      });
+      if (
+        current.revokedAt ||
+        latest.certificate.event?.status === 'CANCELLED'
+      ) {
+        await this.prisma.certificateArtifact.updateMany({
+          where: { id, leaseToken },
+          data: {
+            deliveryState: 'EXPIRED',
+            leaseUntil: null,
+            leaseToken: null,
+          },
+        });
+        return;
+      }
+      const studentAccountId =
+        latest.certificate.studentAccountId ||
+        latest.certificate.participant?.accountId;
+      const visitor = latest.certificate.participant?.visitor;
+
+      if (studentAccountId) {
+        const student = await this.prisma.student.findUnique({
+          where: { accountId: studentAccountId },
+          select: { ra: true, name: true, email: true, status: true },
+        });
+        if (!student || !student.email) {
+          await this.prisma.certificateArtifact.updateMany({
+            where: { id, leaseToken },
+            data: {
+              deliveryState: 'FAILED',
+              leaseUntil: null,
+              leaseToken: null,
+            },
+          });
+          return;
+        }
+
+        const activeStatuses = ['ativo', 'em curso'];
+        const isStudentActive =
+          Boolean(student.status) &&
+          activeStatuses.includes(student.status.trim().toLowerCase());
+
+        if (!isStudentActive) {
+          await this.prisma.certificateArtifact.updateMany({
+            where: { id, leaseToken },
+            data: {
+              deliveryState: 'FAILED',
+              leaseUntil: null,
+              leaseToken: null,
+            },
+          });
+          return;
+        }
+
+        // Marcar estado transitório persistente antes do envio externo
+        const marked = await this.prisma.certificateArtifact.updateMany({
+          where: { id, leaseToken, deliveryState: 'PENDING' },
+          data: { deliveryState: 'DISPATCHING' },
+        });
+        if (!marked.count) return;
+
+        let studentSentRecorded = false;
+        try {
+          await this.mail.sendCertificateNotification({
+            email: student.email,
+            recipientName: student.name,
+            eventTitle: latest.certificate.event.title,
+            accessUrl: `${studentAppUrl}/certificados`,
+            profile: 'ALUNO',
+          });
+
+          let lastPersistError: unknown = null;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              const freshCert = await this.prisma.certificate.findUniqueOrThrow(
+                {
+                  where: { id: cert.id },
+                  select: {
+                    revokedAt: true,
+                    event: { select: { status: true } },
+                  },
+                },
+              );
+              if (
+                freshCert?.revokedAt ||
+                freshCert?.event?.status === 'CANCELLED'
+              ) {
+                await this.prisma.certificateArtifact.updateMany({
+                  where: { id, leaseToken },
+                  data: {
+                    deliveryState: 'EXPIRED',
+                    leaseUntil: null,
+                    leaseToken: null,
+                  },
+                });
+                return;
+              }
+
+              const updateRes =
+                await this.prisma.certificateArtifact.updateMany({
+                  where: { id, leaseToken, deliveryState: 'DISPATCHING' },
+                  data:
+                    attempt === 0
+                      ? { deliveryState: 'SENT' }
+                      : {
+                          deliveryState: 'SENT',
+                          leaseUntil: null,
+                          leaseToken: null,
+                        },
+                });
+              if (updateRes.count > 0) {
+                studentSentRecorded = true;
+                break;
+              }
+            } catch (persistErr) {
+              lastPersistError = persistErr;
+              if (attempt === 0) {
+                this.logger.warn(
+                  `E-mail aceito pelo provedor para artefato ${id}, mas falhou ao gravar SENT localmente. Tentando reconciliação segura...`,
+                );
+              }
+            }
+          }
+
+          if (!studentSentRecorded) {
+            await this.prisma.certificateArtifact
+              .updateMany({
+                where: { id, leaseToken },
+                data: {
+                  deliveryState: 'AMBIGUOUS',
+                  leaseUntil: null,
+                  leaseToken: null,
+                },
+              })
+              .catch(() => {});
+            const errToThrow =
+              lastPersistError instanceof Error
+                ? lastPersistError
+                : new Error(
+                    typeof lastPersistError === 'string'
+                      ? lastPersistError
+                      : 'Falha ao persistir SENT após 3 tentativas',
+                  );
+            throw errToThrow;
+          }
+        } catch (mailOrPersistError) {
+          if (!studentSentRecorded) {
+            if (this.isPreSendError(mailOrPersistError)) {
+              await this.prisma.certificateArtifact
+                .updateMany({
+                  where: { id, leaseToken, deliveryState: 'DISPATCHING' },
+                  data: {
+                    deliveryState: 'PENDING',
+                  },
+                })
+                .catch(() => {});
+            } else {
+              await this.prisma.certificateArtifact
+                .updateMany({
+                  where: { id, leaseToken },
+                  data: {
+                    deliveryState: 'AMBIGUOUS',
+                    leaseUntil: null,
+                    leaseToken: null,
+                  },
+                })
+                .catch(() => {});
+            }
+          }
+          throw mailOrPersistError;
+        }
+      } else if (visitor) {
+        if (!visitor.email) {
+          await this.prisma.certificateArtifact.updateMany({
+            where: { id, leaseToken },
+            data: {
+              deliveryState: 'FAILED',
+              leaseUntil: null,
+              leaseToken: null,
+            },
+          });
+          return;
+        }
+        if (
+          visitor.series.purgedAt ||
+          visitor.series.retentionAt <= new Date()
+        ) {
+          await this.prisma.certificateArtifact.updateMany({
+            where: { id, leaseToken },
+            data: {
+              deliveryState: 'EXPIRED',
+              leaseUntil: null,
+              leaseToken: null,
+            },
+          });
+          return;
+        }
+
+        // Marcar estado transitório persistente antes do envio externo
+        const marked = await this.prisma.certificateArtifact.updateMany({
+          where: { id, leaseToken, deliveryState: 'PENDING' },
+          data: { deliveryState: 'DISPATCHING' },
+        });
+        if (!marked.count) return;
+
+        let visitorSentRecorded = false;
+        try {
+          await this.mail.sendCertificateNotification({
+            email: visitor.email,
+            recipientName: visitor.name,
+            eventTitle: latest.certificate.event.title,
+            accessUrl: `${studentAppUrl}/visitantes/certificados`,
+            profile: 'VISITANTE',
+          });
+
+          let lastPersistError: unknown = null;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              const freshCert = await this.prisma.certificate.findUniqueOrThrow(
+                {
+                  where: { id: cert.id },
+                  select: {
+                    revokedAt: true,
+                    event: { select: { status: true } },
+                  },
+                },
+              );
+              if (
+                freshCert?.revokedAt ||
+                freshCert?.event?.status === 'CANCELLED'
+              ) {
+                await this.prisma.certificateArtifact.updateMany({
+                  where: { id, leaseToken },
+                  data: {
+                    deliveryState: 'EXPIRED',
+                    leaseUntil: null,
+                    leaseToken: null,
+                  },
+                });
+                return;
+              }
+
+              const updateRes =
+                await this.prisma.certificateArtifact.updateMany({
+                  where: { id, leaseToken, deliveryState: 'DISPATCHING' },
+                  data:
+                    attempt === 0
+                      ? { deliveryState: 'SENT' }
+                      : {
+                          deliveryState: 'SENT',
+                          leaseUntil: null,
+                          leaseToken: null,
+                        },
+                });
+              if (updateRes.count > 0) {
+                visitorSentRecorded = true;
+                break;
+              }
+            } catch (persistErr) {
+              lastPersistError = persistErr;
+              if (attempt === 0) {
+                this.logger.warn(
+                  `E-mail de visitante aceito pelo provedor para artefato ${id}, mas falhou ao gravar SENT localmente. Tentando reconciliação segura...`,
+                );
+              }
+            }
+          }
+
+          if (!visitorSentRecorded) {
+            await this.prisma.certificateArtifact
+              .updateMany({
+                where: { id, leaseToken },
+                data: {
+                  deliveryState: 'AMBIGUOUS',
+                  leaseUntil: null,
+                  leaseToken: null,
+                },
+              })
+              .catch(() => {});
+            const errToThrow =
+              lastPersistError instanceof Error
+                ? lastPersistError
+                : new Error(
+                    typeof lastPersistError === 'string'
+                      ? lastPersistError
+                      : 'Falha ao persistir SENT após 3 tentativas',
+                  );
+            throw errToThrow;
+          }
+        } catch (mailOrPersistError) {
+          if (!visitorSentRecorded) {
+            if (this.isPreSendError(mailOrPersistError)) {
+              await this.prisma.certificateArtifact
+                .updateMany({
+                  where: { id, leaseToken, deliveryState: 'DISPATCHING' },
+                  data: {
+                    deliveryState: 'PENDING',
+                  },
+                })
+                .catch(() => {});
+            } else {
+              await this.prisma.certificateArtifact
+                .updateMany({
+                  where: { id, leaseToken },
+                  data: {
+                    deliveryState: 'AMBIGUOUS',
+                    leaseUntil: null,
+                    leaseToken: null,
+                  },
+                })
+                .catch(() => {});
+            }
+          }
+          throw mailOrPersistError;
+        }
+      } else {
+        await this.prisma.certificateArtifact.updateMany({
+          where: { id, leaseToken },
+          data: { deliveryState: 'NONE' },
+        });
+      }
       await this.prisma.certificateArtifact.updateMany({
         where: { id, leaseToken },
         data: { leaseUntil: null, leaseToken: null },
@@ -226,7 +606,12 @@ export class EventJobsService {
       const current = await this.prisma.certificateArtifact.findUnique({
         where: { id },
       });
-      if (current)
+      if (
+        current &&
+        !['SENT', 'EXPIRED', 'NONE', 'FAILED', 'AMBIGUOUS'].includes(
+          current.deliveryState,
+        )
+      ) {
         await this.prisma.certificateArtifact.updateMany({
           where: { id, leaseToken },
           data: {
@@ -247,6 +632,12 @@ export class EventJobsService {
             leaseToken: null,
           },
         });
+      } else if (current) {
+        await this.prisma.certificateArtifact.updateMany({
+          where: { id, leaseToken },
+          data: { leaseUntil: null, leaseToken: null },
+        });
+      }
     }
   }
   async cleanupOrphans() {

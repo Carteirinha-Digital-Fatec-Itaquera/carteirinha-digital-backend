@@ -119,9 +119,9 @@ export class CertificateService {
         .certificatePolicies as unknown as CertificatePolicy;
       const hasCustomPolicy = Boolean(
         customPolicy &&
-          typeof customPolicy === 'object' &&
-          Object.keys(customPolicy).length > 0 &&
-          (customPolicy.ATTENDEE || customPolicy.SPEAKER),
+        typeof customPolicy === 'object' &&
+        Object.keys(customPolicy).length > 0 &&
+        (customPolicy.ATTENDEE || customPolicy.SPEAKER),
       );
 
       const snapshot = hasCustomPolicy
@@ -220,6 +220,16 @@ export class CertificateService {
           }
           throw error;
         }
+      }
+
+      if (certificate) {
+        await client.certificateArtifact.create({
+          data: {
+            certificateId: certificate.id,
+            state: 'PENDING_RENDER',
+            deliveryState: 'PENDING',
+          },
+        });
       }
 
       return certificate;

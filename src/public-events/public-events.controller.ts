@@ -27,6 +27,12 @@ import { PrismaService } from '../database/prisma.service';
 import { AttendanceQrReferenceService } from '../attendance/attendance-qr-reference.service';
 import { AttendanceService } from '../attendance/attendance.service';
 import { TechnologyPdfService } from '../certificate/technology-pdf.service';
+import { PdfGeneratorService } from '../certificate/pdf-generator.service';
+import {
+  formatCertificateDate,
+  formatCertificateWorkload,
+} from '../certificate/certificate.snapshot';
+import { isUUID } from 'class-validator';
 import {
   EventCatalogService,
   type TemplateConfig,
@@ -47,6 +53,7 @@ import {
   SignerSelectionDto,
   RoleMutationDto,
   ParticipantCorrectionDto,
+  ReconcileDeliveryDto,
   CreateEventFeedbackDto,
 } from './public-events.dto';
 import { EventStorageService } from './event-storage.service';
@@ -386,7 +393,8 @@ export class VisitorController {
         verificationCode: true,
         issuedAt: true,
         revokedAt: true,
-        event: { select: { title: true } },
+        eventId: true,
+        event: { select: { id: true, title: true } },
         artifact: { select: { state: true } },
       },
       orderBy: { issuedAt: 'desc' },
@@ -470,6 +478,7 @@ export class EventManagementController {
     private readonly operations: EventOperationsService,
     private readonly pdf: TechnologyPdfService,
     private readonly storage: EventStorageService,
+    private readonly pdfGenerator: PdfGeneratorService,
   ) {}
   @Get('catalog') async catalogData() {
     await this.catalog.ensureDefaultTemplates();
@@ -614,6 +623,13 @@ export class EventManagementController {
   ) {
     return this.operations.retry(id, Number(req.user.sub));
   }
+  @Post('certificates/:id/reconcile-delivery') reconcileDelivery(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(validation) dto: ReconcileDeliveryDto,
+    @Req() req: AuthRequest,
+  ) {
+    return this.operations.reconcileDelivery(id, dto, Number(req.user.sub));
+  }
   @Patch('participants/:id') correct(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(validation) dto: ParticipantCorrectionDto,
@@ -622,22 +638,102 @@ export class EventManagementController {
     return this.operations.correct(id, dto, Number(req.user.sub));
   }
   @Post('templates/:id/preview') async preview(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
     @Body(validation) dto: SignerSelectionDto,
     @Res() res: Response,
   ) {
+    const isDefault = id === 'default' || id === 'institutional';
+    if (isDefault) {
+      const isSpeaker = dto.role === 'SPEAKER';
+      const studentName = isSpeaker
+        ? dto.speaker?.trim() || 'Nome do Palestrante de Demonstração'
+        : 'Nome completo de demonstração';
+      const eventTitle =
+        dto.eventTitle?.trim() || 'Título da palestra de demonstração';
+      const startsAt = dto.startsAt || '2026-10-26T21:00:00.000Z';
+      const eventDate = formatCertificateDate(startsAt);
+      const workload =
+        dto.workload?.trim() ||
+        (dto.workloadMinutes
+          ? formatCertificateWorkload(dto.workloadMinutes)
+          : '2 horas');
+      const speaker = dto.speaker?.trim() || 'Palestrante de demonstração';
+
+      const buffer = await this.pdfGenerator.generatePdf({
+        id: 'preview',
+        eventId: 'preview',
+        attendanceId: 'preview',
+        verificationCode: 'DEMONSTRACAO-SEM-VALIDADE',
+        issuedAt: new Date().toISOString(),
+        revokedAt: null,
+        payloadSnapshot: {
+          studentName,
+          studentRa: isSpeaker ? '' : '0000000000000',
+          course: isSpeaker ? '' : 'Curso de Demonstração',
+          eventTitle,
+          eventDate,
+          workload,
+          speaker,
+          institution: 'FATEC Itaquera - Centro Paula Souza',
+        },
+      });
+
+      res.type('application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        'inline; filename="previa-certificado-institucional.pdf"',
+      );
+      return res.send(buffer);
+    }
+
+    if (!isUUID(id)) {
+      throw new BadRequestException('ID do modelo inválido.');
+    }
+
     if (
       !Array.isArray(dto.signerIds) ||
       dto.signerIds.length < 1 ||
       dto.signerIds.length > 3
     )
       throw new BadRequestException('Selecione os assinantes para a prévia.');
+
+    if (new Set(dto.signerIds).size !== dto.signerIds.length) {
+      throw new BadRequestException('Selecione assinantes distintos.');
+    }
+
     const template = await this.prisma.certificateTemplate.findUniqueOrThrow({
       where: { id },
     });
+
     const signers = await this.prisma.certificateSigner.findMany({
       where: { id: { in: dto.signerIds }, archived: false },
     });
+
+    if (signers.length !== dto.signerIds.length) {
+      throw new BadRequestException('Assinante arquivado ou inexistente.');
+    }
+
+    const signersMap = new Map(signers.map((s) => [s.id, s]));
+    const orderedSigners = dto.signerIds
+      .map((signerId) => signersMap.get(signerId)!)
+      .filter(Boolean);
+
+    const isSpeaker = template.role === 'SPEAKER' || dto.role === 'SPEAKER';
+    const studentName = isSpeaker
+      ? dto.speaker?.trim() || 'Nome do Palestrante de Demonstração'
+      : 'Nome completo de demonstração';
+    const eventTitle =
+      dto.eventTitle?.trim() || 'Título da palestra de demonstração';
+    const promoter = dto.promoter?.trim() || '';
+    const startsAt = dto.startsAt || '2026-10-26T21:00:00.000Z';
+    const endsAt = dto.endsAt || '2026-10-26T23:00:00.000Z';
+    const eventDate = formatCertificateDate(startsAt);
+    const workload =
+      dto.workload?.trim() ||
+      (dto.workloadMinutes
+        ? formatCertificateWorkload(dto.workloadMinutes)
+        : '2 horas');
+
     const buffer = await this.pdf.render(
       {
         id: 'preview',
@@ -648,23 +744,24 @@ export class EventManagementController {
         revokedAt: null,
         payloadSnapshot: {
           version: 2,
-          studentName: 'Nome completo de demonstração',
+          studentName,
           studentRa: '',
           course: '',
-          eventTitle: 'Título da palestra de demonstração',
-          eventDate: '2026-10-26',
-          workload: '2 horas',
-          speaker: 'Palestrante de demonstração',
+          eventTitle,
+          eventDate,
+          workload,
+          speaker: dto.speaker?.trim() || 'Palestrante de demonstração',
           institution: 'Fatec Itaquera',
           role: template.role,
-          startsAt: '2026-10-26T18:00:00Z',
-          endsAt: '2026-10-26T20:00:00Z',
+          startsAt,
+          endsAt,
+          promoter,
           template: {
             id,
             version: template.version,
             ...(template.config as unknown as TemplateConfig),
           },
-          signers: signers.map((s) => ({
+          signers: orderedSigners.map((s) => ({
             id: s.id,
             name: s.name,
             title: s.title,

@@ -31,6 +31,35 @@ export class CheckpointService {
         );
       }
 
+      const now = new Date();
+
+      // Normalização sob bloqueio: expira checkpoints abertos cujo prazo venceu
+      for (const cp of checkpoints) {
+        if (cp.isOpen && cp.closesAt && now >= cp.closesAt) {
+          await tx.eventCheckpoint.updateMany({
+            where: { id: cp.id, isOpen: true, version: cp.version },
+            data: {
+              isOpen: false,
+              closedAt: cp.closesAt,
+              version: { increment: 1 },
+            },
+          });
+          cp.isOpen = false;
+          cp.closedAt = cp.closesAt;
+          cp.version += 1;
+          if (
+            cp.type === CheckpointType.CHECK_OUT &&
+            event.status === EventStatus.IN_PROGRESS
+          ) {
+            await tx.event.updateMany({
+              where: { id: eventId, status: EventStatus.IN_PROGRESS },
+              data: { status: EventStatus.COMPLETED },
+            });
+            event.status = EventStatus.COMPLETED;
+          }
+        }
+      }
+
       const checkpoint = checkpoints.find((item) => item.type === type);
       if (!checkpoint) {
         throw new NotFoundException('Checkpoint não encontrado');
@@ -45,25 +74,102 @@ export class CheckpointService {
       const checkOut = checkpoints.find(
         (item) => item.type === CheckpointType.CHECK_OUT,
       );
+
+      const isReopening = Boolean(checkpoint.openedAt);
+      let effectiveOpenedAt = checkpoint.openedAt;
+      let effectiveClosesAt = checkpoint.closesAt;
+
+      if (isReopening) {
+        // Consultar histórico de auditoria para validar a primeira abertura real comprovada
+        const openAudits = await tx.eventAudit.findMany({
+          where: {
+            eventId,
+            action: `CHECKPOINT_OPEN_${type}`,
+          },
+          orderBy: { createdAt: 'asc' },
+        });
+
+        if (openAudits.length > 0) {
+          const firstOpen = openAudits[0].createdAt;
+          const durationMinutes = event.windowMinutes ?? 15;
+          effectiveOpenedAt = firstOpen;
+          effectiveClosesAt = new Date(
+            firstOpen.getTime() + durationMinutes * 60000,
+          );
+        } else {
+          // Registro legado sem histórico de auditoria comprovado da primeira abertura
+          // Bloquear reabertura de legado sem prova conforme política
+          throw new ConflictException(
+            `Checkpoint legado sem histórico de auditoria comprovado não pode ser reaberto.`,
+          );
+        }
+
+        // Validação de tempo da reabertura: estritamente dentro da janela original
+        if (!effectiveClosesAt || now >= effectiveClosesAt) {
+          throw new ConflictException(
+            `Janela do ${type} expirada. Não é possível reabrir.`,
+          );
+        }
+      }
+
       if (type === CheckpointType.CHECK_IN) {
-        if (event.status === EventStatus.COMPLETED || checkOut?.openedAt) {
+        const checkOutAudit = await tx.eventAudit.findMany({
+          where: {
+            eventId,
+            action: {
+              in: ['CHECKPOINT_OPEN_CHECK_OUT', 'CHECKPOINT_REOPEN_CHECK_OUT'],
+            },
+          },
+          take: 1,
+        });
+
+        if (
+          event.status === EventStatus.COMPLETED ||
+          checkOut?.openedAt ||
+          checkOutAudit.length > 0
+        ) {
           throw new ConflictException(
             'CHECK_IN não pode ser reaberto após o início do CHECK_OUT',
           );
         }
-      } else if (
-        event.status !== EventStatus.IN_PROGRESS ||
-        !checkIn ||
-        checkIn.isOpen ||
-        !checkIn.openedAt ||
-        !checkIn.closedAt
-      ) {
-        throw new ConflictException(
-          'CHECK_OUT exige CHECK_IN encerrado e evento em andamento',
-        );
+      } else if (type === CheckpointType.CHECK_OUT) {
+        if (!isReopening) {
+          if (
+            event.status !== EventStatus.IN_PROGRESS ||
+            !checkIn ||
+            checkIn.isOpen ||
+            !checkIn.openedAt ||
+            !checkIn.closedAt
+          ) {
+            throw new ConflictException(
+              'CHECK_OUT exige CHECK_IN encerrado e evento em andamento',
+            );
+          }
+        } else {
+          // Reabertura de CHECK_OUT: se estava COMPLETED, autoriza transição COMPLETED -> IN_PROGRESS
+          if (
+            event.status !== EventStatus.IN_PROGRESS &&
+            event.status !== EventStatus.COMPLETED
+          ) {
+            throw new ConflictException(
+              'Reabertura de CHECK_OUT não permitida para o status atual do evento',
+            );
+          }
+          if (event.status === EventStatus.COMPLETED) {
+            await tx.event.update({
+              where: { id: eventId },
+              data: { status: EventStatus.IN_PROGRESS },
+            });
+          }
+        }
       }
 
-      const now = new Date();
+      const durationMinutes = event.windowMinutes ?? 15;
+      const openedAt = isReopening ? effectiveOpenedAt! : now;
+      const closesAt = isReopening
+        ? effectiveClosesAt!
+        : new Date(now.getTime() + durationMinutes * 60000);
+
       const result = await tx.eventCheckpoint.updateMany({
         where: {
           id: checkpoint.id,
@@ -72,10 +178,8 @@ export class CheckpointService {
         },
         data: {
           isOpen: true,
-          openedAt: now,
-          closesAt: event.windowMinutes
-            ? new Date(now.getTime() + event.windowMinutes * 60000)
-            : null,
+          openedAt,
+          closesAt,
           closedAt: null,
           version: { increment: 1 },
         },
@@ -87,7 +191,10 @@ export class CheckpointService {
         );
       }
 
-      if (type === CheckpointType.CHECK_IN) {
+      if (
+        type === CheckpointType.CHECK_IN &&
+        event.status !== EventStatus.IN_PROGRESS
+      ) {
         await tx.event.update({
           where: { id: eventId },
           data: { status: EventStatus.IN_PROGRESS },
@@ -100,10 +207,20 @@ export class CheckpointService {
       if (!updated) {
         throw new NotFoundException('Checkpoint não encontrado');
       }
-      if (event.seriesId)
-        await tx.eventAudit.create({
-          data: { eventId, action: `CHECKPOINT_OPEN_${type}`, secretaryId },
-        });
+
+      await tx.eventAudit.create({
+        data: {
+          eventId,
+          action: isReopening
+            ? `CHECKPOINT_REOPEN_${type}`
+            : `CHECKPOINT_OPEN_${type}`,
+          secretaryId,
+          reason: isReopening
+            ? `Reabertura na janela original até ${closesAt.toISOString()}`
+            : undefined,
+        },
+      });
+
       return this.toMutationResponse(updated);
     });
   }
@@ -157,10 +274,9 @@ export class CheckpointService {
       if (!updated) {
         throw new NotFoundException('Checkpoint não encontrado');
       }
-      if (event.seriesId)
-        await tx.eventAudit.create({
-          data: { eventId, action: `CHECKPOINT_CLOSE_${type}`, secretaryId },
-        });
+      await tx.eventAudit.create({
+        data: { eventId, action: `CHECKPOINT_CLOSE_${type}`, secretaryId },
+      });
       return this.toMutationResponse(updated);
     });
   }
@@ -232,6 +348,7 @@ export class CheckpointService {
     version: number;
     openedAt: Date | null;
     closedAt: Date | null;
+    closesAt: Date | null;
   }) {
     return {
       eventId: checkpoint.eventId,
@@ -240,6 +357,7 @@ export class CheckpointService {
       version: checkpoint.version,
       openedAt: checkpoint.openedAt?.toISOString() ?? null,
       closedAt: checkpoint.closedAt?.toISOString() ?? null,
+      closesAt: checkpoint.closesAt?.toISOString() ?? null,
     };
   }
 }
