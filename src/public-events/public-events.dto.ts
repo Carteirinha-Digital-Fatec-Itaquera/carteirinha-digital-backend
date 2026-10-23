@@ -185,3 +185,12 @@ export class CreateEventFeedbackDto {
   @MaxLength(1000)
   suggestions?: string;
 }
+
+export class ReconcileDeliveryDto {
+  @IsIn(['CONFIRM_SENT', 'RESCHEDULE_SEND', 'KEEP_AMBIGUOUS'])
+  resolution: 'CONFIRM_SENT' | 'RESCHEDULE_SEND' | 'KEEP_AMBIGUOUS';
+
+  @IsString()
+  @Length(5, 1000)
+  reason: string;
+}

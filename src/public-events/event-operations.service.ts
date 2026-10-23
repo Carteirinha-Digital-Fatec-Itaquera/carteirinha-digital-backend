@@ -11,6 +11,7 @@ import { EventStorageService } from './event-storage.service';
 import {
   ManualPresenceDto,
   ParticipantCorrectionDto,
+  ReconcileDeliveryDto,
 } from './public-events.dto';
 
 @Injectable()
@@ -34,6 +35,16 @@ export class EventOperationsService {
         throw new ConflictException(
           'Certificado revogado, inexistente ou em processamento.',
         );
+      if (job.deliveryState === 'AMBIGUOUS') {
+        throw new ConflictException(
+          'Entrega em estado ambíguo. Utilize a reconciliação administrativa auditada para confirmar envio ou reagendar.',
+        );
+      }
+      if (job.deliveryState === 'SENT' && job.state === 'READY') {
+        throw new ConflictException(
+          'Certificado já emitido e entregue com sucesso.',
+        );
+      }
       await tx.certificateArtifact.update({
         where: { id: job.id },
         data: {
@@ -52,7 +63,90 @@ export class EventOperationsService {
           secretaryId,
         },
       });
-      return { success: true };
+      return { success: true, action: 'RETRIED' };
+    });
+  }
+  async reconcileDelivery(
+    certificateId: string,
+    dto: ReconcileDeliveryDto,
+    secretaryId: number,
+  ) {
+    if (!dto || !dto.reason || dto.reason.trim().length < 5) {
+      throw new BadRequestException(
+        'Motivo da reconciliação é obrigatório (mínimo de 5 caracteres).',
+      );
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const job = await tx.certificateArtifact.findUnique({
+        where: { certificateId },
+        include: { certificate: true },
+      });
+      if (
+        !job ||
+        job.certificate.revokedAt ||
+        (job.leaseUntil && job.leaseUntil > new Date())
+      ) {
+        throw new ConflictException(
+          'Certificado revogado, inexistente ou em processamento.',
+        );
+      }
+      if (job.deliveryState !== 'AMBIGUOUS') {
+        throw new ConflictException(
+          `Apenas certificados em estado AMBIGUOUS podem ser reconciliados. Estado atual: ${job.deliveryState}`,
+        );
+      }
+      let newDeliveryState = job.deliveryState;
+      let auditAction = 'DELIVERY_RECONCILED';
+      if (dto.resolution === 'CONFIRM_SENT') {
+        newDeliveryState = 'SENT';
+        auditAction = 'DELIVERY_CONFIRMED_SENT';
+        await tx.certificateArtifact.update({
+          where: { id: job.id },
+          data: {
+            deliveryState: 'SENT',
+            leaseUntil: null,
+            leaseToken: null,
+          },
+        });
+      } else if (dto.resolution === 'RESCHEDULE_SEND') {
+        newDeliveryState = 'PENDING';
+        auditAction = 'DELIVERY_RESCHEDULED';
+        await tx.certificateArtifact.update({
+          where: { id: job.id },
+          data: {
+            deliveryState: 'PENDING',
+            deliveryAttempts: 0,
+            nextAttemptAt: new Date(),
+            leaseUntil: null,
+            leaseToken: null,
+          },
+        });
+      } else if (dto.resolution === 'KEEP_AMBIGUOUS') {
+        newDeliveryState = 'AMBIGUOUS';
+        auditAction = 'DELIVERY_KEPT_AMBIGUOUS';
+        await tx.certificateArtifact.update({
+          where: { id: job.id },
+          data: {
+            leaseUntil: null,
+            leaseToken: null,
+          },
+        });
+      }
+      await tx.eventAudit.create({
+        data: {
+          action: auditAction,
+          eventId: job.certificate.eventId,
+          subjectId: certificateId,
+          secretaryId,
+          reason: dto.reason.trim(),
+        },
+      });
+      return {
+        success: true,
+        resolution: dto.resolution,
+        deliveryState: newDeliveryState,
+        message: `Entrega reconciliada administrativamente como ${dto.resolution}.`,
+      };
     });
   }
   async correct(

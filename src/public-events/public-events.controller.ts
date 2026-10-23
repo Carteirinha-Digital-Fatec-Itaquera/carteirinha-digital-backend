@@ -53,6 +53,7 @@ import {
   SignerSelectionDto,
   RoleMutationDto,
   ParticipantCorrectionDto,
+  ReconcileDeliveryDto,
   CreateEventFeedbackDto,
 } from './public-events.dto';
 import { EventStorageService } from './event-storage.service';
@@ -621,6 +622,13 @@ export class EventManagementController {
     @Req() req: AuthRequest,
   ) {
     return this.operations.retry(id, Number(req.user.sub));
+  }
+  @Post('certificates/:id/reconcile-delivery') reconcileDelivery(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(validation) dto: ReconcileDeliveryDto,
+    @Req() req: AuthRequest,
+  ) {
+    return this.operations.reconcileDelivery(id, dto, Number(req.user.sub));
   }
   @Patch('participants/:id') correct(
     @Param('id', ParseUUIDPipe) id: string,
