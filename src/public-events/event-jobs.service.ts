@@ -34,26 +34,45 @@ export class EventJobsService {
     return preSendCodes.includes(code);
   }
 
+  private activeTasks = 0;
+
+  getActiveTasksCount(): number {
+    return this.activeTasks;
+  }
+
   private async processWithConcurrency(
     jobs: { id: string }[],
     concurrency = 5,
   ): Promise<void> {
-    let index = 0;
-    const executing: Promise<unknown>[] = [];
-    while (index < jobs.length) {
-      const job = jobs[index++];
-      const p = Promise.resolve().then(() => this.process(job.id));
-      executing.push(p);
-      const clean = () => {
-        const i = executing.indexOf(p);
-        if (i !== -1) void executing.splice(i, 1);
-      };
-      void p.then(clean, clean);
-      if (executing.length >= concurrency) {
+    const executing = new Set<Promise<void>>();
+
+    for (const job of jobs) {
+      while (executing.size >= concurrency) {
         await Promise.race(executing);
       }
+
+      const taskPromise = (async () => {
+        this.activeTasks++;
+        try {
+          await this.process(job.id);
+        } catch (err: unknown) {
+          this.logger.error(
+            `Falha no processamento do job ${job.id}:`,
+            err instanceof Error ? err.stack : err,
+          );
+        } finally {
+          this.activeTasks = Math.max(0, this.activeTasks - 1);
+        }
+      })();
+
+      executing.add(taskPromise);
+      const onDone = () => {
+        executing.delete(taskPromise);
+      };
+      void taskPromise.then(onDone, onDone);
     }
-    await Promise.allSettled(executing);
+
+    await Promise.all(executing);
   }
 
   @Cron('*/5 * * * * *')

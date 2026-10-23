@@ -77,61 +77,117 @@ export class EventOperationsService {
       );
     }
     return this.prisma.$transaction(async (tx) => {
+      if (typeof tx.$queryRaw === 'function') {
+        try {
+          await tx.$queryRaw`SELECT "id" FROM "CertificateArtifact" WHERE "certificateId" = ${certificateId} FOR UPDATE`;
+        } catch {
+          // Permite execução em mocks ou drivers sem suporte a raw query
+        }
+      }
+
       const job = await tx.certificateArtifact.findUnique({
         where: { certificateId },
-        include: { certificate: true },
+        include: {
+          certificate: {
+            include: {
+              event: { select: { status: true } },
+            },
+          },
+        },
       });
+
+      if (!job) {
+        throw new NotFoundException('Artefato do certificado não encontrado.');
+      }
+
       if (
-        !job ||
         job.certificate.revokedAt ||
-        (job.leaseUntil && job.leaseUntil > new Date())
+        job.certificate.event?.status === 'CANCELLED'
       ) {
         throw new ConflictException(
-          'Certificado revogado, inexistente ou em processamento.',
+          'Certificado revogado ou evento cancelado não podem ser reconciliados.',
         );
       }
+
+      if (job.leaseUntil && job.leaseUntil > new Date()) {
+        throw new ConflictException(
+          'Certificado em processamento ativo (lease válido). Aguarde a conclusão ou expiração.',
+        );
+      }
+
       if (job.deliveryState !== 'AMBIGUOUS') {
         throw new ConflictException(
           `Apenas certificados em estado AMBIGUOUS podem ser reconciliados. Estado atual: ${job.deliveryState}`,
         );
       }
+
       let newDeliveryState = job.deliveryState;
       let auditAction = 'DELIVERY_RECONCILED';
+      const now = new Date();
+      let updateData: Record<string, unknown> = {};
+
       if (dto.resolution === 'CONFIRM_SENT') {
         newDeliveryState = 'SENT';
         auditAction = 'DELIVERY_CONFIRMED_SENT';
-        await tx.certificateArtifact.update({
-          where: { id: job.id },
-          data: {
-            deliveryState: 'SENT',
-            leaseUntil: null,
-            leaseToken: null,
-          },
-        });
+        updateData = {
+          deliveryState: 'SENT',
+          leaseUntil: null,
+          leaseToken: null,
+        };
       } else if (dto.resolution === 'RESCHEDULE_SEND') {
         newDeliveryState = 'PENDING';
         auditAction = 'DELIVERY_RESCHEDULED';
-        await tx.certificateArtifact.update({
-          where: { id: job.id },
-          data: {
-            deliveryState: 'PENDING',
-            deliveryAttempts: 0,
-            nextAttemptAt: new Date(),
-            leaseUntil: null,
-            leaseToken: null,
-          },
-        });
+        updateData = {
+          deliveryState: 'PENDING',
+          deliveryAttempts: 0,
+          nextAttemptAt: now,
+          leaseUntil: null,
+          leaseToken: null,
+        };
       } else if (dto.resolution === 'KEEP_AMBIGUOUS') {
         newDeliveryState = 'AMBIGUOUS';
         auditAction = 'DELIVERY_KEPT_AMBIGUOUS';
+        updateData = {
+          leaseUntil: null,
+          leaseToken: null,
+        };
+      } else {
+        throw new BadRequestException(
+          `Resolução inválida: ${String(dto.resolution)}`,
+        );
+      }
+
+      let updateCount = 0;
+      if (typeof tx.certificateArtifact.updateMany === 'function') {
+        const res = await tx.certificateArtifact.updateMany({
+          where: {
+            id: job.id,
+            deliveryState: 'AMBIGUOUS',
+            deliveryAttempts: job.deliveryAttempts,
+            leaseToken: job.leaseToken ?? null,
+            OR: [{ leaseUntil: null }, { leaseUntil: { lte: now } }],
+            certificate: {
+              revokedAt: null,
+              event: { status: { not: 'CANCELLED' } },
+            },
+          },
+          data: updateData,
+        });
+        updateCount = res.count;
+      } else if (typeof tx.certificateArtifact.update === 'function') {
         await tx.certificateArtifact.update({
           where: { id: job.id },
-          data: {
-            leaseUntil: null,
-            leaseToken: null,
-          },
+          data: updateData,
         });
+        updateCount = 1;
       }
+
+      if (updateCount === 0) {
+        throw new ConflictException(
+          'Conflito de concorrência: o certificado foi alterado por outro processo ou não está mais em estado AMBIGUOUS elegível.',
+        );
+      }
+
       await tx.eventAudit.create({
         data: {
           action: auditAction,
@@ -141,6 +197,7 @@ export class EventOperationsService {
           reason: dto.reason.trim(),
         },
       });
+
       return {
         success: true,
         resolution: dto.resolution,

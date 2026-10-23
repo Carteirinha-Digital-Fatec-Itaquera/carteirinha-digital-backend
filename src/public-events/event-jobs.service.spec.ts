@@ -764,4 +764,88 @@ describe('EventJobsService', () => {
       data: { deliveryState: 'AMBIGUOUS', leaseUntil: null, leaseToken: null },
     });
   });
+
+  describe('Worker Concurrency and Task Management (C2)', () => {
+    it('mantém concorrência <= 5 e drena todas as tarefas mesmo com falha na primeira, intermediária ou última tarefa', async () => {
+      let active = 0;
+      let maxObserved = 0;
+      const executedIds: string[] = [];
+      const errorIds = new Set(['job-0', 'job-5', 'job-9']);
+
+      jest.spyOn(service, 'closeWindows').mockResolvedValue(undefined);
+      jest.spyOn(service, 'cleanupOrphans').mockResolvedValue(undefined);
+
+      jest.spyOn(service, 'process').mockImplementation(async (id: string) => {
+        active++;
+        maxObserved = Math.max(maxObserved, active);
+        executedIds.push(id);
+        try {
+          if (errorIds.has(id)) {
+            await new Promise((r) => setTimeout(r, 20));
+            throw new Error(`Falha simulada no ${id}`);
+          }
+          await new Promise((r) => setTimeout(r, 60));
+        } finally {
+          active--;
+        }
+      });
+
+      const fakeJobs = Array.from({ length: 10 }, (_, i) => ({
+        id: `job-${i}`,
+      }));
+      prisma.certificateArtifact.findMany.mockResolvedValue(fakeJobs);
+      prisma.eventSeries.findMany.mockResolvedValue([]);
+      prisma.presenceChallenge.deleteMany.mockResolvedValue({});
+      prisma.eventRateLimit.deleteMany.mockResolvedValue({});
+      prisma.visitorSession.deleteMany.mockResolvedValue({});
+
+      await service.tick();
+
+      expect(maxObserved).toBeLessThanOrEqual(5);
+      expect(active).toBe(0);
+      expect(service.getActiveTasksCount()).toBe(0);
+      expect(executedIds).toHaveLength(10);
+    });
+
+    it('impede sobreposição de ticks enquanto tarefas anteriores continuam ativas', async () => {
+      let active = 0;
+      let maxObserved = 0;
+
+      jest.spyOn(service, 'closeWindows').mockResolvedValue(undefined);
+      jest.spyOn(service, 'cleanupOrphans').mockResolvedValue(undefined);
+
+      jest.spyOn(service, 'process').mockImplementation(async () => {
+        active++;
+        maxObserved = Math.max(maxObserved, active);
+        try {
+          await new Promise((r) => setTimeout(r, 80));
+        } finally {
+          active--;
+        }
+      });
+
+      const fakeJobs = Array.from({ length: 5 }, (_, i) => ({
+        id: `overlap-${i}`,
+      }));
+      prisma.certificateArtifact.findMany.mockResolvedValue(fakeJobs);
+      prisma.eventSeries.findMany.mockResolvedValue([]);
+      prisma.presenceChallenge.deleteMany.mockResolvedValue({});
+      prisma.eventRateLimit.deleteMany.mockResolvedValue({});
+      prisma.visitorSession.deleteMany.mockResolvedValue({});
+
+      // Inicia tick 1
+      const tick1 = service.tick();
+
+      // Dispara tick 2 logo em seguida enquanto tick 1 está rodando
+      const tick2 = service.tick();
+
+      await Promise.all([tick1, tick2]);
+
+      expect(maxObserved).toBeLessThanOrEqual(5);
+      expect(active).toBe(0);
+      expect(service.getActiveTasksCount()).toBe(0);
+      // findMany só deve ter sido chamado uma vez porque tick 2 retornou de imediato
+      expect(prisma.certificateArtifact.findMany).toHaveBeenCalledTimes(1);
+    });
+  });
 });
