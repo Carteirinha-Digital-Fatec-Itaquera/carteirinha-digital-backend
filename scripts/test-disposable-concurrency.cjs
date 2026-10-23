@@ -15,7 +15,7 @@ const targetUrl = process.env.DISPOSABLE_TEST_DATABASE_URL || process.env.CERTIF
 if (!targetUrl) {
   console.log('[INTEGRATION SKIPPED] Nenhuma variÃƒÂ¡vel DISPOSABLE_TEST_DATABASE_URL ou CERTIFICATE_TEST_DATABASE_URL foi configurada.');
   console.log('Para executar contra PostgreSQL local descartÃƒÂ¡vel, configure:');
-  console.log('  export DISPOSABLE_TEST_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/disposable_test_reconcile"');
+  console.log('Configure a URL local descartável fora do código, sem credenciais versionadas.');
   process.exit(2);
 }
 
