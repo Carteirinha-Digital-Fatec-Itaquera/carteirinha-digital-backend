@@ -20,6 +20,42 @@ export class EventJobsService {
     private readonly operations: EventOperationsService,
     private readonly mail: MailService,
   ) {}
+  private isPreSendError(err: unknown): boolean {
+    if (!err || typeof err !== 'object') return false;
+    const anyErr = err as Record<string, unknown>;
+    const code = typeof anyErr.code === 'string' ? anyErr.code : '';
+    const preSendCodes = [
+      'ENOTFOUND',
+      'ECONNREFUSED',
+      'EAI_AGAIN',
+      'ENETUNREACH',
+      'EHOSTUNREACH',
+    ];
+    return preSendCodes.includes(code);
+  }
+
+  private async processWithConcurrency(
+    jobs: { id: string }[],
+    concurrency = 5,
+  ): Promise<void> {
+    let index = 0;
+    const executing: Promise<unknown>[] = [];
+    while (index < jobs.length) {
+      const job = jobs[index++];
+      const p = Promise.resolve().then(() => this.process(job.id));
+      executing.push(p);
+      const clean = () => {
+        const i = executing.indexOf(p);
+        if (i !== -1) void executing.splice(i, 1);
+      };
+      void p.then(clean, clean);
+      if (executing.length >= concurrency) {
+        await Promise.race(executing);
+      }
+    }
+    await Promise.allSettled(executing);
+  }
+
   @Cron('*/5 * * * * *')
   async tick() {
     if (this.running) return;
@@ -47,11 +83,7 @@ export class EventJobsService {
         },
         take: batchSize,
       });
-      const chunkSize = 5;
-      for (let i = 0; i < pending.length; i += chunkSize) {
-        const chunk = pending.slice(i, i + chunkSize);
-        await Promise.allSettled(chunk.map((job) => this.process(job.id)));
-      }
+      await this.processWithConcurrency(pending, 5);
       for (const series of await this.prisma.eventSeries.findMany({
         where: { purgedAt: null, retentionAt: { lte: new Date() } },
         select: { id: true },
@@ -300,10 +332,15 @@ export class EventJobsService {
           let lastPersistError: unknown = null;
           for (let attempt = 0; attempt < 3; attempt++) {
             try {
-              const freshCert = await this.prisma.certificate.findUniqueOrThrow({
-                where: { id: cert.id },
-                select: { revokedAt: true, event: { select: { status: true } } },
-              });
+              const freshCert = await this.prisma.certificate.findUniqueOrThrow(
+                {
+                  where: { id: cert.id },
+                  select: {
+                    revokedAt: true,
+                    event: { select: { status: true } },
+                  },
+                },
+              );
               if (
                 freshCert?.revokedAt ||
                 freshCert?.event?.status === 'CANCELLED'
@@ -356,23 +393,39 @@ export class EventJobsService {
                 },
               })
               .catch(() => {});
-            throw (
-              lastPersistError ||
-              new Error('Falha ao persistir SENT após 3 tentativas')
-            );
+            const errToThrow =
+              lastPersistError instanceof Error
+                ? lastPersistError
+                : new Error(
+                    typeof lastPersistError === 'string'
+                      ? lastPersistError
+                      : 'Falha ao persistir SENT após 3 tentativas',
+                  );
+            throw errToThrow;
           }
         } catch (mailOrPersistError) {
           if (!studentSentRecorded) {
-            await this.prisma.certificateArtifact
-              .updateMany({
-                where: { id, leaseToken },
-                data: {
-                  deliveryState: 'AMBIGUOUS',
-                  leaseUntil: null,
-                  leaseToken: null,
-                },
-              })
-              .catch(() => {});
+            if (this.isPreSendError(mailOrPersistError)) {
+              await this.prisma.certificateArtifact
+                .updateMany({
+                  where: { id, leaseToken, deliveryState: 'DISPATCHING' },
+                  data: {
+                    deliveryState: 'PENDING',
+                  },
+                })
+                .catch(() => {});
+            } else {
+              await this.prisma.certificateArtifact
+                .updateMany({
+                  where: { id, leaseToken },
+                  data: {
+                    deliveryState: 'AMBIGUOUS',
+                    leaseUntil: null,
+                    leaseToken: null,
+                  },
+                })
+                .catch(() => {});
+            }
           }
           throw mailOrPersistError;
         }
@@ -423,10 +476,15 @@ export class EventJobsService {
           let lastPersistError: unknown = null;
           for (let attempt = 0; attempt < 3; attempt++) {
             try {
-              const freshCert = await this.prisma.certificate.findUniqueOrThrow({
-                where: { id: cert.id },
-                select: { revokedAt: true, event: { select: { status: true } } },
-              });
+              const freshCert = await this.prisma.certificate.findUniqueOrThrow(
+                {
+                  where: { id: cert.id },
+                  select: {
+                    revokedAt: true,
+                    event: { select: { status: true } },
+                  },
+                },
+              );
               if (
                 freshCert?.revokedAt ||
                 freshCert?.event?.status === 'CANCELLED'
@@ -479,23 +537,39 @@ export class EventJobsService {
                 },
               })
               .catch(() => {});
-            throw (
-              lastPersistError ||
-              new Error('Falha ao persistir SENT após 3 tentativas')
-            );
+            const errToThrow =
+              lastPersistError instanceof Error
+                ? lastPersistError
+                : new Error(
+                    typeof lastPersistError === 'string'
+                      ? lastPersistError
+                      : 'Falha ao persistir SENT após 3 tentativas',
+                  );
+            throw errToThrow;
           }
         } catch (mailOrPersistError) {
           if (!visitorSentRecorded) {
-            await this.prisma.certificateArtifact
-              .updateMany({
-                where: { id, leaseToken },
-                data: {
-                  deliveryState: 'AMBIGUOUS',
-                  leaseUntil: null,
-                  leaseToken: null,
-                },
-              })
-              .catch(() => {});
+            if (this.isPreSendError(mailOrPersistError)) {
+              await this.prisma.certificateArtifact
+                .updateMany({
+                  where: { id, leaseToken, deliveryState: 'DISPATCHING' },
+                  data: {
+                    deliveryState: 'PENDING',
+                  },
+                })
+                .catch(() => {});
+            } else {
+              await this.prisma.certificateArtifact
+                .updateMany({
+                  where: { id, leaseToken },
+                  data: {
+                    deliveryState: 'AMBIGUOUS',
+                    leaseUntil: null,
+                    leaseToken: null,
+                  },
+                })
+                .catch(() => {});
+            }
           }
           throw mailOrPersistError;
         }
