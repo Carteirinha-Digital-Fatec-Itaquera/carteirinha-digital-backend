@@ -27,10 +27,10 @@ interface MockArtifact {
   leaseUntil: Date | null;
 }
 
-describe('EventOperationsService - Reconciliação Concorrente de Entregas (C1)', () => {
+describe('EventOperationsService - ReconciliaÃ§Ã£o Concorrente de Entregas (C1)', () => {
   let operationsService: EventOperationsService;
 
-  it('deve rejeitar com HTTP 409 solicitação desatualizada quando dois administradores concorrem', async () => {
+  it('deve rejeitar com HTTP 409 solicitaÃ§Ã£o desatualizada quando dois administradores concorrem', async () => {
     const cert = {
       id: 'cert-1',
       eventId: 'event-1',
@@ -62,6 +62,7 @@ describe('EventOperationsService - Reconciliação Concorrente de Entregas (C1)'
     const mockPrisma = {
       $transaction: <T>(cb: (tx: unknown) => Promise<T>): Promise<T> =>
         cb(mockPrisma),
+      $queryRaw: jest.fn().mockResolvedValue([]),
       certificateArtifact: {
         findUnique: jest.fn().mockImplementation(async () => {
           const snap = JSON.parse(JSON.stringify(artifact)) as MockArtifact;
@@ -133,7 +134,7 @@ describe('EventOperationsService - Reconciliação Concorrente de Entregas (C1)'
     expect(res1.success).toBe(true);
     expect(artifact.deliveryState).toBe('PENDING');
 
-    // Desbloqueia a segunda leitura após a primeira ter concluído
+    // Desbloqueia a segunda leitura apÃ³s a primeira ter concluÃ­do
     releaseSecondRead();
 
     await expect(second).rejects.toThrow(ConflictException);
@@ -173,6 +174,7 @@ describe('EventOperationsService - Reconciliação Concorrente de Entregas (C1)'
     const mockPrisma = {
       $transaction: <T>(cb: (tx: unknown) => Promise<T>): Promise<T> =>
         cb(mockPrisma),
+      $queryRaw: jest.fn().mockResolvedValue([]),
       certificateArtifact: {
         findUnique: jest.fn().mockImplementation(async () => {
           const snap = JSON.parse(JSON.stringify(artifact)) as MockArtifact;
@@ -225,14 +227,14 @@ describe('EventOperationsService - Reconciliação Concorrente de Entregas (C1)'
       cert.id,
       {
         resolution: 'RESCHEDULE_SEND',
-        reason: 'Tentativa de reconciliação enquanto worker assume',
+        reason: 'Tentativa de reconciliaÃ§Ã£o enquanto worker assume',
       },
       1,
     );
 
     await secondReadReady;
 
-    // Worker assume o job enquanto a transação do admin estava em andamento
+    // Worker assume o job enquanto a transaÃ§Ã£o do admin estava em andamento
     artifact.deliveryState = 'DISPATCHING';
     artifact.leaseToken = 'worker-lease-abc-123';
     artifact.leaseUntil = new Date(Date.now() + 120000);
@@ -241,13 +243,13 @@ describe('EventOperationsService - Reconciliação Concorrente de Entregas (C1)'
 
     await expect(reconcilePromise).rejects.toThrow(ConflictException);
 
-    // O lease e estado DISPATCHING do worker NÃO foram apagados
+    // O lease e estado DISPATCHING do worker NÃƒO foram apagados
     expect(artifact.deliveryState).toBe('DISPATCHING');
     expect(artifact.leaseToken).toBe('worker-lease-abc-123');
     expect(auditEntries).toHaveLength(0);
   });
 
-  it('deve rejeitar reconciliação se o evento for cancelado ou o certificado revogado concorrentemente', async () => {
+  it('deve rejeitar reconciliaÃ§Ã£o se o evento for cancelado ou o certificado revogado concorrentemente', async () => {
     const cert = {
       id: 'cert-3',
       eventId: 'event-3',
@@ -268,6 +270,7 @@ describe('EventOperationsService - Reconciliação Concorrente de Entregas (C1)'
     const mockPrisma = {
       $transaction: <T>(cb: (tx: unknown) => Promise<T>): Promise<T> =>
         cb(mockPrisma),
+      $queryRaw: jest.fn().mockResolvedValue([]),
       certificateArtifact: {
         findUnique: jest.fn().mockResolvedValue(artifact),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -290,7 +293,7 @@ describe('EventOperationsService - Reconciliação Concorrente de Entregas (C1)'
     ).rejects.toThrow(ConflictException);
   });
 
-  it('deve aceitar as três resoluções legítimas e gravar auditoria em transação única', async () => {
+  it('deve aceitar as trÃªs resoluÃ§Ãµes legÃ­timas e gravar auditoria em transaÃ§Ã£o Ãºnica', async () => {
     for (const resolution of [
       'CONFIRM_SENT',
       'RESCHEDULE_SEND',
@@ -317,6 +320,7 @@ describe('EventOperationsService - Reconciliação Concorrente de Entregas (C1)'
       const mockPrisma = {
         $transaction: <T>(cb: (tx: unknown) => Promise<T>): Promise<T> =>
           cb(mockPrisma),
+        $queryRaw: jest.fn().mockResolvedValue([]),
         certificateArtifact: {
           findUnique: jest.fn().mockResolvedValue(artifact),
           updateMany: jest
@@ -346,7 +350,7 @@ describe('EventOperationsService - Reconciliação Concorrente de Entregas (C1)'
 
       const res = await service.reconcileDelivery(
         cert.id,
-        { resolution, reason: `Reconciliação válida para ${resolution}` },
+        { resolution, reason: `ReconciliaÃ§Ã£o vÃ¡lida para ${resolution}` },
         10,
       );
 
@@ -367,7 +371,7 @@ describe('EventOperationsService - Reconciliação Concorrente de Entregas (C1)'
     }
   });
 
-  it('deve validar razão com mínimo de 5 caracteres', async () => {
+  it('deve validar razÃ£o com mÃ­nimo de 5 caracteres', async () => {
     const service = new EventOperationsService(
       {} as PrismaService,
       {} as CertificateService,

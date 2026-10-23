@@ -37,12 +37,12 @@ export class EventOperationsService {
         );
       if (job.deliveryState === 'AMBIGUOUS') {
         throw new ConflictException(
-          'Entrega em estado ambíguo. Utilize a reconciliação administrativa auditada para confirmar envio ou reagendar.',
+          'Entrega em estado ambÃ­guo. Utilize a reconciliaÃ§Ã£o administrativa auditada para confirmar envio ou reagendar.',
         );
       }
       if (job.deliveryState === 'SENT' && job.state === 'READY') {
         throw new ConflictException(
-          'Certificado já emitido e entregue com sucesso.',
+          'Certificado jÃ¡ emitido e entregue com sucesso.',
         );
       }
       await tx.certificateArtifact.update({
@@ -73,17 +73,13 @@ export class EventOperationsService {
   ) {
     if (!dto || !dto.reason || dto.reason.trim().length < 5) {
       throw new BadRequestException(
-        'Motivo da reconciliação é obrigatório (mínimo de 5 caracteres).',
+        'Motivo da reconciliaÃ§Ã£o Ã© obrigatÃ³rio (mÃ­nimo de 5 caracteres).',
       );
     }
     return this.prisma.$transaction(async (tx) => {
-      if (typeof tx.$queryRaw === 'function') {
-        try {
-          await tx.$queryRaw`SELECT "id" FROM "CertificateArtifact" WHERE "certificateId" = ${certificateId} FOR UPDATE`;
-        } catch {
-          // Permite execução em mocks ou drivers sem suporte a raw query
-        }
-      }
+      // Serialize with event cancellation before locking its artifact.
+      await tx.$queryRaw`SELECT e."id" FROM "Event" e JOIN "Certificate" c ON c."eventId" = e."id" WHERE c."id" = ${certificateId} FOR UPDATE OF e`;
+      await tx.$queryRaw`SELECT "id" FROM "CertificateArtifact" WHERE "certificateId" = ${certificateId} FOR UPDATE`;
 
       const job = await tx.certificateArtifact.findUnique({
         where: { certificateId },
@@ -97,7 +93,7 @@ export class EventOperationsService {
       });
 
       if (!job) {
-        throw new NotFoundException('Artefato do certificado não encontrado.');
+        throw new NotFoundException('Artefato do certificado nÃ£o encontrado.');
       }
 
       if (
@@ -105,13 +101,13 @@ export class EventOperationsService {
         job.certificate.event?.status === 'CANCELLED'
       ) {
         throw new ConflictException(
-          'Certificado revogado ou evento cancelado não podem ser reconciliados.',
+          'Certificado revogado ou evento cancelado nÃ£o podem ser reconciliados.',
         );
       }
 
       if (job.leaseUntil && job.leaseUntil > new Date()) {
         throw new ConflictException(
-          'Certificado em processamento ativo (lease válido). Aguarde a conclusão ou expiração.',
+          'Certificado em processamento ativo (lease vÃ¡lido). Aguarde a conclusÃ£o ou expiraÃ§Ã£o.',
         );
       }
 
@@ -153,38 +149,29 @@ export class EventOperationsService {
         };
       } else {
         throw new BadRequestException(
-          `Resolução inválida: ${String(dto.resolution)}`,
+          `ResoluÃ§Ã£o invÃ¡lida: ${String(dto.resolution)}`,
         );
       }
 
-      let updateCount = 0;
-      if (typeof tx.certificateArtifact.updateMany === 'function') {
-        const res = await tx.certificateArtifact.updateMany({
-          where: {
-            id: job.id,
-            deliveryState: 'AMBIGUOUS',
-            deliveryAttempts: job.deliveryAttempts,
-            leaseToken: job.leaseToken ?? null,
-            OR: [{ leaseUntil: null }, { leaseUntil: { lte: now } }],
-            certificate: {
-              revokedAt: null,
-              event: { status: { not: 'CANCELLED' } },
-            },
+      const res = await tx.certificateArtifact.updateMany({
+        where: {
+          id: job.id,
+          deliveryState: 'AMBIGUOUS',
+          deliveryAttempts: job.deliveryAttempts,
+          leaseToken: job.leaseToken ?? null,
+          OR: [{ leaseUntil: null }, { leaseUntil: { lte: now } }],
+          certificate: {
+            revokedAt: null,
+            event: { status: { not: 'CANCELLED' } },
           },
-          data: updateData,
-        });
-        updateCount = res.count;
-      } else if (typeof tx.certificateArtifact.update === 'function') {
-        await tx.certificateArtifact.update({
-          where: { id: job.id },
-          data: updateData,
-        });
-        updateCount = 1;
-      }
+        },
+        data: updateData,
+      });
+      const updateCount = res.count;
 
       if (updateCount === 0) {
         throw new ConflictException(
-          'Conflito de concorrência: o certificado foi alterado por outro processo ou não está mais em estado AMBIGUOUS elegível.',
+          'Conflito de concorrÃªncia: o certificado foi alterado por outro processo ou nÃ£o estÃ¡ mais em estado AMBIGUOUS elegÃ­vel.',
         );
       }
 
@@ -212,7 +199,7 @@ export class EventOperationsService {
     secretaryId: number,
   ) {
     if (dto.name.trim().length < 3)
-      throw new BadRequestException('Nome inválido.');
+      throw new BadRequestException('Nome invÃ¡lido.');
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "EventParticipant" WHERE "id" = ${id} FOR UPDATE`;
       const current = await tx.eventParticipant.findUnique({
@@ -221,17 +208,17 @@ export class EventOperationsService {
       });
       if (!current || current.event.series?.purgedAt)
         throw new ConflictException(
-          'Arquivo histórico encerrado para alterações.',
+          'Arquivo histÃ³rico encerrado para alteraÃ§Ãµes.',
         );
       if (await tx.certificate.count({ where: { participantId: id } }))
         throw new ConflictException(
-          'Não é permitido alterar os dados de um certificado emitido.',
+          'NÃ£o Ã© permitido alterar os dados de um certificado emitido.',
         );
       const person = await tx.eventParticipant.update({
         where: { id },
         data: { name: dto.name.trim(), course: dto.course || null },
       });
-      // A presença conserva seu snapshot original; a emissão v2 lê o participante corrigido.
+      // A presenÃ§a conserva seu snapshot original; a emissÃ£o v2 lÃª o participante corrigido.
       await tx.eventAudit.create({
         data: {
           action: 'PARTICIPANT_CORRECTED',
@@ -323,10 +310,10 @@ export class EventOperationsService {
       });
       if (!current || current.event.series?.purgedAt)
         throw new ConflictException(
-          'Arquivo histórico encerrado para alterações.',
+          'Arquivo histÃ³rico encerrado para alteraÃ§Ãµes.',
         );
       if (await tx.certificate.count({ where: { participantId: id } }))
-        throw new ConflictException('Certificado já emitido.');
+        throw new ConflictException('Certificado jÃ¡ emitido.');
       if (
         current.event.certificateEnabled &&
         current.event.certificatePolicies
@@ -336,7 +323,7 @@ export class EventOperationsService {
         )?.[role];
         if (!policy) {
           throw new BadRequestException(
-            `Papel ${role} não possui modelo de certificado configurado para este evento.`,
+            `Papel ${role} nÃ£o possui modelo de certificado configurado para este evento.`,
           );
         }
       }
@@ -375,7 +362,7 @@ export class EventOperationsService {
         });
         if (!series || series.purgedAt || series.retentionAt <= new Date())
           throw new ConflictException(
-            'Arquivo histórico encerrado para alterações.',
+            'Arquivo histÃ³rico encerrado para alteraÃ§Ãµes.',
           );
       }
       const person = await tx.eventParticipant.findUnique({
@@ -389,8 +376,8 @@ export class EventOperationsService {
         person.eventId !== eventId ||
         person.visitor?.series.purgedAt
       )
-        throw new ConflictException('Participante/atividade indisponível.');
-      // Registro manual não simula QR nem GPS e preserva timestamps anteriores.
+        throw new ConflictException('Participante/atividade indisponÃ­vel.');
+      // Registro manual nÃ£o simula QR nem GPS e preserva timestamps anteriores.
       const previous = await tx.attendance.findUnique({
         where: { participantId: person.id },
       });
@@ -416,7 +403,9 @@ export class EventOperationsService {
           });
       } else {
         if (!previous?.checkInAt)
-          throw new BadRequestException('Entrada obrigatória antes da saída.');
+          throw new BadRequestException(
+            'Entrada obrigatÃ³ria antes da saÃ­da.',
+          );
         if (!previous.checkOutAt)
           await tx.attendance.update({
             where: { id: previous.id },
@@ -455,7 +444,7 @@ export class EventOperationsService {
       !event?.visitorsAllowed ||
       visitor.seriesId !== event.seriesId
     )
-      throw new BadRequestException('Inscrição não pertence à atividade.');
+      throw new BadRequestException('InscriÃ§Ã£o nÃ£o pertence Ã  atividade.');
     return this.prisma.eventParticipant.upsert({
       where: { eventId_visitorId: { eventId, visitorId } },
       create: {
@@ -472,7 +461,7 @@ export class EventOperationsService {
       where: { id, ...(visitorId ? { participant: { visitorId } } : {}) },
       include: { artifact: true },
     });
-    if (!row) throw new NotFoundException('Certificado não encontrado.');
+    if (!row) throw new NotFoundException('Certificado nÃ£o encontrado.');
     if (row.revokedAt) throw new ConflictException('Certificado revogado.');
     if (row.artifact?.state !== 'READY' || !row.artifact.storageKey)
       throw new ConflictException(
@@ -555,7 +544,7 @@ export class EventOperationsService {
         data: {
           action: 'OPERATIONAL_DATA_PURGED',
           subjectId: seriesId,
-          reason: `${ids.length} inscrições; certificados e histórico mínimo preservados.`,
+          reason: `${ids.length} inscriÃ§Ãµes; certificados e histÃ³rico mÃ­nimo preservados.`,
         },
       });
       return true;
@@ -570,7 +559,7 @@ export class EventOperationsService {
       where: { id: eventId },
       select: { id: true, title: true },
     });
-    if (!event) throw new NotFoundException('Evento não encontrado');
+    if (!event) throw new NotFoundException('Evento nÃ£o encontrado');
 
     const feedback = await this.prisma.eventFeedback.create({
       data: {
@@ -584,7 +573,7 @@ export class EventOperationsService {
     return {
       success: true,
       id: feedback.id,
-      message: 'Avaliação enviada com sucesso! Obrigado pelo seu feedback.',
+      message: 'AvaliaÃ§Ã£o enviada com sucesso! Obrigado pelo seu feedback.',
     };
   }
 
@@ -593,7 +582,7 @@ export class EventOperationsService {
       where: { id: eventId },
       select: { id: true, title: true },
     });
-    if (!event) throw new NotFoundException('Evento não encontrado');
+    if (!event) throw new NotFoundException('Evento nÃ£o encontrado');
 
     const feedbacks = await this.prisma.eventFeedback.findMany({
       where: { eventId },
