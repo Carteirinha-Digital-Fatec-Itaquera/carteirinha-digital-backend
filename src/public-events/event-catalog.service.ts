@@ -19,6 +19,7 @@ import {
 } from './public-events.dto';
 
 export interface TemplateConfig {
+  textColor?: string;
   heading: string;
   edition: string;
   backgroundAssetId?: string;
@@ -121,6 +122,7 @@ export class EventCatalogService {
           status: dto.autoPublish ? 'PUBLISHED' : 'DRAFT',
           config: {
             heading: dto.heading,
+            ...(dto.textColor ? { textColor: dto.textColor } : {}),
             edition: dto.edition,
             backgroundAssetId: dto.backgroundAssetId || null,
             ...(dto.design ? { design: dto.design } : {}),
@@ -254,6 +256,7 @@ export class EventCatalogService {
         const config = {
           ...oldConfig,
           heading: dto.heading,
+          ...(dto.textColor ? { textColor: dto.textColor } : {}),
           edition: dto.edition,
           ...(dto.backgroundAssetId
             ? { backgroundAssetId: dto.backgroundAssetId }

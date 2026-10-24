@@ -66,6 +66,7 @@ describe('CRUD do catálogo de certificados', () => {
     heading: 'CERTIFICADO CORRIGIDO',
     edition: 'Semana corrigida',
     expectedVersion: 2,
+    textColor: '#FFFFFF',
   };
   it('edita modelo conservando design e identidade do registro', async () => {
     const { service, tx, template } = setup();
@@ -78,6 +79,7 @@ describe('CRUD do catálogo de certificados', () => {
         config: {
           ...template.config,
           heading: dto.heading,
+          textColor: dto.textColor,
           edition: dto.edition,
         },
         version: { increment: 1 },
@@ -179,5 +181,14 @@ describe('CRUD do catálogo de certificados', () => {
     expect(
       (await validate(Object.assign(new UpdateTemplateDto(), dto))).length,
     ).toBe(0);
+    expect(
+      (
+        await validate(
+          Object.assign(new UpdateTemplateDto(), dto, {
+            textColor: 'red;background:url(x)',
+          }),
+        )
+      ).length,
+    ).toBeGreaterThan(0);
   });
 });
