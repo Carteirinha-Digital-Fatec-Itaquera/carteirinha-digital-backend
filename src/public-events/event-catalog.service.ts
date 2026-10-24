@@ -20,6 +20,9 @@ export interface TemplateConfig {
   heading: string;
   edition: string;
   backgroundAssetId?: string;
+  design?: 'TECHNOLOGY_BLUE_2026';
+  attendeeAction?: string;
+  speakerAction?: string;
 }
 export interface CertificatePolicy {
   ATTENDEE: { templateId: string; signerIds: string[] };
@@ -118,6 +121,11 @@ export class EventCatalogService {
             heading: dto.heading,
             edition: dto.edition,
             backgroundAssetId: dto.backgroundAssetId || null,
+            ...(dto.design ? { design: dto.design } : {}),
+            ...(dto.attendeeAction
+              ? { attendeeAction: dto.attendeeAction }
+              : {}),
+            ...(dto.speakerAction ? { speakerAction: dto.speakerAction } : {}),
           },
         },
       });
@@ -150,6 +158,23 @@ export class EventCatalogService {
       },
     ];
 
+    defaults.push(
+      {
+        name: 'XIII Semana de Tecnologia 2026 — Azul Circuitos — Participante',
+        role: 'ATTENDEE',
+        heading: 'CERTIFICADO',
+        edition:
+          "XIII Semana de Tecnologia da Fatec Itaquera 'Professor Miguel Reale'",
+      },
+      {
+        name: 'XIII Semana de Tecnologia 2026 — Azul Circuitos — Palestrante',
+        role: 'SPEAKER',
+        heading: 'CERTIFICADO',
+        edition:
+          "XIII Semana de Tecnologia da Fatec Itaquera 'Professor Miguel Reale'",
+      },
+    );
+
     for (const def of defaults) {
       const existing = await this.prisma.certificateTemplate.findFirst({
         where: { name: def.name, role: def.role },
@@ -165,6 +190,13 @@ export class EventCatalogService {
               heading: def.heading,
               edition: def.edition,
               backgroundAssetId: null,
+              ...(def.name.includes('Azul Circuitos')
+                ? {
+                    design: 'TECHNOLOGY_BLUE_2026',
+                    attendeeAction: 'participou da atividade',
+                    speakerAction: 'ministrou a atividade intitulada',
+                  }
+                : {}),
             },
           },
         });

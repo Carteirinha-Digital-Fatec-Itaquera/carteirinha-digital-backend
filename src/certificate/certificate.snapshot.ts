@@ -7,7 +7,16 @@ export interface CertificateSnapshot {
   startsAt?: string;
   endsAt?: string;
   promoter?: string;
-  template?: { id: string; version: number; heading: string; edition: string; backgroundAssetId?: string };
+  template?: {
+    id: string;
+    version: number;
+    heading: string;
+    edition: string;
+    backgroundAssetId?: string;
+    design?: string;
+    attendeeAction?: string;
+    speakerAction?: string;
+  };
   signers?: { id: string; name: string; title: string; assetId: string }[];
   studentName: string;
   studentRa: string;

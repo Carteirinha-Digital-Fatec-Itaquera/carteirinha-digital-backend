@@ -67,6 +67,8 @@ export class TechnologyPdfService {
       try {
         // Arte limpa preserva logos, moldura e ilustrações do PDF aprovado.
         if (image) doc.image(image, 0, 0, { width: 841.92, height: 595.32 });
+        else if (config.design === 'TECHNOLOGY_BLUE_2026')
+          this.drawBlueTechnologyLayout(doc);
         else this.drawReferenceLayout(doc, config.edition);
         doc
           .fillColor('#000000')
@@ -102,8 +104,8 @@ export class TechnologyPdfService {
           });
         const action =
           snapshot.role === 'SPEAKER'
-            ? 'ministrou a palestra intitulada'
-            : 'participou da palestra intitulada';
+            ? config.speakerAction || 'ministrou a palestra intitulada'
+            : config.attendeeAction || 'participou da palestra intitulada';
         const text = `Certificamos que ${snapshot.studentName} ${action}: “${snapshot.eventTitle}”, ${snapshot.promoter ? `promovida por ${snapshot.promoter}, ` : ''}realizada no dia ${dateText}${snapshot.startsAt && snapshot.endsAt ? `, das ${time(snapshot.startsAt)} às ${time(snapshot.endsAt)}` : ''}, na ${config.edition}, com carga horária de ${snapshot.workload}.`;
         let size = 14;
         while (
@@ -207,7 +209,9 @@ export class TechnologyPdfService {
           doc
             .save()
             .fillOpacity(0.25)
-            .fillColor('#BA1A1A')
+            .fillColor(
+              config.design === 'TECHNOLOGY_BLUE_2026' ? '#073B70' : '#BA1A1A',
+            )
             .font('Helvetica-Bold')
             .fontSize(48)
             .text('DEMONSTRAÇÃO', 130, 320, { width: 600, align: 'center' })
@@ -240,6 +244,55 @@ export class TechnologyPdfService {
       'Texto excede o espaço reservado no certificado. Revise o cadastro antes de publicar.',
     );
   }
+  private drawBlueTechnologyLayout(doc: PDFKit.PDFDocument) {
+    doc.save().rect(0, 0, 841.92, 595.32).fill('#FFFFFF').restore();
+    doc.save().rect(0, 0, 841.92, 108).fill('#073B70').restore();
+    doc.save().rect(0, 108, 841.92, 5).fill('#16B8D4').restore();
+    doc.save().rect(0, 582, 841.92, 13.32).fill('#073B70').restore();
+    // Circuit traces stay in the blue header and footer, away from variable text and QR.
+    doc.save().lineWidth(1.2).strokeColor('#21C5DD').opacity(0.65);
+    for (const x of [28, 62, 96, 745, 779, 813]) {
+      doc
+        .moveTo(x, 8)
+        .lineTo(x, 29)
+        .lineTo(x + 18, 29)
+        .lineTo(x + 18, 52)
+        .stroke();
+      doc.circle(x + 18, 52, 3).fill('#FFD247');
+    }
+    doc.restore();
+    doc
+      .save()
+      .lineWidth(2)
+      .strokeColor('#1687B7')
+      .rect(24, 20, 793.92, 550)
+      .stroke()
+      .restore();
+    doc
+      .fillColor('#FFFFFF')
+      .font('Helvetica-Bold')
+      .fontSize(15)
+      .text('FATEC ITAQUERA', 54, 39, { width: 220 });
+    doc
+      .fillColor('#C6F5FF')
+      .font('Helvetica')
+      .fontSize(9)
+      .text('PROF. MIGUEL REALE', 54, 61, { width: 220 });
+    doc
+      .fillColor('#FFD247')
+      .font('Helvetica-Bold')
+      .fontSize(12)
+      .text('XIII SEMANA DE TECNOLOGIA 2026', 430, 48, {
+        width: 340,
+        align: 'right',
+      });
+    doc
+      .fillColor('#FFFFFF')
+      .font('Helvetica')
+      .fontSize(8)
+      .text('26 A 29 DE OUTUBRO', 430, 66, { width: 340, align: 'right' });
+  }
+
   private drawReferenceLayout(doc: PDFKit.PDFDocument, edition: string) {
     const asset = (name: string) => join(__dirname, 'assets', name);
     // Recursos gráficos originais extraídos do PDF fornecido; nenhuma assinatura/nome foi reutilizado.
