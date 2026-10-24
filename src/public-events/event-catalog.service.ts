@@ -20,7 +20,7 @@ export interface TemplateConfig {
   heading: string;
   edition: string;
   backgroundAssetId?: string;
-  design?: 'TECHNOLOGY_BLUE_2026';
+  design?: 'TECHNOLOGY_BLUE_2026' | 'TECHNOLOGY_BLUE_2026_DARK';
   attendeeAction?: string;
   speakerAction?: string;
 }
@@ -175,6 +175,19 @@ export class EventCatalogService {
       },
     );
 
+    defaults.push(
+      ...defaults
+        .filter(
+          (def) =>
+            def.name.includes('Azul Circuitos') ||
+            def.name.includes('Azul Integral CPS'),
+        )
+        .map((def) => ({
+          ...def,
+          name: def.name.replace('Azul Circuitos', 'Azul Integral CPS'),
+        })),
+    );
+
     for (const def of defaults) {
       const existing = await this.prisma.certificateTemplate.findFirst({
         where: { name: def.name, role: def.role },
@@ -190,9 +203,12 @@ export class EventCatalogService {
               heading: def.heading,
               edition: def.edition,
               backgroundAssetId: null,
-              ...(def.name.includes('Azul Circuitos')
+              ...(def.name.includes('Azul Circuitos') ||
+              def.name.includes('Azul Integral CPS')
                 ? {
-                    design: 'TECHNOLOGY_BLUE_2026',
+                    design: def.name.includes('Azul Integral CPS')
+                      ? 'TECHNOLOGY_BLUE_2026_DARK'
+                      : 'TECHNOLOGY_BLUE_2026',
                     attendeeAction: 'participou da atividade',
                     speakerAction: 'ministrou a atividade intitulada',
                   }
