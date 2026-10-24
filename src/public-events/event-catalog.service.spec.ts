@@ -55,7 +55,14 @@ describe('EventCatalogService - Templates de Certificados', () => {
 
     await service.ensureDefaultTemplates();
 
-    expect(prisma.certificateTemplate.create).toHaveBeenCalledTimes(2);
+    expect(prisma.certificateTemplate.create).toHaveBeenCalledTimes(4);
+    expect(prisma.certificateTemplate.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        name: 'XIII Semana de Tecnologia 2026 — Azul Circuitos — Participante',
+        config: expect.objectContaining({ design: 'TECHNOLOGY_BLUE_2026', attendeeAction: 'participou da atividade' }),
+      }),
+    });
+
     expect(prisma.certificateTemplate.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         name: 'XIII Semana de Tecnologia — Participante',
