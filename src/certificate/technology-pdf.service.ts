@@ -127,7 +127,7 @@ export class TechnologyPdfService {
         const tail = `”, ${snapshot.promoter ? `promovida por ${snapshot.promoter}, ` : ''}realizada no dia ${dateText}${snapshot.startsAt && snapshot.endsAt ? `, das ${time(snapshot.startsAt)} às ${time(snapshot.endsAt)}` : ''}, na ${config.edition}, com carga horária de ${snapshot.workload}.`;
         doc
           .font('Helvetica')
-          .fillColor(isDark ? '#FFFFFF' : '#172A3C')
+          .fillColor(config.textColor || (isDark ? '#FFFFFF' : '#172A3C'))
           .fontSize(size)
           .text('Certificamos que ', 70, isCampaign ? 215 : 205, {
             width: 702,
@@ -155,12 +155,6 @@ export class TechnologyPdfService {
         const width = 600 / signatures.length;
         signatures.forEach((signer, i) => {
           const x = 120 + i * width;
-          if (isDark)
-            doc
-              .save()
-              .rect(x + (width - 118) / 2, 400, 118, 53)
-              .fill('#D9EAF8')
-              .restore();
           doc.image(signer.image, x + (width - 110) / 2, 404, {
             fit: [110, 45],
             align: 'center',
@@ -170,7 +164,7 @@ export class TechnologyPdfService {
             .moveTo(x + (width - Math.min(300, width - 20)) / 2, 457)
             .lineTo(x + (width + Math.min(300, width - 20)) / 2, 457)
             .lineWidth(0.5)
-            .strokeColor(isDark ? '#FFFFFF' : '#000000')
+            .strokeColor(config.textColor || (isDark ? '#FFFFFF' : '#000000'))
             .stroke();
           doc
             .font('Helvetica-BoldOblique')

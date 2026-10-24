@@ -11,6 +11,7 @@ export interface CertificateSnapshot {
     id: string;
     version: number;
     heading: string;
+    textColor?: string;
     edition: string;
     backgroundAssetId?: string;
     design?: string;
