@@ -57,7 +57,9 @@ export class TemplateDto {
   @IsString() @Length(3, 160) heading: string;
   @IsString() @Length(3, 200) edition: string;
   @IsOptional() @IsUUID() backgroundAssetId?: string;
-  @IsOptional() @IsIn(['TECHNOLOGY_BLUE_2026']) design?: 'TECHNOLOGY_BLUE_2026';
+  @IsOptional()
+  @IsIn(['TECHNOLOGY_BLUE_2026', 'TECHNOLOGY_BLUE_2026_DARK'])
+  design?: 'TECHNOLOGY_BLUE_2026' | 'TECHNOLOGY_BLUE_2026_DARK';
   @IsOptional() @IsString() @MaxLength(120) attendeeAction?: string;
   @IsOptional() @IsString() @MaxLength(120) speakerAction?: string;
   @IsOptional() @IsBoolean() autoPublish?: boolean;

@@ -63,7 +63,7 @@ describe('EventCatalogService - Templates de Certificados', () => {
 
     await service.ensureDefaultTemplates();
 
-    expect(prisma.certificateTemplate.create).toHaveBeenCalledTimes(4);
+    expect(prisma.certificateTemplate.create).toHaveBeenCalledTimes(6);
     const created = prisma.certificateTemplate.create.mock.calls.map(
       ([args]) => args.data,
     );

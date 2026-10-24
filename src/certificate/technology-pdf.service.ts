@@ -15,7 +15,8 @@ export class TechnologyPdfService {
   async render(view: CertificateView, preview = false): Promise<Buffer> {
     const snapshot = view.payloadSnapshot;
     const config = snapshot.template;
-    const isCampaign = config?.design === 'TECHNOLOGY_BLUE_2026';
+    const isDark = config?.design === 'TECHNOLOGY_BLUE_2026_DARK';
+    const isCampaign = config?.design === 'TECHNOLOGY_BLUE_2026' || isDark;
     if (!config || !snapshot.signers?.length)
       throw new BadRequestException(
         'Modelo requer arte limpa e assinaturas autorizadas.',
@@ -68,8 +69,7 @@ export class TechnologyPdfService {
       try {
         // Arte limpa preserva logos, moldura e ilustrações do PDF aprovado.
         if (image) doc.image(image, 0, 0, { width: 841.92, height: 595.32 });
-        else if (config.design === 'TECHNOLOGY_BLUE_2026')
-          this.drawBlueTechnologyLayout(doc);
+        else if (isCampaign) this.drawBlueTechnologyLayout(doc, isDark);
         else this.drawReferenceLayout(doc, config.edition);
         doc
           .fillColor(isCampaign ? '#FF9900' : '#000000')
@@ -127,7 +127,7 @@ export class TechnologyPdfService {
         const tail = `”, ${snapshot.promoter ? `promovida por ${snapshot.promoter}, ` : ''}realizada no dia ${dateText}${snapshot.startsAt && snapshot.endsAt ? `, das ${time(snapshot.startsAt)} às ${time(snapshot.endsAt)}` : ''}, na ${config.edition}, com carga horária de ${snapshot.workload}.`;
         doc
           .font('Helvetica')
-          .fillColor('#172A3C')
+          .fillColor(isDark ? '#FFFFFF' : '#172A3C')
           .fontSize(size)
           .text('Certificamos que ', 70, isCampaign ? 215 : 205, {
             width: 702,
@@ -155,6 +155,12 @@ export class TechnologyPdfService {
         const width = 600 / signatures.length;
         signatures.forEach((signer, i) => {
           const x = 120 + i * width;
+          if (isDark)
+            doc
+              .save()
+              .rect(x + (width - 118) / 2, 400, 118, 53)
+              .fill('#D9EAF8')
+              .restore();
           doc.image(signer.image, x + (width - 110) / 2, 404, {
             fit: [110, 45],
             align: 'center',
@@ -164,7 +170,7 @@ export class TechnologyPdfService {
             .moveTo(x + (width - Math.min(300, width - 20)) / 2, 457)
             .lineTo(x + (width + Math.min(300, width - 20)) / 2, 457)
             .lineWidth(0.5)
-            .strokeColor('#000000')
+            .strokeColor(isDark ? '#FFFFFF' : '#000000')
             .stroke();
           doc
             .font('Helvetica-BoldOblique')
@@ -187,13 +193,17 @@ export class TechnologyPdfService {
                 doc,
                 signer.title,
                 width,
-                42,
+                isDark ? 26 : 42,
                 signatures.length > 1 ? 9 : 13,
                 7,
                 'Helvetica',
               ),
             )
-            .text(signer.title, x, 485, { width, align: 'center', height: 42 });
+            .text(signer.title, x, 485, {
+              width,
+              align: 'center',
+              height: isDark ? 26 : 42,
+            });
         });
         if (qr) {
           doc.image(qr, 755, 503, { width: 49, height: 49 });
@@ -211,9 +221,7 @@ export class TechnologyPdfService {
           doc
             .save()
             .fillOpacity(0.25)
-            .fillColor(
-              config.design === 'TECHNOLOGY_BLUE_2026' ? '#073B70' : '#BA1A1A',
-            )
+            .fillColor(isDark ? '#FFFFFF' : isCampaign ? '#073B70' : '#BA1A1A')
             .font('Helvetica-Bold')
             .fontSize(48)
             .text('DEMONSTRAÇÃO', 130, 320, { width: 600, align: 'center' })
@@ -246,7 +254,7 @@ export class TechnologyPdfService {
       'Texto excede o espaço reservado no certificado. Revise o cadastro antes de publicar.',
     );
   }
-  private drawBlueTechnologyLayout(doc: PDFKit.PDFDocument) {
+  private drawBlueTechnologyLayout(doc: PDFKit.PDFDocument, dark = false) {
     const asset = (name: string) => join(__dirname, 'assets', name);
     // Crop only the original circuit artwork; exclude all poster copy from the background.
     doc.save().rect(0, 0, 841.92, 595.32).clip();
@@ -263,12 +271,13 @@ export class TechnologyPdfService {
     doc.restore();
     doc
       .save()
-      .fillOpacity(0.97)
-      .rect(54, 195, 734, 373)
-      .fill('#FFFFFF')
+      .fillOpacity(dark ? 0.92 : 0.97)
+      .rect(54, 195, 734, dark ? 383 : 373)
+      .fill(dark ? '#123B66' : '#FFFFFF')
       .restore();
-    doc.image(asset('cps_logo_cor.png'), 70, 510, {
-      fit: [85, 45],
+    if (dark) doc.save().rect(66, 513, 122, 65).fill('#D9EAF8').restore();
+    doc.image(asset('cps_logo_cor.png'), 70, dark ? 517 : 510, {
+      fit: dark ? [110, 58] : [85, 45],
       align: 'center',
       valign: 'center',
     });
