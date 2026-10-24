@@ -5,7 +5,7 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import { type Event } from '@prisma/client';
+import { Prisma, type Event } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { EventStorageService } from './event-storage.service';
 import { EventService } from '../event/event.service';
@@ -14,6 +14,8 @@ import {
   SeriesDto,
   SignerDto,
   TemplateDto,
+  UpdateTemplateDto,
+  UpdateSignerDto,
 } from './public-events.dto';
 
 export interface TemplateConfig {
@@ -193,7 +195,10 @@ export class EventCatalogService {
       def.name.includes('Azul Integral CPS'),
     )) {
       const existing = await this.prisma.certificateTemplate.findFirst({
-        where: { name: def.name, role: def.role },
+        where: {
+          role: def.role,
+          config: { path: ['design'], equals: 'TECHNOLOGY_BLUE_2026_DARK' },
+        },
       });
       if (!existing) {
         await this.prisma.certificateTemplate.create({
@@ -219,14 +224,181 @@ export class EventCatalogService {
             },
           },
         });
-      } else if (existing.status !== 'PUBLISHED') {
-        await this.prisma.certificateTemplate.update({
-          where: { id: existing.id },
-          data: { status: 'PUBLISHED' },
-        });
       }
     }
   }
+
+  async updateTemplate(
+    id: string,
+    dto: UpdateTemplateDto,
+    secretaryId: number,
+  ) {
+    if (
+      dto.backgroundAssetId &&
+      !(await this.prisma.eventAsset.findFirst({
+        where: { id: dto.backgroundAssetId, kind: 'BACKGROUND' },
+      }))
+    )
+      throw new BadRequestException('Arte de fundo inválida.');
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const before = await tx.certificateTemplate.findUnique({
+          where: { id },
+        });
+        if (!before) throw new NotFoundException('Modelo não encontrado.');
+        if (before.role !== dto.role)
+          throw new ConflictException(
+            'O papel do modelo não pode ser alterado. Cadastre outro modelo.',
+          );
+        const oldConfig = before.config as unknown as TemplateConfig;
+        const config = {
+          ...oldConfig,
+          heading: dto.heading,
+          edition: dto.edition,
+          ...(dto.backgroundAssetId
+            ? { backgroundAssetId: dto.backgroundAssetId }
+            : {}),
+          ...(dto.design ? { design: dto.design } : {}),
+          ...(dto.attendeeAction !== undefined
+            ? { attendeeAction: dto.attendeeAction }
+            : {}),
+          ...(dto.speakerAction !== undefined
+            ? { speakerAction: dto.speakerAction }
+            : {}),
+        };
+        const result = await tx.certificateTemplate.updateMany({
+          where: {
+            id,
+            version: dto.expectedVersion,
+            status: { not: 'ARCHIVED' },
+          },
+          data: {
+            name: dto.name,
+            config,
+            version: { increment: 1 },
+          },
+        });
+        if (result.count !== 1)
+          throw new ConflictException(
+            'O modelo foi alterado ou excluído. Atualize a lista antes de editar.',
+          );
+        const after = await tx.certificateTemplate.findUniqueOrThrow({
+          where: { id },
+        });
+        await tx.eventAudit.create({
+          data: {
+            action: 'TEMPLATE_UPDATED',
+            subjectId: id,
+            secretaryId,
+            reason: JSON.stringify({ before, after }),
+          },
+        });
+        return after;
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      )
+        throw new ConflictException(
+          'Já existe outra versão com esse nome. Escolha um nome diferente.',
+        );
+      throw error;
+    }
+  }
+
+  async updateSigner(id: string, dto: UpdateSignerDto, secretaryId: number) {
+    dto.name = dto.name.trim();
+    dto.title = dto.title.trim();
+    if (dto.name.length < 3 || dto.title.length < 3)
+      throw new BadRequestException(
+        'Preencha os campos obrigatórios com pelo menos três caracteres.',
+      );
+    if (
+      !dto.authorized ||
+      !(await this.prisma.eventAsset.findFirst({
+        where: { id: dto.assetId, kind: 'SIGNATURE' },
+      }))
+    )
+      throw new BadRequestException(
+        'Confirme a autorização e envie uma assinatura válida.',
+      );
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.certificateSigner.findUnique({ where: { id } });
+      if (!before) throw new NotFoundException('Assinatura não encontrada.');
+      const result = await tx.certificateSigner.updateMany({
+        where: { id, version: dto.expectedVersion, archived: false },
+        data: {
+          name: dto.name,
+          title: dto.title,
+          course: dto.course || null,
+          assetId: dto.assetId,
+          authorizedAt: new Date(),
+          version: { increment: 1 },
+        },
+      });
+      if (result.count !== 1)
+        throw new ConflictException(
+          'A assinatura foi alterada ou excluída. Atualize a lista antes de editar.',
+        );
+      const after = await tx.certificateSigner.findUniqueOrThrow({
+        where: { id },
+      });
+      await tx.eventAudit.create({
+        data: {
+          action: 'SIGNER_UPDATED',
+          subjectId: id,
+          secretaryId,
+          reason: JSON.stringify({ before, after }),
+        },
+      });
+      return after;
+    });
+  }
+
+  async deleteCatalogItem(
+    kind: 'templates' | 'signers',
+    id: string,
+    expectedVersion: number,
+    secretaryId: number,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const result =
+        kind === 'templates'
+          ? await tx.certificateTemplate.updateMany({
+              where: {
+                id,
+                version: expectedVersion,
+                status: { not: 'ARCHIVED' },
+              },
+              data: { status: 'ARCHIVED', version: { increment: 1 } },
+            })
+          : await tx.certificateSigner.updateMany({
+              where: { id, version: expectedVersion, archived: false },
+              data: { archived: true, version: { increment: 1 } },
+            });
+      if (result.count !== 1) {
+        const found =
+          kind === 'templates'
+            ? await tx.certificateTemplate.findUnique({ where: { id } })
+            : await tx.certificateSigner.findUnique({ where: { id } });
+        if (!found) throw new NotFoundException('Cadastro não encontrado.');
+        throw new ConflictException(
+          'O cadastro foi alterado ou já excluído. Atualize a lista.',
+        );
+      }
+      await tx.eventAudit.create({
+        data: {
+          action:
+            kind === 'templates' ? 'TEMPLATE_ARCHIVED' : 'SIGNER_ARCHIVED',
+          subjectId: id,
+          secretaryId,
+        },
+      });
+      return { success: true };
+    });
+  }
+
   async templateStatus(
     id: string,
     status: 'PUBLISHED' | 'ARCHIVED',
