@@ -188,7 +188,10 @@ export class EventCatalogService {
         })),
     );
 
-    for (const def of defaults) {
+    // Only the approved final design is offered for new events.
+    for (const def of defaults.filter((def) =>
+      def.name.includes('Azul Integral CPS'),
+    )) {
       const existing = await this.prisma.certificateTemplate.findFirst({
         where: { name: def.name, role: def.role },
       });
