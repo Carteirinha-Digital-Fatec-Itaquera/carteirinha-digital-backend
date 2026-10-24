@@ -250,16 +250,27 @@ export class TechnologyPdfService {
     const asset = (name: string) => join(__dirname, 'assets', name);
     // Crop only the original circuit artwork; exclude all poster copy from the background.
     doc.save().rect(0, 0, 841.92, 595.32).clip();
-    doc.image(asset('technology-2026-campaign-cover.png'), 0, 0, { width: 1488.09 });
+    doc.image(asset('technology-2026-campaign-cover.png'), 0, 0, {
+      width: 1488.09,
+    });
     doc.restore();
     // The original banner supplies both campaign typography and the official Fatec identity.
     // Clip above its day/date label so each certificate uses its own activity date.
     doc.save().rect(66, 0, 710, 150).clip();
-    doc.image(asset('technology-2026-campaign-banner.png'), 66, 0, { width: 710 });
+    doc.image(asset('technology-2026-campaign-banner.png'), 66, 0, {
+      width: 710,
+    });
     doc.restore();
-    doc.save().fillOpacity(0.97).rect(54, 195, 734, 373).fill('#FFFFFF').restore();
+    doc
+      .save()
+      .fillOpacity(0.97)
+      .rect(54, 195, 734, 373)
+      .fill('#FFFFFF')
+      .restore();
     doc.image(asset('cps_logo_cor.png'), 70, 510, {
-      fit: [85, 45], align: 'center', valign: 'center',
+      fit: [85, 45],
+      align: 'center',
+      valign: 'center',
     });
   }
 
