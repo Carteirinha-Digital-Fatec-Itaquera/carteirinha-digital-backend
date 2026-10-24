@@ -70,3 +70,15 @@ HANDOFF_LOCAL.md
 # Keep Markdown documentation local; README files remain versionable.
 *.[mM][dD]
 ![rR][eE][aA][dD][mM][eE].[mM][dD]
+
+# Private local proofs may contain handwritten signatures. Never stage them.
+/output/
+**/*[Aa]ssinatura*.png
+**/*[Aa]ssinatura*.jpg
+**/*[Aa]ssinatura*.jpeg
+**/*[Aa]ssinatura*.webp
+**/*[Aa]ssinatura*.pdf
+**/*[Rr]ubrica*.png
+**/*[Rr]ubrica*.jpg
+**/*[Rr]ubrica*.jpeg
+**/*[Rr]ubrica*.webp
