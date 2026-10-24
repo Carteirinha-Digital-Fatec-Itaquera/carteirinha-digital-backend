@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   NotFoundException,
@@ -46,6 +47,9 @@ import {
   SeriesDto,
   SignerDto,
   TemplateDto,
+  UpdateTemplateDto,
+  UpdateSignerDto,
+  CatalogVersionDto,
   VerifyVisitorDto,
   VisitorCpfDto,
   VisitorScanDto,
@@ -501,6 +505,54 @@ export class EventManagementController {
       events,
       defaultVenue: defaultEventVenue(),
     };
+  }
+
+  @Get('catalog/manage') async manageCatalog() {
+    const [templates, signers] = await Promise.all([
+      this.prisma.certificateTemplate.findMany({
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.certificateSigner.findMany({ orderBy: { name: 'asc' } }),
+    ]);
+    return { templates, signers };
+  }
+  @Patch('templates/:id') updateTemplate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(validation) dto: UpdateTemplateDto,
+    @Req() req: AuthRequest,
+  ) {
+    return this.catalog.updateTemplate(id, dto, Number(req.user.sub));
+  }
+  @Patch('signers/:id') updateSigner(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(validation) dto: UpdateSignerDto,
+    @Req() req: AuthRequest,
+  ) {
+    return this.catalog.updateSigner(id, dto, Number(req.user.sub));
+  }
+  @Delete('templates/:id') deleteTemplate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(validation) dto: CatalogVersionDto,
+    @Req() req: AuthRequest,
+  ) {
+    return this.catalog.deleteCatalogItem(
+      'templates',
+      id,
+      dto.expectedVersion,
+      Number(req.user.sub),
+    );
+  }
+  @Delete('signers/:id') deleteSigner(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(validation) dto: CatalogVersionDto,
+    @Req() req: AuthRequest,
+  ) {
+    return this.catalog.deleteCatalogItem(
+      'signers',
+      id,
+      dto.expectedVersion,
+      Number(req.user.sub),
+    );
   }
   @Post('series') series(
     @Body(validation) dto: SeriesDto,

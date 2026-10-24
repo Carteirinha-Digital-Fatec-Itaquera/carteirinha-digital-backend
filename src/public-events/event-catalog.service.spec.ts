@@ -93,7 +93,7 @@ describe('EventCatalogService - Templates de Certificados', () => {
     ).toMatchObject({ role: 'SPEAKER', status: 'PUBLISHED' });
   });
 
-  it('ensureDefaultTemplates publica modelo se existente porem nao publicado', async () => {
+  it('ensureDefaultTemplates não republica cadastros já existentes', async () => {
     prisma.certificateTemplate.findFirst.mockResolvedValue({
       id: 'existing-id',
       status: 'DRAFT',
@@ -101,10 +101,8 @@ describe('EventCatalogService - Templates de Certificados', () => {
 
     await service.ensureDefaultTemplates();
 
-    expect(prisma.certificateTemplate.update).toHaveBeenCalledWith({
-      where: { id: 'existing-id' },
-      data: { status: 'PUBLISHED' },
-    });
+    expect(prisma.certificateTemplate.update).not.toHaveBeenCalled();
+    expect(prisma.certificateTemplate.create).not.toHaveBeenCalled();
   });
 
   it('template() com autoPublish true cria modelo com status PUBLISHED', async () => {

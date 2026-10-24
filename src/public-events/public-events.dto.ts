@@ -71,6 +71,15 @@ export class SignerDto {
   @IsUUID() assetId: string;
   @IsBoolean() authorized: boolean;
 }
+export class UpdateTemplateDto extends TemplateDto {
+  @IsInt() @Min(1) expectedVersion: number;
+}
+export class UpdateSignerDto extends SignerDto {
+  @IsInt() @Min(1) expectedVersion: number;
+}
+export class CatalogVersionDto {
+  @IsInt() @Min(1) expectedVersion: number;
+}
 export class EventConfigurationDto {
   @IsOptional()
   @IsArray()
