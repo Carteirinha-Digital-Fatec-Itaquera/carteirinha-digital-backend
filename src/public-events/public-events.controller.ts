@@ -485,6 +485,10 @@ export class EventManagementController {
     const [series, templates, signers, events] = await Promise.all([
       this.prisma.eventSeries.findMany({ orderBy: { startsAt: 'desc' } }),
       this.prisma.certificateTemplate.findMany({
+        where: {
+          status: 'PUBLISHED',
+          config: { path: ['design'], equals: 'TECHNOLOGY_BLUE_2026_DARK' },
+        },
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.certificateSigner.findMany({ orderBy: { name: 'asc' } }),

@@ -63,28 +63,32 @@ describe('EventCatalogService - Templates de Certificados', () => {
 
     await service.ensureDefaultTemplates();
 
-    expect(prisma.certificateTemplate.create).toHaveBeenCalledTimes(6);
+    expect(prisma.certificateTemplate.create).toHaveBeenCalledTimes(2);
     const created = prisma.certificateTemplate.create.mock.calls.map(
       ([args]) => args.data,
     );
     expect(
       created.find((row) =>
-        row.name?.endsWith('Azul Circuitos — Participante'),
+        row.name?.endsWith('Azul Integral CPS — Participante'),
       ),
     ).toMatchObject({
       config: {
-        design: 'TECHNOLOGY_BLUE_2026',
+        design: 'TECHNOLOGY_BLUE_2026_DARK',
         attendeeAction: 'participou da atividade',
       },
     });
     expect(
       created.find(
-        (row) => row.name === 'XIII Semana de Tecnologia — Participante',
+        (row) =>
+          row.name ===
+          'XIII Semana de Tecnologia 2026 — Azul Integral CPS — Participante',
       ),
     ).toMatchObject({ role: 'ATTENDEE', status: 'PUBLISHED' });
     expect(
       created.find(
-        (row) => row.name === 'XIII Semana de Tecnologia — Palestrante',
+        (row) =>
+          row.name ===
+          'XIII Semana de Tecnologia 2026 — Azul Integral CPS — Palestrante',
       ),
     ).toMatchObject({ role: 'SPEAKER', status: 'PUBLISHED' });
   });

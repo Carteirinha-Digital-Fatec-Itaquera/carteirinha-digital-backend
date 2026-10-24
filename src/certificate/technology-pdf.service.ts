@@ -264,23 +264,43 @@ export class TechnologyPdfService {
     doc.restore();
     // The original banner supplies both campaign typography and the official Fatec identity.
     // Clip above its day/date label so each certificate uses its own activity date.
-    doc.save().rect(66, 0, 710, 150).clip();
-    doc.image(asset('technology-2026-campaign-banner.png'), 66, 0, {
-      width: 710,
-    });
-    doc.restore();
-    doc
-      .save()
-      .fillOpacity(dark ? 0.92 : 0.97)
-      .rect(54, 195, 734, dark ? 383 : 373)
-      .fill(dark ? '#123B66' : '#FFFFFF')
-      .restore();
-    if (dark) doc.save().rect(66, 513, 122, 65).fill('#D9EAF8').restore();
-    doc.image(asset('cps_logo_cor.png'), 70, dark ? 517 : 510, {
-      fit: dark ? [110, 58] : [85, 45],
-      align: 'center',
-      valign: 'center',
-    });
+    if (!dark) {
+      doc.save().rect(66, 0, 710, 150).clip();
+      doc.image(asset('technology-2026-campaign-banner.png'), 66, 0, {
+        width: 710,
+      });
+      doc.restore();
+    }
+    if (dark) {
+      // Apply the same tint to all campaign artwork, never a central panel.
+      doc
+        .save()
+        .fillOpacity(0.45)
+        .rect(0, 0, 841.92, 595.32)
+        .fill('#092C50')
+        .restore();
+    } else {
+      doc
+        .save()
+        .fillOpacity(0.97)
+        .rect(54, 195, 734, 373)
+        .fill('#FFFFFF')
+        .restore();
+    }
+    if (dark)
+      doc.image(asset('technology-2026-campaign-heading.png'), 66, 0, {
+        width: 710,
+      });
+    doc.image(
+      asset(dark ? 'cps_logo_branco_oficial.png' : 'cps_logo_cor.png'),
+      70,
+      dark ? 517 : 510,
+      {
+        fit: dark ? [110, 58] : [85, 45],
+        align: 'center',
+        valign: 'center',
+      },
+    );
   }
 
   private drawReferenceLayout(doc: PDFKit.PDFDocument, edition: string) {
