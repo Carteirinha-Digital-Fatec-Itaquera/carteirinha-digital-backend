@@ -19,6 +19,7 @@ import {
 } from './public-events.dto';
 
 export interface TemplateConfig {
+  wordingVersion?: 'LECTURE_LISTENER_2026' | 'LEGACY';
   textColor?: string;
   heading: string;
   edition: string;
@@ -122,6 +123,9 @@ export class EventCatalogService {
           status: dto.autoPublish ? 'PUBLISHED' : 'DRAFT',
           config: {
             heading: dto.heading,
+            ...(dto.wordingVersion
+              ? { wordingVersion: dto.wordingVersion }
+              : {}),
             ...(dto.textColor ? { textColor: dto.textColor } : {}),
             edition: dto.edition,
             backgroundAssetId: dto.backgroundAssetId || null,
@@ -220,6 +224,7 @@ export class EventCatalogService {
                       ? 'TECHNOLOGY_BLUE_2026_DARK'
                       : 'TECHNOLOGY_BLUE_2026',
                     attendeeAction: 'participou da atividade',
+                    wordingVersion: 'LECTURE_LISTENER_2026',
                     speakerAction: 'ministrou a atividade intitulada',
                   }
                 : {}),
@@ -256,6 +261,7 @@ export class EventCatalogService {
         const config = {
           ...oldConfig,
           heading: dto.heading,
+          ...(dto.wordingVersion ? { wordingVersion: dto.wordingVersion } : {}),
           ...(dto.textColor ? { textColor: dto.textColor } : {}),
           edition: dto.edition,
           ...(dto.backgroundAssetId

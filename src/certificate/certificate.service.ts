@@ -327,7 +327,15 @@ export class CertificateService {
       startsAt: attendance.event.startsAt.toISOString(),
       endsAt: attendance.event.endsAt.toISOString(),
       promoter: attendance.event.promoter || '',
-      template: { id: template.id, version: template.version, ...config },
+      template: {
+        id: template.id,
+        version: template.version,
+        ...config,
+        ...(config.design === 'TECHNOLOGY_BLUE_2026_DARK' &&
+        !config.wordingVersion
+          ? { wordingVersion: 'LECTURE_LISTENER_2026' as const }
+          : {}),
+      },
       signers: policy.signerIds.map((id) => {
         const signer = signers.find((s) => s.id === id)!;
         return {

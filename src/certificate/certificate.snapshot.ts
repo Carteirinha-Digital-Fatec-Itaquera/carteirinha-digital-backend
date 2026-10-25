@@ -11,6 +11,7 @@ export interface CertificateSnapshot {
     id: string;
     version: number;
     heading: string;
+    wordingVersion?: 'LECTURE_LISTENER_2026' | 'LEGACY';
     textColor?: string;
     edition: string;
     backgroundAssetId?: string;
