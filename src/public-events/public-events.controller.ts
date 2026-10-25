@@ -816,6 +816,11 @@ export class EventManagementController {
             id,
             version: template.version,
             ...(template.config as unknown as TemplateConfig),
+            ...((template.config as unknown as TemplateConfig).design ===
+              'TECHNOLOGY_BLUE_2026_DARK' &&
+            !(template.config as unknown as TemplateConfig).wordingVersion
+              ? { wordingVersion: 'LECTURE_LISTENER_2026' as const }
+              : {}),
           },
           signers: orderedSigners.map((s) => ({
             id: s.id,

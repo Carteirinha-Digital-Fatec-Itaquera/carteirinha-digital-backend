@@ -52,6 +52,9 @@ export class VisitorCpfDto {
   @IsString() @Matches(/^(?:\d{11}|\d{3}\.\d{3}\.\d{3}-\d{2})$/) cpf: string;
 }
 export class TemplateDto {
+  @IsOptional() @IsIn(['LECTURE_LISTENER_2026', 'LEGACY']) wordingVersion?:
+    | 'LECTURE_LISTENER_2026'
+    | 'LEGACY';
   @IsOptional() @IsString() @Matches(/^#[0-9a-fA-F]{6}$/) textColor?: string;
   @IsString() @Length(3, 120) name: string;
   @IsIn(['ATTENDEE', 'SPEAKER']) role: string;

@@ -15,6 +15,7 @@ export class TechnologyPdfService {
   async render(view: CertificateView, preview = false): Promise<Buffer> {
     const snapshot = view.payloadSnapshot;
     const config = snapshot.template;
+    const newWording = config?.wordingVersion === 'LECTURE_LISTENER_2026';
     const isDark = config?.design === 'TECHNOLOGY_BLUE_2026_DARK';
     const isCampaign = config?.design === 'TECHNOLOGY_BLUE_2026' || isDark;
     if (!config || !snapshot.signers?.length)
@@ -69,7 +70,12 @@ export class TechnologyPdfService {
       try {
         // Arte limpa preserva logos, moldura e ilustrações do PDF aprovado.
         if (image) doc.image(image, 0, 0, { width: 841.92, height: 595.32 });
-        else if (isCampaign) this.drawBlueTechnologyLayout(doc, isDark);
+        else if (isCampaign)
+          this.drawBlueTechnologyLayout(
+            doc,
+            isDark,
+            config.wordingVersion !== undefined,
+          );
         else this.drawReferenceLayout(doc, config.edition);
         doc
           .fillColor(isCampaign ? '#FF9900' : '#000000')
@@ -103,11 +109,26 @@ export class TechnologyPdfService {
             hour: '2-digit',
             minute: '2-digit',
           });
-        const action =
-          snapshot.role === 'SPEAKER'
+        const isSpeaker = snapshot.role === 'SPEAKER';
+        const action = newWording
+          ? isSpeaker
+            ? 'ministrou a palestra intitulada'
+            : 'participou como ouvinte da palestra'
+          : isSpeaker
             ? config.speakerAction || 'ministrou a palestra intitulada'
             : config.attendeeAction || 'participou da palestra intitulada';
-        const text = `Certificamos que ${snapshot.studentName} ${action}: “${snapshot.eventTitle}”, ${snapshot.promoter ? `promovida por ${snapshot.promoter}, ` : ''}realizada no dia ${dateText}${snapshot.startsAt && snapshot.endsAt ? `, das ${time(snapshot.startsAt)} às ${time(snapshot.endsAt)}` : ''}, na ${config.edition}, com carga horária de ${snapshot.workload}.`;
+        if (newWording && !isSpeaker && !snapshot.speaker?.trim())
+          throw new BadRequestException(
+            'Informe o nome do palestrante antes de emitir o certificado.',
+          );
+        const titlePrefix = ` ${action}${newWording ? '' : ':'} “`;
+        const speakerClause =
+          newWording && !isSpeaker
+            ? `ministrada por ${snapshot.speaker.trim()}, `
+            : '';
+        const promoter = snapshot.promoter?.trim();
+        const tail = `”, ${speakerClause}${promoter ? `promovida por ${promoter}, ` : ''}realizada ${newWording ? 'em' : 'no dia'} ${dateText}${snapshot.startsAt && snapshot.endsAt ? `, das ${time(snapshot.startsAt)} às ${time(snapshot.endsAt)}` : ''}, ${newWording ? 'durante a' : 'na'} ${config.edition}, com carga horária de ${snapshot.workload}.`;
+        const text = `Certificamos que ${snapshot.studentName}${titlePrefix}${snapshot.eventTitle}${tail}`;
         let size = 14;
         while (
           size > 10 &&
@@ -124,7 +145,7 @@ export class TechnologyPdfService {
           throw new BadRequestException(
             'Texto excede o espaço do modelo. Reduza os títulos antes de emitir.',
           );
-        const tail = `”, ${snapshot.promoter ? `promovida por ${snapshot.promoter}, ` : ''}realizada no dia ${dateText}${snapshot.startsAt && snapshot.endsAt ? `, das ${time(snapshot.startsAt)} às ${time(snapshot.endsAt)}` : ''}, na ${config.edition}, com carga horária de ${snapshot.workload}.`;
+
         doc
           .font('Helvetica')
           .fillColor(config.textColor || (isDark ? '#FFFFFF' : '#172A3C'))
@@ -139,7 +160,7 @@ export class TechnologyPdfService {
         doc
           .font('Helvetica-BoldOblique')
           .text(snapshot.studentName, { continued: true });
-        doc.font('Helvetica').text(` ${action}: “`, { continued: true });
+        doc.font('Helvetica').text(titlePrefix, { continued: true });
         doc
           .font('Helvetica-BoldOblique')
           .text(snapshot.eventTitle, { continued: true });
@@ -248,7 +269,11 @@ export class TechnologyPdfService {
       'Texto excede o espaço reservado no certificado. Revise o cadastro antes de publicar.',
     );
   }
-  private drawBlueTechnologyLayout(doc: PDFKit.PDFDocument, dark = false) {
+  private drawBlueTechnologyLayout(
+    doc: PDFKit.PDFDocument,
+    dark = false,
+    centerCps = false,
+  ) {
     const asset = (name: string) => join(__dirname, 'assets', name);
     // Crop only the original circuit artwork; exclude all poster copy from the background.
     doc.save().rect(0, 0, 841.92, 595.32).clip();
@@ -287,7 +312,7 @@ export class TechnologyPdfService {
       });
     doc.image(
       asset(dark ? 'cps_logo_branco_oficial.png' : 'cps_logo_cor.png'),
-      70,
+      centerCps ? (841.92 - (dark ? 110 : 85)) / 2 : 70,
       dark ? 517 : 510,
       {
         fit: dark ? [110, 58] : [85, 45],
