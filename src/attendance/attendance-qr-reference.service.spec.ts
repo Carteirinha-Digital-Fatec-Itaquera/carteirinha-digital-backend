@@ -19,7 +19,9 @@ describe('AttendanceQrReferenceService', () => {
         findUnique: jest.fn(),
       },
     };
-    service = new AttendanceQrReferenceService(prisma as unknown as PrismaService);
+    service = new AttendanceQrReferenceService(
+      prisma as unknown as PrismaService,
+    );
   });
 
   describe('createReference', () => {
@@ -45,7 +47,9 @@ describe('AttendanceQrReferenceService', () => {
       expect(result.reference).toHaveLength(22);
       expect(result.expiresAt).toEqual(expiresAt);
 
-      const expectedHash = createHash('sha256').update(result.reference).digest('hex');
+      const expectedHash = createHash('sha256')
+        .update(result.reference)
+        .digest('hex');
       expect(prisma.attendanceQrReference.create).toHaveBeenCalledWith({
         data: {
           referenceHash: expectedHash,
@@ -62,9 +66,9 @@ describe('AttendanceQrReferenceService', () => {
     it('throws EXPIRED_OR_INVALID_QR if reference is not found in database', async () => {
       prisma.attendanceQrReference.findUnique.mockResolvedValue(null);
 
-      await expect(service.resolveReference('unknown-ref-1234567890')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.resolveReference('unknown-ref-1234567890'),
+      ).rejects.toThrow(BadRequestException);
 
       try {
         await service.resolveReference('unknown-ref-1234567890');
@@ -95,9 +99,9 @@ describe('AttendanceQrReferenceService', () => {
         },
       });
 
-      await expect(service.resolveReference('expired-ref-1234567890')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.resolveReference('expired-ref-1234567890'),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('throws CHECKPOINT_CLOSED if checkpoint is closed or version mismatch', async () => {
@@ -117,9 +121,9 @@ describe('AttendanceQrReferenceService', () => {
         },
       });
 
-      await expect(service.resolveReference('closed-ref-1234567890')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.resolveReference('closed-ref-1234567890'),
+      ).rejects.toThrow(BadRequestException);
 
       try {
         await service.resolveReference('closed-ref-1234567890');
@@ -166,7 +170,31 @@ describe('AttendanceQrReferenceService', () => {
   describe('buildQrUrl', () => {
     it('builds student app url with /p/<reference>', () => {
       const url = service.buildQrUrl('abc123xyz');
-      expect(url).toBe('https://carteirinha-digital-front-end-aluno.vercel.app/p/abc123xyz');
+      expect(url).toBe(
+        'https://carteirinha-digital-front-end-aluno.vercel.app/p/abc123xyz',
+      );
     });
+  });
+  it('manual reference has no expiry while its checkpoint is open', async () => {
+    const prisma = {
+      attendanceQrReference: {
+        findUnique: jest.fn().mockResolvedValue({
+          expiresAt: null,
+          checkpointVersion: 2,
+          checkpoint: {
+            isOpen: true,
+            closesAt: null,
+            version: 2,
+            event: { status: 'IN_PROGRESS' },
+          },
+        }),
+      },
+    };
+    const service = new AttendanceQrReferenceService(
+      prisma as unknown as PrismaService,
+    );
+    await expect(
+      service.resolveReference('manual-reference-12345'),
+    ).resolves.toHaveProperty('expiresAt', null);
   });
 });

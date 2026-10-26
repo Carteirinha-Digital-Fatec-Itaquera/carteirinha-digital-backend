@@ -6,7 +6,7 @@ export interface CreateReferenceParams {
   checkpointId: string;
   checkpointVersion: number;
   jwtToken: string;
-  expiresAt: Date;
+  expiresAt: Date | null;
 }
 
 @Injectable()
@@ -49,7 +49,11 @@ export class AttendanceQrReferenceService {
   }
 
   async resolveReference(reference: string) {
-    if (!reference || typeof reference !== 'string' || !/^[A-Za-z0-9_-]{10,64}$/.test(reference)) {
+    if (
+      !reference ||
+      typeof reference !== 'string' ||
+      !/^[A-Za-z0-9_-]{10,64}$/.test(reference)
+    ) {
       throw new BadRequestException({
         statusCode: 400,
         error: 'Bad Request',
@@ -70,7 +74,10 @@ export class AttendanceQrReferenceService {
       },
     });
 
-    if (!record || record.expiresAt.getTime() <= Date.now()) {
+    if (
+      !record ||
+      (record.expiresAt && record.expiresAt.getTime() <= Date.now())
+    ) {
       throw new BadRequestException({
         statusCode: 400,
         error: 'Bad Request',
@@ -82,7 +89,8 @@ export class AttendanceQrReferenceService {
     if (
       !record.checkpoint ||
       !record.checkpoint.isOpen ||
-      (record.checkpoint.closesAt && record.checkpoint.closesAt <= new Date()) ||
+      (record.checkpoint.closesAt &&
+        record.checkpoint.closesAt <= new Date()) ||
       record.checkpoint.version !== record.checkpointVersion ||
       record.checkpoint.event.status === 'CANCELLED'
     ) {

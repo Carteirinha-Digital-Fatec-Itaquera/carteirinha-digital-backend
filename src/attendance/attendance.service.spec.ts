@@ -228,6 +228,18 @@ describe('AttendanceService', () => {
       service.scan(token({ checkpoint: 'CHECK_OUT' }), user),
     ).rejects.toThrow('Erro de transação na emissão');
   });
+  it('accepts signed manual QR without expiration but preserves closure and version checks', async () => {
+    state.checkpoint.closesAt = null;
+    const qr = token({ manual: true, exp: undefined, iat: 1 });
+    await expect(service.scan(qr, user)).resolves.toMatchObject({
+      success: true,
+    });
+    state.checkpoint.isOpen = false;
+    await code(service.scan(qr, user), 'CHECKPOINT_CLOSED');
+    state.checkpoint.isOpen = true;
+    state.checkpoint.version += 1;
+    await code(service.scan(qr, user), 'QR_VERSION_MISMATCH');
+  });
   it('rejects expiration', async () =>
     code(service.scan(token({ iat: 1, exp: 2 }), user), 'QR_EXPIRED'));
   it('rejects wrong signature', async () =>

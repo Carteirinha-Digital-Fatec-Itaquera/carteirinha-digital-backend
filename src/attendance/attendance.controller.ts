@@ -60,7 +60,7 @@ export class AttendanceController {
         type: record.checkpoint.type,
       },
       ...(record.checkpoint.event.geoPolicy ? { locationRequired: true } : {}),
-      expiresAt: record.expiresAt.toISOString(),
+      expiresAt: record.expiresAt?.toISOString() ?? null,
       serverTime: new Date().toISOString(),
     };
   }
