@@ -76,60 +76,10 @@ export class CheckpointService {
       );
 
       const isReopening = Boolean(checkpoint.openedAt);
-      let effectiveOpenedAt = checkpoint.openedAt;
-      let effectiveClosesAt = checkpoint.closesAt;
-
-      if (isReopening) {
-        // Consultar histórico de auditoria para validar a primeira abertura real comprovada
-        const openAudits = await tx.eventAudit.findMany({
-          where: {
-            eventId,
-            action: `CHECKPOINT_OPEN_${type}`,
-          },
-          orderBy: { createdAt: 'asc' },
-        });
-
-        if (openAudits.length > 0) {
-          const firstOpen = openAudits[0].createdAt;
-          const durationMinutes = event.windowMinutes ?? 15;
-          effectiveOpenedAt = firstOpen;
-          effectiveClosesAt = new Date(
-            firstOpen.getTime() + durationMinutes * 60000,
-          );
-        } else {
-          // Registro legado sem histórico de auditoria comprovado da primeira abertura
-          // Bloquear reabertura de legado sem prova conforme política
-          throw new ConflictException(
-            `Checkpoint legado sem histórico de auditoria comprovado não pode ser reaberto.`,
-          );
-        }
-
-        // Validação de tempo da reabertura: estritamente dentro da janela original
-        if (!effectiveClosesAt || now >= effectiveClosesAt) {
-          throw new ConflictException(
-            `Janela do ${type} expirada. Não é possível reabrir.`,
-          );
-        }
-      }
-
       if (type === CheckpointType.CHECK_IN) {
-        const checkOutAudit = await tx.eventAudit.findMany({
-          where: {
-            eventId,
-            action: {
-              in: ['CHECKPOINT_OPEN_CHECK_OUT', 'CHECKPOINT_REOPEN_CHECK_OUT'],
-            },
-          },
-          take: 1,
-        });
-
-        if (
-          event.status === EventStatus.COMPLETED ||
-          checkOut?.openedAt ||
-          checkOutAudit.length > 0
-        ) {
+        if (checkOut?.isOpen) {
           throw new ConflictException(
-            'CHECK_IN não pode ser reaberto após o início do CHECK_OUT',
+            'Encerre o CHECK_OUT antes de reabrir o CHECK_IN',
           );
         }
       } else if (type === CheckpointType.CHECK_OUT) {
@@ -146,6 +96,11 @@ export class CheckpointService {
             );
           }
         } else {
+          if (checkIn?.isOpen) {
+            throw new ConflictException(
+              'Encerre o CHECK_IN antes de reabrir o CHECK_OUT',
+            );
+          }
           // Reabertura de CHECK_OUT: se estava COMPLETED, autoriza transição COMPLETED -> IN_PROGRESS
           if (
             event.status !== EventStatus.IN_PROGRESS &&
@@ -164,11 +119,9 @@ export class CheckpointService {
         }
       }
 
-      const durationMinutes = event.windowMinutes ?? 15;
-      const openedAt = isReopening ? effectiveOpenedAt! : now;
-      const closesAt = isReopening
-        ? effectiveClosesAt!
-        : new Date(now.getTime() + durationMinutes * 60000);
+      // A Secretaria encerra a janela manualmente; reabertura preserva a primeira abertura.
+      const openedAt = checkpoint.openedAt ?? now;
+      const closesAt = null;
 
       const result = await tx.eventCheckpoint.updateMany({
         where: {
@@ -216,7 +169,7 @@ export class CheckpointService {
             : `CHECKPOINT_OPEN_${type}`,
           secretaryId,
           reason: isReopening
-            ? `Reabertura na janela original até ${closesAt.toISOString()}`
+            ? 'Reabertura manual sem expiração automática'
             : undefined,
         },
       });

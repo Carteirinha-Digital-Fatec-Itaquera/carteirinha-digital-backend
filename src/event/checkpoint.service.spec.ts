@@ -283,12 +283,13 @@ describe('CheckpointService', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('bloqueia reabertura de CHECK_IN após início do CHECK_OUT', async () => {
+  it('bloqueia reabertura de CHECK_IN enquanto CHECK_OUT está aberto', async () => {
     const { prisma, state } = createPrisma({
       status: EventStatus.IN_PROGRESS,
     });
     const checkOut = state.event.checkpoints[1];
     checkOut.openedAt = new Date();
+    checkOut.isOpen = true;
     const service = new CheckpointService(prisma);
 
     await expect(
@@ -307,7 +308,7 @@ describe('CheckpointService', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
-  it('primeira abertura define openedAt e closesAt com base em 15 minutos e registra auditoria OPEN', async () => {
+  it('primeira abertura exige encerramento manual e registra auditoria OPEN', async () => {
     const { prisma, state } = createPrisma();
     const service = new CheckpointService(prisma);
 
@@ -315,10 +316,7 @@ describe('CheckpointService', () => {
 
     expect(result.isOpen).toBe(true);
     expect(result.openedAt).not.toBeNull();
-    expect(result.closesAt).not.toBeNull();
-    const openTime = new Date(result.openedAt!).getTime();
-    const closeTime = new Date(result.closesAt!).getTime();
-    expect(closeTime - openTime).toBe(15 * 60 * 1000);
+    expect(result.closesAt).toBeNull();
     expect(state.audits).toHaveLength(1);
     expect(state.audits[0]).toMatchObject({
       action: 'CHECKPOINT_OPEN_CHECK_IN',
@@ -326,7 +324,7 @@ describe('CheckpointService', () => {
     });
   });
 
-  it('reabre CHECK_IN dentro da janela original mantendo openedAt e closesAt intactos', async () => {
+  it('reabre CHECK_IN mantendo primeira abertura e removendo expiração', async () => {
     const originalOpenedAt = new Date(Date.now() - 5 * 60 * 1000);
     const originalClosesAt = new Date(Date.now() + 10 * 60 * 1000);
     const { prisma, state } = createPrisma({
@@ -349,13 +347,13 @@ describe('CheckpointService', () => {
     expect(result.isOpen).toBe(true);
     expect(result.closedAt).toBeNull();
     expect(result.openedAt).toBe(originalOpenedAt.toISOString());
-    expect(result.closesAt).toBe(originalClosesAt.toISOString());
+    expect(result.closesAt).toBeNull();
     expect(state.audits).toHaveLength(2);
     expect(state.audits[1].action).toBe('CHECKPOINT_REOPEN_CHECK_IN');
     expect(state.audits[1].secretaryId).toBe(99);
   });
 
-  it('bloqueia reabertura de CHECK_IN se a janela original tiver expirado', async () => {
+  it('reabre CHECK_IN após expiração da janela original', async () => {
     const expiredOpenedAt = new Date(Date.now() - 20 * 60 * 1000);
     const expiredClosesAt = new Date(Date.now() - 5 * 60 * 1000);
     const { prisma, state } = createPrisma({
@@ -373,12 +371,12 @@ describe('CheckpointService', () => {
     checkIn.closesAt = expiredClosesAt;
 
     const service = new CheckpointService(prisma);
-    await expect(
-      service.open('event-id', CheckpointType.CHECK_IN),
-    ).rejects.toThrow(ConflictException);
+    const result = await service.open('event-id', CheckpointType.CHECK_IN);
+    expect(result.isOpen).toBe(true);
+    expect(result.closesAt).toBeNull();
   });
 
-  it('bloqueia reabertura de checkpoint legado sem histórico de auditoria comprovado', async () => {
+  it('reabre checkpoint legado sem exigir auditoria antiga', async () => {
     const { prisma, state } = createPrisma({
       status: EventStatus.IN_PROGRESS,
     });
@@ -388,12 +386,12 @@ describe('CheckpointService', () => {
     checkIn.closesAt = new Date(Date.now() + 10 * 60 * 1000);
 
     const service = new CheckpointService(prisma);
-    await expect(
-      service.open('event-id', CheckpointType.CHECK_IN),
-    ).rejects.toThrow(ConflictException);
+    const result = await service.open('event-id', CheckpointType.CHECK_IN);
+    expect(result.isOpen).toBe(true);
+    expect(result.closesAt).toBeNull();
   });
 
-  it('reconstrói primeira abertura de 20 min atrás pela auditoria e rejeita reabertura mesmo com openedAt recente', async () => {
+  it('reabre sem limitar horário pela auditoria antiga', async () => {
     const { prisma, state } = createPrisma({
       status: EventStatus.IN_PROGRESS,
     });
@@ -413,9 +411,9 @@ describe('CheckpointService', () => {
     checkIn.closesAt = new Date(now + 5 * 60 * 1000);
 
     const service = new CheckpointService(prisma);
-    await expect(
-      service.open('event-id', CheckpointType.CHECK_IN),
-    ).rejects.toThrow(ConflictException);
+    const result = await service.open('event-id', CheckpointType.CHECK_IN);
+    expect(result.isOpen).toBe(true);
+    expect(result.closesAt).toBeNull();
   });
 
   it('reabre CHECK_OUT em evento COMPLETED dentro da janela original e transiciona para IN_PROGRESS', async () => {
@@ -447,7 +445,7 @@ describe('CheckpointService', () => {
     expect(result.isOpen).toBe(true);
     expect(result.closedAt).toBeNull();
     expect(result.openedAt).toBe(originalOpenedAt.toISOString());
-    expect(result.closesAt).toBe(originalClosesAt.toISOString());
+    expect(result.closesAt).toBeNull();
     expect(state.event.status).toBe(EventStatus.IN_PROGRESS);
     expect(state.audits[1].action).toBe('CHECKPOINT_REOPEN_CHECK_OUT');
   });
@@ -473,7 +471,7 @@ describe('CheckpointService', () => {
     expect(state.audits[0].action).toBe('CHECKPOINT_CLOSE_CHECK_OUT');
   });
 
-  it('bloqueia reabertura de CHECK_OUT quando a janela original expirou', async () => {
+  it('reabre CHECK_OUT após expiração da janela original', async () => {
     const expiredOpenedAt = new Date(Date.now() - 25 * 60 * 1000);
     const expiredClosesAt = new Date(Date.now() - 10 * 60 * 1000);
     const { prisma, state } = createPrisma({
@@ -486,9 +484,9 @@ describe('CheckpointService', () => {
     checkOut.closesAt = expiredClosesAt;
 
     const service = new CheckpointService(prisma);
-    await expect(
-      service.open('event-id', CheckpointType.CHECK_OUT),
-    ).rejects.toThrow(ConflictException);
+    const result = await service.open('event-id', CheckpointType.CHECK_OUT);
+    expect(result.isOpen).toBe(true);
+    expect(result.closesAt).toBeNull();
   });
 
   it('normaliza sob bloqueio se checkpoint estava aberto mas com prazo expirado', async () => {
@@ -508,5 +506,57 @@ describe('CheckpointService', () => {
     expect(checkIn.closedAt).toEqual(expiredClosesAt);
     expect(result.type).toBe(CheckpointType.CHECK_OUT);
     expect(result.isOpen).toBe(true);
+  });
+  it('recupera entradas e saídas após queda de rede mesmo com evento concluído', async () => {
+    const { prisma, state } = createPrisma();
+    const service = new CheckpointService(prisma);
+    await service.open('event-id', CheckpointType.CHECK_IN, 42);
+    await service.close('event-id', CheckpointType.CHECK_IN, 42);
+    await service.open('event-id', CheckpointType.CHECK_OUT, 42);
+    await expect(
+      service.open('event-id', CheckpointType.CHECK_IN, 42),
+    ).rejects.toThrow('Encerre o CHECK_OUT');
+    await service.close('event-id', CheckpointType.CHECK_OUT, 42);
+    expect(state.event.status).toBe(EventStatus.COMPLETED);
+    const entry = await service.open('event-id', CheckpointType.CHECK_IN, 42);
+    expect(entry.closesAt).toBeNull();
+    expect(state.event.status).toBe(EventStatus.IN_PROGRESS);
+    await expect(
+      service.open('event-id', CheckpointType.CHECK_OUT, 42),
+    ).rejects.toThrow('Encerre o CHECK_IN');
+    await service.close('event-id', CheckpointType.CHECK_IN, 42);
+    const exit = await service.open('event-id', CheckpointType.CHECK_OUT, 42);
+    expect(exit.closesAt).toBeNull();
+    await service.close('event-id', CheckpointType.CHECK_OUT, 42);
+    expect(state.event.status).toBe(EventStatus.COMPLETED);
+    expect(
+      state.audits.some((a) => a.action === 'CHECKPOINT_REOPEN_CHECK_IN'),
+    ).toBe(true);
+  });
+  it('mantém CHECK_IN disponível após uma hora até fechamento manual', async () => {
+    jest.useFakeTimers();
+    try {
+      const { prisma } = createPrisma();
+      const service = new CheckpointService(prisma);
+      const opened = await service.open(
+        'event-id',
+        CheckpointType.CHECK_IN,
+        42,
+      );
+      jest.setSystemTime(new Date(Date.now() + 60 * 60 * 1000));
+      const current = await service.getOpen(
+        'event-id',
+        CheckpointType.CHECK_IN,
+      );
+      expect(current.isOpen).toBe(true);
+      expect(current.closesAt).toBeNull();
+      expect(current.version).toBe(opened.version);
+      await service.close('event-id', CheckpointType.CHECK_IN, 42);
+      await expect(
+        service.getOpen('event-id', CheckpointType.CHECK_IN),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
