@@ -5,11 +5,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { isEmail } from 'class-validator';
+import { lockEventForMutation } from '../event/event-mutation-lock';
+import { validCpf, visitorIdentityHash } from './visitor.service';
 import { PrismaService } from '../database/prisma.service';
 import { CertificateService } from '../certificate/certificate.service';
 import { EventStorageService } from './event-storage.service';
 import {
   ManualPresenceDto,
+  ManualCertificateDto,
   ParticipantCorrectionDto,
   ReconcileDeliveryDto,
 } from './public-events.dto';
@@ -343,8 +348,301 @@ export class EventOperationsService {
       return row;
     });
   }
+  async manualCertificate(
+    eventId: string,
+    dto: ManualCertificateDto,
+    secretaryId: number,
+  ) {
+    if (
+      dto.participationConfirmed !== true ||
+      (dto.reason?.trim().length ?? 0) < 10
+    )
+      throw new BadRequestException(
+        'Confirme a participação e informe uma justificativa de pelo menos 10 caracteres.',
+      );
+    return this.prisma.$transaction(
+      async (tx) => {
+        const { event } = await lockEventForMutation(tx, eventId);
+        if (
+          event.status === 'CANCELLED' ||
+          event.status === 'SCHEDULED' ||
+          !event.certificateEnabled
+        )
+          throw new ConflictException(
+            'Evento não iniciado, cancelado ou sem emissão de certificados.',
+          );
+        const now = new Date();
+        const retentionAt = new Date(event.endsAt.getTime() + 30 * 86400000);
+        let seriesId = event.seriesId;
+        if (seriesId) {
+          await tx.$queryRaw`SELECT "id" FROM "EventSeries" WHERE "id" = ${seriesId} FOR SHARE`;
+          const series = await tx.eventSeries.findUnique({
+            where: { id: seriesId },
+          });
+          if (!series || series.purgedAt || series.retentionAt <= now)
+            throw new ConflictException(
+              'Prazo de atendimento do evento encerrado.',
+            );
+        } else if (retentionAt <= now) {
+          throw new ConflictException(
+            'Prazo de atendimento do evento encerrado.',
+          );
+        }
+        const student =
+          dto.identityType === 'STUDENT'
+            ? await tx.student.findUnique({
+                where: { ra: dto.ra?.trim() || '' },
+              })
+            : null;
+        if (
+          dto.identityType === 'STUDENT' &&
+          (!student ||
+            !['ativo', 'em curso'].includes(
+              student.status.trim().toLowerCase(),
+            ))
+        )
+          throw new BadRequestException(
+            'Aluno não encontrado ou inativo. Confira o RA.',
+          );
+        if (!['STUDENT', 'EXTERNAL'].includes(dto.identityType))
+          throw new BadRequestException('Identificação inválida.');
+        let visitorId: string | null = null;
+        let name = student?.name || '';
+        let course = student?.course || null;
+        let email = student?.email || '';
+        if (dto.identityType === 'EXTERNAL') {
+          const cpf = dto.cpf?.replace(/\D/g, '') || '';
+          email = dto.email?.trim().toLowerCase() || '';
+          name = dto.name?.trim() || '';
+          course = dto.course?.trim() || null;
+          if (!validCpf(cpf) || !isEmail(email) || name.length < 3)
+            throw new BadRequestException(
+              'Informe nome, e-mail e CPF válidos.',
+            );
+          // Não crie uma segunda identidade para quem já possui conta de aluno.
+          const existingStudent = await tx.student.findFirst({
+            where: {
+              OR: [
+                { cpf },
+                {
+                  cpf: cpf.replace(
+                    /(\d{3})(\d{3})(\d{3})(\d{2})/,
+                    '$1.$2.$3-$4',
+                  ),
+                },
+                { email: { equals: email, mode: 'insensitive' } },
+              ],
+            },
+            select: { ra: true },
+          });
+          if (existingStudent)
+            throw new ConflictException(
+              'Pessoa já possui cadastro de aluno. Use a opção Aluno cadastrado e informe o RA.',
+            );
+          if (!seriesId) {
+            const series = await tx.eventSeries.create({
+              data: {
+                title: event.title,
+                slug: 'manual-' + randomUUID(),
+                isAutomatic: true,
+                published: false,
+                startsAt: event.startsAt,
+                endsAt: event.endsAt,
+                retentionAt,
+                courses: [],
+              },
+            });
+            seriesId = series.id;
+            await tx.event.update({
+              where: { id: eventId },
+              data: { seriesId },
+            });
+          }
+          const emailHash = visitorIdentityHash(email);
+          const cpfHash = visitorIdentityHash(`cpf:${cpf}`);
+          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${seriesId + emailHash}, 0))::text`;
+          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${seriesId + cpfHash}, 0))::text`;
+          const byEmail = await tx.visitorRegistration.findUnique({
+            where: { seriesId_emailHash: { seriesId, emailHash } },
+          });
+          const byCpf = await tx.visitorRegistration.findUnique({
+            where: { seriesId_cpfHash: { seriesId, cpfHash } },
+          });
+          if (
+            (byEmail?.cpfHash && byEmail.cpfHash !== cpfHash) ||
+            (byCpf && byCpf.emailHash !== emailHash)
+          )
+            throw new ConflictException(
+              'CPF ou e-mail já cadastrado com dados diferentes. Revise a identificação existente antes de emitir.',
+            );
+          const visitor =
+            byCpf ||
+            byEmail ||
+            (await tx.visitorRegistration.create({
+              data: {
+                seriesId,
+                name,
+                email,
+                emailHash,
+                cpfHash,
+                course,
+                identifiedAt: now,
+              },
+            }));
+          if (visitor.name.trim().toLowerCase() !== name.toLowerCase())
+            throw new ConflictException(
+              'O nome difere do cadastro existente para este CPF. Revise a identificação antes de emitir.',
+            );
+          if (!visitor.cpfHash || !visitor.identifiedAt) {
+            await tx.visitorRegistration.update({
+              where: { id: visitor.id },
+              data: { cpfHash, identifiedAt: visitor.identifiedAt ?? now },
+            });
+          }
+          visitorId = visitor.id;
+          name = visitor.name;
+          course = visitor.course;
+        }
+        if (!isEmail(email))
+          throw new BadRequestException(
+            'Cadastro sem e-mail válido para envio.',
+          );
+        const participant = await tx.eventParticipant.upsert({
+          where: student
+            ? { eventId_accountId: { eventId, accountId: student.accountId } }
+            : { eventId_visitorId: { eventId, visitorId: visitorId! } },
+          create: {
+            eventId,
+            accountId: student?.accountId,
+            visitorId,
+            name,
+            course,
+          },
+          update: {},
+        });
+        let existingCertificate = await tx.certificate.findUnique({
+          where: { participantId: participant.id },
+        });
+        if (existingCertificate?.revokedAt)
+          throw new ConflictException(
+            'Certificado revogado. Não é permitido reemitir ou reenviar por este fluxo.',
+          );
+        let attendance = await tx.attendance.findUnique({
+          where: { participantId: participant.id },
+        });
+        if (!attendance && student) {
+          attendance = await tx.attendance.findUnique({
+            where: { eventId_studentRa: { eventId, studentRa: student.ra } },
+          });
+          if (attendance && attendance.studentAccountId !== student.accountId)
+            throw new ConflictException(
+              'Histórico vinculado a outra conta. Não é permitido reutilizar o RA.',
+            );
+        }
+        if (attendance && !existingCertificate) {
+          existingCertificate = await tx.certificate.findUnique({
+            where: { attendanceId: attendance.id },
+          });
+          if (existingCertificate?.revokedAt)
+            throw new ConflictException(
+              'Certificado revogado. Não é permitido reemitir por este fluxo.',
+            );
+        }
+        if (attendance?.status !== 'CONFIRMED' || !attendance.checkOutAt) {
+          const evidence: Prisma.InputJsonObject = {
+            ...(attendance?.evidence &&
+            typeof attendance.evidence === 'object' &&
+            !Array.isArray(attendance.evidence)
+              ? attendance.evidence
+              : {}),
+            manualCertificate: {
+              decision: 'MANUAL',
+              secretaryId,
+              confirmedAt: now.toISOString(),
+              missingCheckIn: !attendance?.checkInAt,
+              missingCheckOut: !attendance?.checkOutAt,
+            },
+          };
+          const data = {
+            participantId: participant.id,
+            checkInAt: attendance?.checkInAt ?? now,
+            checkOutAt: attendance?.checkOutAt ?? now,
+            status: 'CONFIRMED' as const,
+            evidence,
+          };
+          attendance = attendance
+            ? await tx.attendance.update({ where: { id: attendance.id }, data })
+            : await tx.attendance.create({
+                data: {
+                  ...data,
+                  eventId,
+                  studentRa: student?.ra,
+                  studentAccountId: student?.accountId,
+                  studentRefRa: student?.ra,
+                  studentName: name,
+                  studentCourse: course || 'Participante/ouvinte',
+                },
+              });
+        } else if (!attendance.participantId) {
+          attendance = await tx.attendance.update({
+            where: { id: attendance.id },
+            data: { participantId: participant.id },
+          });
+        }
+        const certificate = await this.certificates.issueCertificate(
+          attendance.id,
+          tx,
+        );
+        if (!certificate || certificate.revokedAt)
+          throw new ConflictException('Não foi possível emitir o certificado.');
+        const previousArtifact = await tx.certificateArtifact.findUnique({
+          where: { certificateId: certificate.id },
+        });
+        const artifact =
+          previousArtifact ??
+          (await tx.certificateArtifact.create({
+            data: { certificateId: certificate.id },
+          }));
+        if (!certificate.participantId) {
+          await tx.certificate.update({
+            where: { id: certificate.id },
+            data: { participantId: participant.id },
+          });
+        }
+        await tx.eventAudit.create({
+          data: {
+            eventId,
+            subjectId: certificate.id,
+            secretaryId,
+            reason: dto.reason.trim(),
+            action: existingCertificate
+              ? 'MANUAL_CERTIFICATE_ALREADY_ISSUED'
+              : 'MANUAL_CERTIFICATE_ISSUED',
+          },
+        });
+        return {
+          certificateId: certificate.id,
+          verificationCode: certificate.verificationCode,
+          recipientName: name,
+          email,
+          alreadyIssued: Boolean(existingCertificate),
+          deliveryState: artifact.deliveryState,
+          artifactState: artifact.state,
+          message:
+            existingCertificate && previousArtifact
+              ? 'Certificado já existente. Não foi criado outro nem duplicado o envio.'
+              : 'Participação confirmada administrativamente. Certificado e envio por e-mail enfileirados.',
+        };
+      },
+      { maxWait: 5000, timeout: 15000 },
+    );
+  }
   async manual(eventId: string, dto: ManualPresenceDto, secretaryId: number) {
-    if (dto.reason.trim().length < 10)
+    if (Boolean(dto.participantId) === Boolean(dto.attendanceId))
+      throw new BadRequestException(
+        'Informe apenas um participante ou uma presença.',
+      );
+    if ((dto.reason?.trim().length ?? 0) < 10)
       throw new BadRequestException('Descreva a justificativa presencial.');
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT * FROM "EventCheckpoint" WHERE "eventId" = ${eventId} ORDER BY "type" FOR UPDATE`;
@@ -365,10 +663,59 @@ export class EventOperationsService {
             'Arquivo histÃ³rico encerrado para alteraÃ§Ãµes.',
           );
       }
-      const person = await tx.eventParticipant.findUnique({
-        where: { id: dto.participantId },
-        include: { visitor: { include: { series: true } } },
-      });
+      const selectedAttendance = dto.attendanceId
+        ? await tx.attendance.findUnique({ where: { id: dto.attendanceId } })
+        : null;
+      if (
+        dto.attendanceId &&
+        (!selectedAttendance || selectedAttendance.eventId !== eventId)
+      )
+        throw new NotFoundException('Presença não encontrada neste evento.');
+      let participantId =
+        dto.participantId ?? selectedAttendance?.participantId;
+      if (
+        !participantId &&
+        selectedAttendance?.studentAccountId &&
+        event &&
+        event.status !== 'CANCELLED'
+      ) {
+        const originalStudent = await tx.student.findUnique({
+          where: { accountId: selectedAttendance.studentAccountId },
+        });
+        if (
+          !originalStudent ||
+          originalStudent.ra !== selectedAttendance.studentRa
+        )
+          throw new ConflictException(
+            'Identidade original indisponível. Não é permitido reutilizar matrícula.',
+          );
+        const linked = await tx.eventParticipant.upsert({
+          where: {
+            eventId_accountId: {
+              eventId,
+              accountId: originalStudent.accountId,
+            },
+          },
+          create: {
+            eventId,
+            accountId: originalStudent.accountId,
+            name: selectedAttendance.studentName,
+            course: selectedAttendance.studentCourse,
+          },
+          update: {},
+        });
+        participantId = linked.id;
+        await tx.attendance.update({
+          where: { id: selectedAttendance.id },
+          data: { participantId },
+        });
+      }
+      const person = participantId
+        ? await tx.eventParticipant.findUnique({
+            where: { id: participantId },
+            include: { visitor: { include: { series: true } } },
+          })
+        : null;
       if (
         !event ||
         event.status === 'CANCELLED' ||
@@ -378,9 +725,11 @@ export class EventOperationsService {
       )
         throw new ConflictException('Participante/atividade indisponÃ­vel.');
       // Registro manual nÃ£o simula QR nem GPS e preserva timestamps anteriores.
-      const previous = await tx.attendance.findUnique({
-        where: { participantId: person.id },
-      });
+      const previous =
+        selectedAttendance ??
+        (await tx.attendance.findUnique({
+          where: { participantId: person.id },
+        }));
       const student = person.accountId
         ? await tx.student.findUnique({
             where: { accountId: person.accountId },
@@ -412,7 +761,19 @@ export class EventOperationsService {
             data: {
               checkOutAt: new Date(),
               status: 'CONFIRMED',
-              evidence: { decision: 'MANUAL', secretaryId },
+              evidence: {
+                ...(previous.evidence &&
+                typeof previous.evidence === 'object' &&
+                !Array.isArray(previous.evidence)
+                  ? previous.evidence
+                  : {}),
+                manualPresence: {
+                  decision: 'MANUAL',
+                  checkpoint: 'CHECK_OUT',
+                  secretaryId,
+                  confirmedAt: new Date().toISOString(),
+                },
+              },
             },
           });
         if (event.certificateEnabled)
