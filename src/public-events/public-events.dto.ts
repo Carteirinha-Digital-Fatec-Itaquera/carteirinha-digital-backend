@@ -14,6 +14,7 @@ import {
   Min,
   ArrayMinSize,
   ArrayMaxSize,
+  ArrayUnique,
   IsNumber,
   Matches,
   ValidateNested,
@@ -242,4 +243,20 @@ export class ManualCertificateDto {
   @Length(10, 1000)
   reason: string;
   @Equals(true) participationConfirmed: boolean;
+}
+
+export class BulkManualCheckoutDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  attendanceIds: string[];
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @Length(10, 1000)
+  reason: string;
+  @Equals(true) confirmed: boolean;
 }

@@ -580,4 +580,118 @@ integration('Manual certificate issuance with real PostgreSQL and HTTP', () => {
       await db.eventParticipant.count({ where: { eventId: otherEvent.id } }),
     ).toBe(0);
   });
+  it('bulk checkout is atomic, auditable, scoped to event and safe to repeat', async () => {
+    const event = await createEvent();
+    const add = async (eventId: string) => {
+      const ra = randomUUID();
+      const student = await db.student.create({
+        data: {
+          ra,
+          name: 'Aluno lote',
+          course: 'DSM',
+          email: randomUUID() + '@example.test',
+          password: randomUUID(),
+          status: 'Ativo',
+          admission: '20261',
+          dueDate: new Date(Date.now() + 86400000),
+        },
+      });
+      return db.attendance.create({
+        data: {
+          eventId,
+          studentRa: ra,
+          studentRefRa: ra,
+          studentAccountId: student.accountId,
+          studentName: student.name,
+          studentCourse: student.course,
+          checkInAt: new Date(Date.now() - 7200000),
+          evidence: { original: 'QR' },
+        },
+      });
+    };
+    const rows = await Promise.all([add(event.id), add(event.id)]);
+    const payload = {
+      attendanceIds: rows.map((row) => row.id),
+      reason: 'Saídas conferidas em lista presencial pela Secretaria.',
+      confirmed: true,
+    };
+    const send = (id: string, body: object, token = admin) =>
+      request(app.getHttpServer() as Server)
+        .post(`/event-management/events/${id}/manual-checkouts`)
+        .auth(token, { type: 'bearer' })
+        .send(body);
+    await send(event.id, payload, '').expect(401);
+    await send(event.id, { ...payload, confirmed: false }).expect(400);
+    await send(event.id, { ...payload, attendanceIds: [] }).expect(400);
+    await send(event.id, {
+      ...payload,
+      attendanceIds: [rows[0].id, rows[0].id],
+    }).expect(400);
+    await send(event.id, {
+      ...payload,
+      attendanceIds: Array.from({ length: 51 }, () => randomUUID()),
+    }).expect(400);
+    const first = await send(event.id, payload).expect(201);
+    expect(first.body as object).toMatchObject({
+      confirmedCount: 2,
+      alreadyConfirmedCount: 0,
+      processedIds: payload.attendanceIds,
+    });
+    const second = await send(event.id, payload).expect(201);
+    expect(second.body as object).toMatchObject({
+      confirmedCount: 0,
+      alreadyConfirmedCount: 2,
+    });
+    for (const row of rows) {
+      const saved = await db.attendance.findUniqueOrThrow({
+        where: { id: row.id },
+      });
+      expect(saved.checkInAt).toEqual(row.checkInAt);
+      expect(saved.checkOutAt).not.toBeNull();
+      expect(saved.evidence).toMatchObject({ original: 'QR' });
+    }
+    expect(await db.certificate.count({ where: { eventId: event.id } })).toBe(
+      2,
+    );
+    expect(
+      await db.eventAudit.count({
+        where: { eventId: event.id, action: 'MANUAL_CHECK_OUT' },
+      }),
+    ).toBe(2);
+    expect(
+      await db.eventAudit.count({
+        where: { eventId: event.id, action: 'BULK_MANUAL_CHECK_OUT' },
+      }),
+    ).toBe(2);
+    const other = await createEvent();
+    await send(other.id, payload).expect(400);
+    const cancelled = await createEvent({ status: 'CANCELLED' });
+    await send(cancelled.id, payload).expect(409);
+    const rollbackEvent = await createEvent();
+    const valid = await add(rollbackEvent.id);
+    const invalid = await db.attendance.create({
+      data: {
+        eventId: rollbackEvent.id,
+        studentRa: 'missing-' + randomUUID(),
+        studentAccountId: randomUUID(),
+        studentName: 'Identidade indisponível',
+        studentCourse: 'DSM',
+        checkInAt: new Date(),
+      },
+    });
+    await send(rollbackEvent.id, {
+      ...payload,
+      attendanceIds: [valid.id, invalid.id],
+    }).expect(409);
+    expect(
+      (await db.attendance.findUniqueOrThrow({ where: { id: valid.id } }))
+        .checkOutAt,
+    ).toBeNull();
+    expect(
+      await db.certificate.count({ where: { eventId: rollbackEvent.id } }),
+    ).toBe(0);
+    expect(
+      await db.eventAudit.count({ where: { eventId: rollbackEvent.id } }),
+    ).toBe(0);
+  });
 });

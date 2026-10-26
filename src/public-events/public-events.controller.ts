@@ -43,6 +43,7 @@ import { VisitorService } from './visitor.service';
 import {
   EventConfigurationDto,
   ManualPresenceDto,
+  BulkManualCheckoutDto,
   ManualCertificateDto,
   RegisterVisitorDto,
   SeriesDto,
@@ -649,6 +650,14 @@ export class EventManagementController {
     @Req() req: AuthRequest,
   ) {
     return this.operations.manualCertificate(id, dto, Number(req.user.sub));
+  }
+  @Post('events/:id/manual-checkouts')
+  bulkManualCheckout(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(validation) dto: BulkManualCheckoutDto,
+    @Req() req: AuthRequest,
+  ) {
+    return this.operations.bulkManualCheckout(id, dto, Number(req.user.sub));
   }
   @Post('events/:id/manual-presence') manual(
     @Param('id', ParseUUIDPipe) id: string,

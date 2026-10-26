@@ -14,6 +14,7 @@ import { CertificateService } from '../certificate/certificate.service';
 import { EventStorageService } from './event-storage.service';
 import {
   ManualPresenceDto,
+  BulkManualCheckoutDto,
   ManualCertificateDto,
   ParticipantCorrectionDto,
   ReconcileDeliveryDto,
@@ -637,14 +638,99 @@ export class EventOperationsService {
       { maxWait: 5000, timeout: 15000 },
     );
   }
-  async manual(eventId: string, dto: ManualPresenceDto, secretaryId: number) {
+  async bulkManualCheckout(
+    eventId: string,
+    dto: BulkManualCheckoutDto,
+    secretaryId: number,
+  ) {
+    const ids = dto.attendanceIds;
+    if (
+      dto.confirmed !== true ||
+      !Array.isArray(ids) ||
+      ids.length < 1 ||
+      ids.length > 50 ||
+      new Set(ids).size !== ids.length ||
+      (dto.reason?.trim().length ?? 0) < 10
+    )
+      throw new BadRequestException(
+        'Confirme a participação, selecione até 50 presenças distintas e informe a justificativa.',
+      );
+    return this.prisma.$transaction(
+      async (tx) => {
+        const { event } = await lockEventForMutation(tx, eventId);
+        if (event.status === 'CANCELLED')
+          throw new ConflictException(
+            'Evento cancelado não permite confirmar saídas.',
+          );
+        if (event.seriesId) {
+          const series = await tx.eventSeries.findUnique({
+            where: { id: event.seriesId },
+          });
+          if (!series || series.purgedAt || series.retentionAt <= new Date())
+            throw new ConflictException('Prazo de atendimento encerrado.');
+        }
+        const rows = await tx.attendance.findMany({
+          where: { eventId, id: { in: ids } },
+          select: { id: true, checkInAt: true, checkOutAt: true, status: true },
+        });
+        if (rows.length !== ids.length)
+          throw new BadRequestException(
+            'Uma presença não existe ou pertence a outro evento. Nenhuma alteração deste lote foi salva.',
+          );
+        if (rows.some((row) => !row.checkInAt))
+          throw new BadRequestException(
+            'Todas as presenças precisam de entrada registrada. Nenhuma alteração deste lote foi salva.',
+          );
+        const alreadyConfirmed = new Set(
+          rows
+            .filter((row) => row.checkOutAt && row.status === 'CONFIRMED')
+            .map((row) => row.id),
+        );
+        for (const id of ids) {
+          if (alreadyConfirmed.has(id)) continue;
+          await this.manual(
+            eventId,
+            {
+              attendanceId: id,
+              checkpoint: 'CHECK_OUT',
+              reason: dto.reason.trim(),
+            },
+            secretaryId,
+            tx,
+          );
+        }
+        await tx.eventAudit.create({
+          data: {
+            eventId,
+            secretaryId,
+            action: 'BULK_MANUAL_CHECK_OUT',
+            subjectId: randomUUID(),
+            reason: `${ids.length} presenças processadas em lote. ${dto.reason.trim()}`,
+          },
+        });
+        return {
+          success: true,
+          processedIds: ids,
+          confirmedCount: ids.length - alreadyConfirmed.size,
+          alreadyConfirmedCount: alreadyConfirmed.size,
+        };
+      },
+      { maxWait: 5000, timeout: 60000 },
+    );
+  }
+  async manual(
+    eventId: string,
+    dto: ManualPresenceDto,
+    secretaryId: number,
+    client?: Prisma.TransactionClient,
+  ) {
     if (Boolean(dto.participantId) === Boolean(dto.attendanceId))
       throw new BadRequestException(
         'Informe apenas um participante ou uma presença.',
       );
     if ((dto.reason?.trim().length ?? 0) < 10)
       throw new BadRequestException('Descreva a justificativa presencial.');
-    return this.prisma.$transaction(async (tx) => {
+    const run = async (tx: Prisma.TransactionClient) => {
       await tx.$queryRaw`SELECT * FROM "EventCheckpoint" WHERE "eventId" = ${eventId} ORDER BY "type" FOR UPDATE`;
       const [event] = await tx.$queryRaw<
         {
@@ -789,7 +875,8 @@ export class EventOperationsService {
         },
       });
       return { success: true, message: 'Registro presencial auditado.' };
-    });
+    };
+    return client ? run(client) : this.prisma.$transaction(run);
   }
   async enrollVisitor(eventId: string, visitorId: string) {
     const visitor = await this.prisma.visitorRegistration.findUnique({
