@@ -18,6 +18,8 @@ import {
   Matches,
   ValidateNested,
   IsJWT,
+  Equals,
+  ValidateIf,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 export class SeriesDto {
@@ -211,4 +213,32 @@ export class ReconcileDeliveryDto {
   @IsString()
   @Length(5, 1000)
   reason: string;
+}
+
+export class ManualCertificateDto {
+  @IsIn(['STUDENT', 'EXTERNAL']) identityType: 'STUDENT' | 'EXTERNAL';
+  @ValidateIf((dto: ManualCertificateDto) => dto.identityType === 'STUDENT')
+  @IsString()
+  @Length(1, 40)
+  ra?: string;
+  @ValidateIf((dto: ManualCertificateDto) => dto.identityType === 'EXTERNAL')
+  @IsString()
+  @Length(3, 160)
+  name?: string;
+  @ValidateIf((dto: ManualCertificateDto) => dto.identityType === 'EXTERNAL')
+  @IsEmail()
+  @MaxLength(254)
+  email?: string;
+  @ValidateIf((dto: ManualCertificateDto) => dto.identityType === 'EXTERNAL')
+  @IsString()
+  @Matches(/^(?:\d{11}|\d{3}\.\d{3}\.\d{3}-\d{2})$/)
+  cpf?: string;
+  @IsOptional() @IsString() @MaxLength(120) course?: string;
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @Length(10, 1000)
+  reason: string;
+  @Equals(true) participationConfirmed: boolean;
 }
