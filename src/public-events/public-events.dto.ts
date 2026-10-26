@@ -109,7 +109,8 @@ export class EventConfigurationDto {
   signerIds?: string[];
 }
 export class ManualPresenceDto {
-  @IsUUID() participantId: string;
+  @IsOptional() @IsUUID() participantId?: string;
+  @IsOptional() @IsUUID() attendanceId?: string;
   @IsIn(['CHECK_IN', 'CHECK_OUT']) checkpoint: 'CHECK_IN' | 'CHECK_OUT';
   @IsString() @Length(10, 1000) reason: string;
 }

@@ -486,4 +486,98 @@ integration('Manual certificate issuance with real PostgreSQL and HTTP', () => {
       ).deliveryState,
     ).toBe('PENDING');
   });
+  it('confirms missing checkout by attendance row with closed QR and preserves entry/evidence', async () => {
+    const event = await createEvent();
+    const ra = randomUUID();
+    const student = await db.student.create({
+      data: {
+        ra,
+        name: 'Aluno sem saída',
+        course: 'DSM',
+        email: randomUUID() + '@example.test',
+        password: randomUUID(),
+        status: 'Ativo',
+        admission: '20261',
+        dueDate: new Date(Date.now() + 86400000),
+      },
+    });
+    const entry = new Date(Date.now() - 7200000);
+    const attendance = await db.attendance.create({
+      data: {
+        eventId: event.id,
+        studentRa: ra,
+        studentRefRa: ra,
+        studentAccountId: student.accountId,
+        studentName: student.name,
+        studentCourse: student.course,
+        checkInAt: entry,
+        evidence: { original: 'QR' },
+      },
+    });
+    const payload = {
+      attendanceId: attendance.id,
+      checkpoint: 'CHECK_OUT',
+      reason: 'Saída conferida presencialmente pela Secretaria.',
+    };
+    const requestCheckout = () =>
+      request(app.getHttpServer() as Server)
+        .post(`/event-management/events/${event.id}/manual-presence`)
+        .auth(admin, { type: 'bearer' })
+        .send(payload);
+    await Promise.all([
+      requestCheckout().expect(201),
+      requestCheckout().expect(201),
+    ]);
+    const updated = await db.attendance.findUniqueOrThrow({
+      where: { id: attendance.id },
+    });
+    expect(updated.checkInAt).toEqual(entry);
+    expect(updated.status).toBe('CONFIRMED');
+    expect(updated.checkOutAt).not.toBeNull();
+    expect(updated.evidence).toMatchObject({
+      original: 'QR',
+      manualPresence: { checkpoint: 'CHECK_OUT', secretaryId: adminId },
+    });
+    expect(await db.certificate.count({ where: { eventId: event.id } })).toBe(
+      1,
+    );
+    expect(
+      await db.eventAudit.count({
+        where: { eventId: event.id, action: 'MANUAL_CHECK_OUT' },
+      }),
+    ).toBe(2);
+    const linked = await operations.participants(event.id);
+    expect(
+      linked.some((person) => person.attendance?.id === attendance.id),
+    ).toBe(true);
+    const otherEvent = await createEvent();
+    await request(app.getHttpServer() as Server)
+      .post(`/event-management/events/${otherEvent.id}/manual-presence`)
+      .auth(admin, { type: 'bearer' })
+      .send(payload)
+      .expect(404);
+    await request(app.getHttpServer() as Server)
+      .post(`/event-management/events/${event.id}/manual-presence`)
+      .auth(admin, { type: 'bearer' })
+      .send({ ...payload, participantId: randomUUID() })
+      .expect(400);
+    const missingEntry = await db.attendance.create({
+      data: {
+        eventId: otherEvent.id,
+        studentRa: ra,
+        studentRefRa: ra,
+        studentAccountId: student.accountId,
+        studentName: student.name,
+        studentCourse: student.course,
+      },
+    });
+    await request(app.getHttpServer() as Server)
+      .post(`/event-management/events/${otherEvent.id}/manual-presence`)
+      .auth(admin, { type: 'bearer' })
+      .send({ ...payload, attendanceId: missingEntry.id })
+      .expect(400);
+    expect(
+      await db.eventParticipant.count({ where: { eventId: otherEvent.id } }),
+    ).toBe(0);
+  });
 });

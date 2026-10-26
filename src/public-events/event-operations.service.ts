@@ -638,7 +638,11 @@ export class EventOperationsService {
     );
   }
   async manual(eventId: string, dto: ManualPresenceDto, secretaryId: number) {
-    if (dto.reason.trim().length < 10)
+    if (Boolean(dto.participantId) === Boolean(dto.attendanceId))
+      throw new BadRequestException(
+        'Informe apenas um participante ou uma presença.',
+      );
+    if ((dto.reason?.trim().length ?? 0) < 10)
       throw new BadRequestException('Descreva a justificativa presencial.');
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT * FROM "EventCheckpoint" WHERE "eventId" = ${eventId} ORDER BY "type" FOR UPDATE`;
@@ -659,10 +663,59 @@ export class EventOperationsService {
             'Arquivo histÃ³rico encerrado para alteraÃ§Ãµes.',
           );
       }
-      const person = await tx.eventParticipant.findUnique({
-        where: { id: dto.participantId },
-        include: { visitor: { include: { series: true } } },
-      });
+      const selectedAttendance = dto.attendanceId
+        ? await tx.attendance.findUnique({ where: { id: dto.attendanceId } })
+        : null;
+      if (
+        dto.attendanceId &&
+        (!selectedAttendance || selectedAttendance.eventId !== eventId)
+      )
+        throw new NotFoundException('Presença não encontrada neste evento.');
+      let participantId =
+        dto.participantId ?? selectedAttendance?.participantId;
+      if (
+        !participantId &&
+        selectedAttendance?.studentAccountId &&
+        event &&
+        event.status !== 'CANCELLED'
+      ) {
+        const originalStudent = await tx.student.findUnique({
+          where: { accountId: selectedAttendance.studentAccountId },
+        });
+        if (
+          !originalStudent ||
+          originalStudent.ra !== selectedAttendance.studentRa
+        )
+          throw new ConflictException(
+            'Identidade original indisponível. Não é permitido reutilizar matrícula.',
+          );
+        const linked = await tx.eventParticipant.upsert({
+          where: {
+            eventId_accountId: {
+              eventId,
+              accountId: originalStudent.accountId,
+            },
+          },
+          create: {
+            eventId,
+            accountId: originalStudent.accountId,
+            name: selectedAttendance.studentName,
+            course: selectedAttendance.studentCourse,
+          },
+          update: {},
+        });
+        participantId = linked.id;
+        await tx.attendance.update({
+          where: { id: selectedAttendance.id },
+          data: { participantId },
+        });
+      }
+      const person = participantId
+        ? await tx.eventParticipant.findUnique({
+            where: { id: participantId },
+            include: { visitor: { include: { series: true } } },
+          })
+        : null;
       if (
         !event ||
         event.status === 'CANCELLED' ||
@@ -672,9 +725,11 @@ export class EventOperationsService {
       )
         throw new ConflictException('Participante/atividade indisponÃ­vel.');
       // Registro manual nÃ£o simula QR nem GPS e preserva timestamps anteriores.
-      const previous = await tx.attendance.findUnique({
-        where: { participantId: person.id },
-      });
+      const previous =
+        selectedAttendance ??
+        (await tx.attendance.findUnique({
+          where: { participantId: person.id },
+        }));
       const student = person.accountId
         ? await tx.student.findUnique({
             where: { accountId: person.accountId },
@@ -706,7 +761,19 @@ export class EventOperationsService {
             data: {
               checkOutAt: new Date(),
               status: 'CONFIRMED',
-              evidence: { decision: 'MANUAL', secretaryId },
+              evidence: {
+                ...(previous.evidence &&
+                typeof previous.evidence === 'object' &&
+                !Array.isArray(previous.evidence)
+                  ? previous.evidence
+                  : {}),
+                manualPresence: {
+                  decision: 'MANUAL',
+                  checkpoint: 'CHECK_OUT',
+                  secretaryId,
+                  confirmedAt: new Date().toISOString(),
+                },
+              },
             },
           });
         if (event.certificateEnabled)
