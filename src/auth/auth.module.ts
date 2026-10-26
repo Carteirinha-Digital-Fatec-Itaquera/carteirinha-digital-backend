@@ -28,7 +28,7 @@ import { loadAuthSecrets } from './auth.config';
         const { jwtSecret } = loadAuthSecrets();
         return {
           secret: jwtSecret,
-          signOptions: { expiresIn: '1h' },
+          signOptions: { expiresIn: '30d' },
         };
       },
     }),
