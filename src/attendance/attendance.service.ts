@@ -42,7 +42,8 @@ interface QrClaims {
   checkpointVersion: number;
   jti: string;
   iat: number;
-  exp: number;
+  exp?: number;
+  manual?: boolean;
 }
 const attendanceSelect = {
   id: true,
@@ -206,7 +207,8 @@ export class AttendanceService {
           };
         }
         // Uma requisição pode esperar por locks e vencer durante a espera.
-        if (claims.exp * 1000 <= now.getTime()) this.expiredQr();
+        if (claims.exp !== undefined && claims.exp * 1000 <= now.getTime())
+          this.expiredQr();
         const where = participant
           ? { participantId: participant.id }
           : {
@@ -401,8 +403,9 @@ export class AttendanceService {
       typeof qr.jti !== 'string' ||
       !isUUID(qr.jti) ||
       !Number.isSafeInteger(qr.iat) ||
-      !Number.isSafeInteger(qr.exp) ||
-      Number(qr.exp) <= Number(qr.iat) ||
+      (qr.manual === true
+        ? qr.exp !== undefined
+        : !Number.isSafeInteger(qr.exp) || Number(qr.exp) <= Number(qr.iat)) ||
       Number(qr.iat) > Math.floor(Date.now() / 1000)
     ) {
       throw new BadRequestException({

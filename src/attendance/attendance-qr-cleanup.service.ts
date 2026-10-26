@@ -18,9 +18,14 @@ export class AttendanceQrCleanupService {
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
       const result = await this.prisma.attendanceQrReference.deleteMany({
         where: {
-          expiresAt: {
-            lt: fiveMinutesAgo,
-          },
+          OR: [
+            { expiresAt: { lt: fiveMinutesAgo } },
+            {
+              expiresAt: null,
+              createdAt: { lt: fiveMinutesAgo },
+              checkpoint: { isOpen: false },
+            },
+          ],
         },
       });
 
@@ -31,7 +36,10 @@ export class AttendanceQrCleanupService {
       }
       return result.count;
     } catch (error) {
-      this.logger.error('Erro ao executar limpeza de referências QR expiradas', error);
+      this.logger.error(
+        'Erro ao executar limpeza de referências QR expiradas',
+        error,
+      );
       return 0;
     }
   }

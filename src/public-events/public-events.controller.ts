@@ -146,7 +146,7 @@ export class PublicEventsController {
       visitorsAllowed: event.visitorsAllowed,
       seriesId: event.seriesId,
       locationRequired: Boolean(event.geoPolicy),
-      expiresAt: row.expiresAt.toISOString(),
+      expiresAt: row.expiresAt?.toISOString() ?? null,
       serverTime: new Date().toISOString(),
     };
   }

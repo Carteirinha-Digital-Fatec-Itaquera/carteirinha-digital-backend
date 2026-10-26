@@ -120,7 +120,7 @@ model AttendanceQrReference {
   checkpoint        EventCheckpoint @relation(fields: [checkpointId], references: [id], onDelete: Cascade)
   checkpointVersion Int
   jwtToken          String
-  expiresAt         DateTime
+  expiresAt         DateTime?
   createdAt         DateTime        @default(now())
 
   @@index([expiresAt])

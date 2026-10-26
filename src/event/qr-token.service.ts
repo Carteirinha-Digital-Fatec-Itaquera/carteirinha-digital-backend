@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  InternalServerErrorException,
-  Optional,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { CheckpointType } from '@prisma/client';
 import { randomUUID } from 'crypto';
@@ -20,7 +15,6 @@ interface QrTokenPayload {
 
 @Injectable()
 export class QrTokenService {
-  static readonly EXPIRES_IN_SECONDS = 15 * 60;
   private readonly attendanceQrSecret: string;
 
   constructor(
@@ -33,40 +27,37 @@ export class QrTokenService {
 
   async generate(payload: QrTokenPayload) {
     const issuedAt = Math.floor(Date.now() / 1000);
-    const expiresAt = payload.closesAt
-      ? Math.floor(payload.closesAt.getTime() / 1000)
-      : issuedAt + QrTokenService.EXPIRES_IN_SECONDS;
-    const expiresInSeconds = expiresAt - issuedAt;
-    if (!Number.isFinite(expiresInSeconds) || expiresInSeconds <= 0) {
+    const expiresInSeconds = payload.closesAt
+      ? Math.floor(payload.closesAt.getTime() / 1000) - issuedAt
+      : null;
+    if (
+      expiresInSeconds !== null &&
+      (!Number.isFinite(expiresInSeconds) || expiresInSeconds <= 0)
+    ) {
       throw new BadRequestException('A janela de presença já foi encerrada.');
     }
-    const qrToken = await this.jwtService.signAsync(
+    const expDate =
+      expiresInSeconds === null
+        ? null
+        : new Date((issuedAt + expiresInSeconds) * 1000);
+    // O QR manual não herda o prazo da sessão de login.
+    const signer =
+      expiresInSeconds === null ? new JwtService() : this.jwtService;
+    const qrToken = await signer.signAsync(
       {
         eventId: payload.eventId,
         checkpoint: payload.checkpoint,
         checkpointVersion: payload.checkpointVersion,
         iat: issuedAt,
+        ...(expiresInSeconds === null ? { manual: true } : {}),
       },
       {
         secret: this.attendanceQrSecret,
-        expiresIn: expiresInSeconds,
+        ...(expiresInSeconds === null ? {} : { expiresIn: expiresInSeconds }),
         jwtid: randomUUID(),
       },
     );
 
-    const decoded: unknown = this.jwtService.decode(qrToken);
-    if (
-      !decoded ||
-      typeof decoded !== 'object' ||
-      !('exp' in decoded) ||
-      typeof decoded.exp !== 'number'
-    ) {
-      throw new InternalServerErrorException(
-        'Não foi possível determinar a expiração do QR',
-      );
-    }
-
-    const expDate = new Date(decoded.exp * 1000);
     let qrUrl: string | undefined;
 
     if (this.attendanceQrReferenceService && payload.checkpointId) {
@@ -84,7 +75,7 @@ export class QrTokenService {
     return {
       qrToken,
       expiresInSeconds,
-      expiresAt: expDate.toISOString(),
+      expiresAt: expDate?.toISOString() ?? null,
       checkpointVersion: payload.checkpointVersion,
       ...(qrUrl ? { qrUrl } : {}),
       serverTime: new Date().toISOString(),

@@ -27,7 +27,8 @@ describe('QrTokenService', () => {
       checkpointVersion: 7,
     });
 
-    expect(response.expiresInSeconds).toBe(900);
+    expect(response.expiresInSeconds).toBeNull();
+    expect(response.expiresAt).toBeNull();
     expect(response.checkpointVersion).toBe(7);
 
     const payload = await jwt.verifyAsync<Record<string, unknown>>(
@@ -40,8 +41,8 @@ describe('QrTokenService', () => {
     expect(payload.checkpointVersion).toBe(7);
     expect(typeof payload.jti).toBe('string');
     expect(typeof payload.iat).toBe('number');
-    expect(typeof payload.exp).toBe('number');
-    expect(Number(payload.exp) - Number(payload.iat)).toBe(900);
+    expect(payload.exp).toBeUndefined();
+    expect(payload.manual).toBe(true);
 
     for (const pii of ['ra', 'cpf', 'email', 'name']) {
       expect(payload).not.toHaveProperty(pii);
@@ -67,7 +68,7 @@ describe('QrTokenService', () => {
           secret: process.env.ATTENDANCE_QR_SECRET,
         }),
       ).resolves.toHaveProperty('eventId', 'event-id');
-      expect(Date.parse(response.expiresAt)).toBeLessThanOrEqual(
+      expect(Date.parse(response.expiresAt!)).toBeLessThanOrEqual(
         closesAt.getTime(),
       );
       clock.mockReturnValue(now + 120000);
@@ -131,20 +132,24 @@ describe('QrTokenService', () => {
     ).rejects.toThrow();
   });
 
-  it('retorna expiresAt compatível com exp do token', async () => {
-    const jwt = new JwtService();
+  it('não herda expiresIn de login e continua válido após 24 horas', async () => {
+    const jwt = new JwtService({ signOptions: { expiresIn: '1h' } });
     const service = new QrTokenService(jwt);
-
     const response = await service.generate({
       eventId: 'event-id',
       checkpoint: CheckpointType.CHECK_IN,
       checkpointVersion: 2,
     });
-    const payload = await jwt.verifyAsync<{ exp: number }>(response.qrToken, {
-      secret: process.env.ATTENDANCE_QR_SECRET,
-    });
-
-    expect(response.expiresAt).toBe(new Date(payload.exp * 1000).toISOString());
+    const payload = await jwt.verifyAsync<Record<string, unknown>>(
+      response.qrToken,
+      {
+        secret: process.env.ATTENDANCE_QR_SECRET,
+        clockTimestamp: Math.floor(Date.now() / 1000) + 86400,
+      },
+    );
+    expect(payload.exp).toBeUndefined();
+    expect(payload.manual).toBe(true);
+    expect(response.expiresAt).toBeNull();
   });
 
   it('gera qrUrl e serverTime quando AttendanceQrReferenceService e checkpointId são fornecidos', async () => {
@@ -180,8 +185,7 @@ describe('QrTokenService', () => {
       checkpointId: 'checkpoint-id',
       checkpointVersion: 2,
       jwtToken: response.qrToken,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      expiresAt: expect.any(Date),
+      expiresAt: null,
     });
   });
 });
