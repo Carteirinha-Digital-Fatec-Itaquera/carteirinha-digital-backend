@@ -1,3 +1,4 @@
+import { buildPasswordRecoveryUrl } from './password-recovery-url';
 import {
   ConflictException,
   Injectable,
@@ -141,8 +142,11 @@ export class AuthService {
     );
 
     // para dev
-    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
-    const resetUrl = `${frontendUrl}/reset-password?token=${token}&id=${user.ra || user.id}&type=${userType}`;
+    const resetUrl = buildPasswordRecoveryUrl(
+      userType,
+      token,
+      String(user.ra || user.id),
+    );
 
     await this.mailService.sendResetPasswordEmail(user.email, user.name, resetUrl);
     return { message: 'E-mail enviado com sucesso.' };
