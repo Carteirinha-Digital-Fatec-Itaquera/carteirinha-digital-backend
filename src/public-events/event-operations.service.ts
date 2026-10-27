@@ -237,6 +237,43 @@ export class EventOperationsService {
       return person;
     });
   }
+  async studentHistory(ra: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const student = await tx.student.findUnique({
+        where: { ra },
+        select: { accountId: true },
+      });
+      if (!student) throw new NotFoundException('Aluno não encontrado.');
+      return tx.attendance.findMany({
+        where: { studentRa: ra, studentAccountId: student.accountId },
+        select: {
+          id: true,
+          checkInAt: true,
+          checkOutAt: true,
+          status: true,
+          event: {
+            select: {
+              id: true,
+              title: true,
+              startsAt: true,
+              workloadMinutes: true,
+              status: true,
+            },
+          },
+          certificate: {
+            select: {
+              id: true,
+              verificationCode: true,
+              issuedAt: true,
+              revokedAt: true,
+              artifact: { select: { state: true, deliveryState: true } },
+            },
+          },
+        },
+        orderBy: [{ event: { startsAt: 'desc' } }, { id: 'asc' }],
+      });
+    });
+  }
   async participants(eventId: string) {
     const list = await this.prisma.eventParticipant.findMany({
       where: { eventId },
