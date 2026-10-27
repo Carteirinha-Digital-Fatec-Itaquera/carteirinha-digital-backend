@@ -486,6 +486,9 @@ export class EventManagementController {
     private readonly storage: EventStorageService,
     private readonly pdfGenerator: PdfGeneratorService,
   ) {}
+  @Get('students/:ra/history') studentHistory(@Param('ra') ra: string) {
+    return this.operations.studentHistory(ra);
+  }
   @Get('catalog') async catalogData() {
     await this.catalog.ensureDefaultTemplates();
     const [series, templates, signers, events] = await Promise.all([
