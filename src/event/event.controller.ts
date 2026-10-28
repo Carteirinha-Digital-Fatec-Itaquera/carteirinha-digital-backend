@@ -23,6 +23,7 @@ import { ActiveEventAccountGuard } from '../auth/active-event-account.guard';
 import { CheckpointService } from './checkpoint.service';
 import { CheckpointTypePipe } from './checkpoint-type.pipe';
 import { CancelEventDto } from './dto/cancel-event.dto';
+import { LocationToggleDto } from './dto/location-toggle.dto';
 import { CreateEventDto } from './dto/create-event.dto';
 import { EventQueryDto } from './dto/event-query.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
@@ -155,6 +156,24 @@ export class EventController {
     return this.eventService.cancel(id, dto.reason, Number(request.user.sub));
   }
 
+  @Post(':id/location-verification')
+  @Roles('secretary')
+  @HttpCode(HttpStatus.OK)
+  @Header('Cache-Control', 'no-store')
+  location(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    dto: LocationToggleDto,
+    @Request() request: AuthenticatedRequest,
+  ) {
+    return this.eventService.toggleLocation(
+      id,
+      dto.enabled,
+      dto.reason,
+      Number(request.user.sub),
+      dto.geoPolicy,
+    );
+  }
   @Post(':id/restore')
   @Roles('secretary')
   @HttpCode(HttpStatus.OK)

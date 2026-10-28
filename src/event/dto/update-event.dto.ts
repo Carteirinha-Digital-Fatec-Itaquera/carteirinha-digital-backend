@@ -12,6 +12,7 @@ import {
 } from 'class-validator';
 
 export class UpdateEventDto {
+  @IsOptional() @IsBoolean() locationEnabled?: boolean;
   @IsOptional()
   @IsString()
   @MinLength(3)

@@ -15,6 +15,7 @@ import {
 } from 'class-validator';
 
 export class CreateEventDto {
+  @IsOptional() @IsBoolean() locationEnabled?: boolean;
   @IsString()
   @IsNotEmpty()
   @MinLength(3)

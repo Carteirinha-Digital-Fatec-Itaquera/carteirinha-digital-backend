@@ -46,7 +46,7 @@ export class EventService {
         ? assertGeoPolicy(dto.geoPolicy)
         : null;
 
-    if (dto.visitorsAllowed && !geoPolicy) {
+    if (dto.visitorsAllowed && dto.locationEnabled !== false && !geoPolicy) {
       throw new BadRequestException(
         'Atividades abertas a visitantes exigem localização configurada.',
       );
@@ -107,6 +107,7 @@ export class EventService {
           certificateEnabled: dto.certificateEnabled ?? true,
           createdById,
           visitorsAllowed: dto.visitorsAllowed ?? false,
+          locationEnabled: dto.locationEnabled ?? true,
           organizerCourse: dto.organizerCourse ?? null,
           promoter: dto.promoter ?? null,
           windowMinutes: dto.visitorsAllowed ? 15 : null,
@@ -271,6 +272,62 @@ export class EventService {
     });
   }
 
+  async toggleLocation(
+    id: string,
+    enabled: boolean,
+    reason: string,
+    secretaryId: number,
+    policy?: unknown,
+  ) {
+    if (
+      typeof enabled !== 'boolean' ||
+      typeof reason !== 'string' ||
+      reason.trim().length < 3 ||
+      reason.trim().length > 1000
+    )
+      throw new BadRequestException(
+        'Informe a opção e uma justificativa válida.',
+      );
+    return this.prisma.$transaction(async (tx) => {
+      const { event } = await lockEventForMutation(tx, id);
+      if (event.status === 'CANCELLED')
+        throw new ConflictException(
+          'Evento cancelado não permite alterar a verificação.',
+        );
+      const geo =
+        policy !== undefined
+          ? assertGeoPolicy(policy)
+          : enabled && event.geoPolicy
+            ? assertGeoPolicy(event.geoPolicy)
+            : null;
+      if (enabled && !geo)
+        throw new BadRequestException(
+          'Configure latitude, longitude, raio e precisão antes de habilitar.',
+        );
+      const updated = await tx.event.update({
+        where: { id },
+        data: {
+          locationEnabled: enabled,
+          ...(policy !== undefined && geo
+            ? { geoPolicy: geo as unknown as Prisma.InputJsonValue }
+            : {}),
+        },
+        include: eventInclude,
+      });
+      await tx.eventAudit.create({
+        data: {
+          eventId: id,
+          subjectId: id,
+          secretaryId,
+          action: enabled
+            ? 'EVENT_LOCATION_ENABLED'
+            : 'EVENT_LOCATION_DISABLED',
+          reason: reason.trim(),
+        },
+      });
+      return updated;
+    });
+  }
   async restore(id: string, reason: string, secretaryId: number) {
     const trimmed = typeof reason === 'string' ? reason.trim() : '';
     if (trimmed.length < 3 || trimmed.length > 1000)
@@ -456,7 +513,11 @@ export class EventService {
         geoPolicy = event.geoPolicy as GeoPolicy | null;
       }
 
-      if (visitorsAllowed && !geoPolicy) {
+      if (
+        visitorsAllowed &&
+        (dto.locationEnabled ?? event.locationEnabled) !== false &&
+        !geoPolicy
+      ) {
         throw new BadRequestException(
           'Atividades abertas a visitantes exigem localização configurada.',
         );
@@ -541,6 +602,7 @@ export class EventService {
           workloadMinutes: dto.workloadMinutes,
           certificateEnabled: dto.certificateEnabled,
           visitorsAllowed: dto.visitorsAllowed,
+          locationEnabled: dto.locationEnabled,
           organizerCourse: dto.organizerCourse,
           promoter: dto.promoter,
           windowMinutes: visitorsAllowed ? 15 : undefined,

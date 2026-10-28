@@ -150,7 +150,8 @@ export class PublicEventsController {
       checkpoint: { type: row.checkpoint.type },
       visitorsAllowed: event.visitorsAllowed,
       seriesId: event.seriesId,
-      locationRequired: Boolean(event.geoPolicy),
+      locationRequired:
+        event.locationEnabled !== false && Boolean(event.geoPolicy),
       expiresAt: row.expiresAt?.toISOString() ?? null,
       serverTime: new Date().toISOString(),
     };
@@ -177,6 +178,7 @@ export class PublicEventsController {
         visitorsAllowed: true,
         seriesId: true,
         geoPolicy: true,
+        locationEnabled: true,
         checkpoints: {
           select: {
             type: true,
@@ -206,7 +208,8 @@ export class PublicEventsController {
       },
       visitorsAllowed: event.visitorsAllowed,
       seriesId: event.seriesId,
-      locationRequired: Boolean(event.geoPolicy),
+      locationRequired:
+        event.locationEnabled !== false && Boolean(event.geoPolicy),
       serverTime: new Date().toISOString(),
     };
   }
