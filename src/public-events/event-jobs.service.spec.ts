@@ -149,6 +149,7 @@ describe('EventJobsService', () => {
       deliveryAttempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId,
         revokedAt: null,
         event: { status: 'IN_PROGRESS', title: 'Palestra de Inovação' },
@@ -163,6 +164,7 @@ describe('EventJobsService', () => {
       deliveryAttempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId,
         revokedAt: null,
         event: { status: 'IN_PROGRESS', title: 'Palestra de Inovação' },
@@ -228,6 +230,7 @@ describe('EventJobsService', () => {
       deliveryAttempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId: null,
         revokedAt: null,
         event: { status: 'COMPLETED', title: 'Semana de Tecnologia' },
@@ -242,6 +245,7 @@ describe('EventJobsService', () => {
       deliveryAttempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId: null,
         revokedAt: null,
         event: { status: 'COMPLETED', title: 'Semana de Tecnologia' },
@@ -294,6 +298,7 @@ describe('EventJobsService', () => {
       deliveryAttempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId: null,
         revokedAt: null,
         event: { status: 'COMPLETED', title: 'Workshop Antigo' },
@@ -308,6 +313,7 @@ describe('EventJobsService', () => {
       deliveryAttempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId: null,
         revokedAt: null,
         event: { status: 'COMPLETED', title: 'Workshop Antigo' },
@@ -340,6 +346,7 @@ describe('EventJobsService', () => {
       deliveryAttempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId: 'acc-1',
         revokedAt: new Date(),
         event: { status: 'COMPLETED', title: 'Evento Revogado' },
@@ -373,6 +380,7 @@ describe('EventJobsService', () => {
       deliveryAttempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId,
         revokedAt: null,
         event: { status: 'IN_PROGRESS', title: 'Palestra' },
@@ -387,6 +395,7 @@ describe('EventJobsService', () => {
       deliveryAttempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId,
         revokedAt: null,
         event: { status: 'IN_PROGRESS', title: 'Palestra' },
@@ -423,6 +432,7 @@ describe('EventJobsService', () => {
       attempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId,
         revokedAt: null,
         event: { status: 'IN_PROGRESS', title: 'Palestra Falha' },
@@ -438,6 +448,7 @@ describe('EventJobsService', () => {
       attempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId,
         revokedAt: null,
         event: { status: 'IN_PROGRESS', title: 'Palestra Falha' },
@@ -494,6 +505,7 @@ describe('EventJobsService', () => {
       deliveryAttempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId,
         revokedAt: null,
         event: { status: 'COMPLETED', title: 'Atividade' },
@@ -508,6 +520,7 @@ describe('EventJobsService', () => {
       deliveryAttempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId,
         revokedAt: null,
         event: { status: 'COMPLETED', title: 'Atividade' },
@@ -549,6 +562,7 @@ describe('EventJobsService', () => {
       deliveryAttempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId,
         revokedAt: null,
         event: { status: 'COMPLETED', title: 'Atividade Ativo' },
@@ -563,6 +577,7 @@ describe('EventJobsService', () => {
       deliveryAttempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId,
         revokedAt: null,
         event: { status: 'COMPLETED', title: 'Atividade Ativo' },
@@ -608,6 +623,7 @@ describe('EventJobsService', () => {
       deliveryAttempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId,
         revokedAt: null,
         event: { status: 'COMPLETED', title: 'Atividade Reconciliada' },
@@ -622,6 +638,7 @@ describe('EventJobsService', () => {
       deliveryAttempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId,
         revokedAt: null,
         event: { status: 'COMPLETED', title: 'Atividade Reconciliada' },
@@ -680,6 +697,7 @@ describe('EventJobsService', () => {
       deliveryAttempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId,
         revokedAt: null,
         event: { status: 'COMPLETED', title: 'Atividade' },
@@ -694,6 +712,7 @@ describe('EventJobsService', () => {
       deliveryAttempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId,
         revokedAt: null,
         event: { status: 'COMPLETED', title: 'Atividade' },
@@ -735,6 +754,7 @@ describe('EventJobsService', () => {
       deliveryAttempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId,
         revokedAt: null,
         event: { status: 'COMPLETED', title: 'Atividade' },
@@ -749,6 +769,7 @@ describe('EventJobsService', () => {
       deliveryAttempts: 0,
       certificate: {
         id: certId,
+        payloadSnapshot: { studentName: 'João Estudante' },
         studentAccountId,
         revokedAt: null,
         event: { status: 'COMPLETED', title: 'Atividade' },

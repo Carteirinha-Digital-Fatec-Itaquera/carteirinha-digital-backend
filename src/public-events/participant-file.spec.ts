@@ -9,6 +9,21 @@ const file = (text: string, ext = 'json') =>
     buffer: Buffer.from(text),
   }) as Express.Multer.File;
 describe('Participant JSON and CSV', () => {
+  it('explains conflicting aliases, duplicate headers and unsupported versions', () => {
+    expect(() =>
+      parseParticipantFile(
+        file('{"versao_formato":"99","participantes":["Aluno Teste"]}'),
+      ),
+    ).toThrow('Versão');
+    expect(() =>
+      parseParticipantFile(
+        file('[{"nome":"Aluno Teste","name":"Outra Pessoa"}]'),
+      ),
+    ).toThrow('Linha 1');
+    expect(() =>
+      parseParticipantFile(file('nome,nome\nAluno Teste,Outro Teste', 'csv')),
+    ).toThrow('duplicado');
+  });
   it('accepts names and the provided participant object format', () => {
     expect(parseParticipantFile(file('["Aluno Teste"]'))).toEqual([
       { name: 'Aluno Teste', review: false },

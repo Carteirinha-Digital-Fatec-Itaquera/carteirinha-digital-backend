@@ -1,8 +1,9 @@
 import { PhotoStatus } from '@prisma/client';
-import { IsDate, IsDateString, IsEmail, IsEmpty, IsNotEmpty, Matches, IsOptional } from 'class-validator';
+import { IsDate, IsDateString, IsEmail, IsEmpty, IsNotEmpty, Matches, IsOptional, IsString, MaxLength } from 'class-validator';
 
 
 export class CreateStudentDTO {
+  @IsOptional() @IsString() @MaxLength(160) socialName?: string | null;
   @IsNotEmpty({ message: 'O campo RA é obrigatório' })
   ra: string;
 

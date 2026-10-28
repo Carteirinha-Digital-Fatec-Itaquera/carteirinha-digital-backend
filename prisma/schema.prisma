@@ -14,6 +14,7 @@ model Student {
   course          String
   status          String
   name            String
+  socialName      String?
   admission       String
   email           String        @unique
   cpf             String?       @unique
@@ -143,7 +144,8 @@ model Attendance {
   checkInAt        DateTime?
   checkOutAt       DateTime?
   status           AttendanceStatus  @default(CHECKED_IN)
-  certificate      Certificate?
+  certificate      Certificate?      @relation("CurrentAttendanceCertificate")
+  certificates     Certificate[]     @relation("AttendanceCertificateHistory")
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
@@ -158,13 +160,13 @@ model Certificate {
   event            Event                @relation(fields: [eventId], references: [id], onDelete: Restrict)
   studentRa        String?
   studentAccountId String?
-  participantId    String?              @unique
-  participant      EventParticipant?    @relation(fields: [participantId, eventId], references: [id, eventId], onDelete: Restrict, onUpdate: Restrict, map: "certificate_participant_event")
+  participantId    String?
+  participant      EventParticipant?    @relation("ParticipantCertificateHistory", fields: [participantId, eventId], references: [id, eventId], onDelete: Restrict, onUpdate: Restrict, map: "certificate_participant_event")
   artifact         CertificateArtifact?
   studentRefRa     String?
   student          Student?             @relation(fields: [studentRefRa], references: [ra], onDelete: SetNull)
-  attendanceId     String               @unique
-  attendance       Attendance           @relation(fields: [attendanceId], references: [id], onDelete: Restrict)
+  attendanceId     String
+  attendance       Attendance           @relation("AttendanceCertificateHistory", fields: [attendanceId], references: [id], onDelete: Restrict)
   verificationCode String               @unique
   payloadSnapshot  Json
   issuedAt         DateTime             @default(now())
@@ -172,8 +174,19 @@ model Certificate {
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
 
-  @@unique([eventId, studentRa])
-  @@unique([participantId, eventId])
+  activeAttendanceId  String?           @unique
+  activeAttendance    Attendance?       @relation("CurrentAttendanceCertificate", fields: [activeAttendanceId], references: [id], onDelete: Restrict)
+  activeParticipantId String?           @unique
+  activeParticipant   EventParticipant? @relation("CurrentParticipantCertificate", fields: [activeParticipantId], references: [id], onDelete: Restrict)
+  version             Int               @default(1)
+  replacesId          String?           @unique
+  previous            Certificate?      @relation("CertificateVersions", fields: [replacesId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  replacement         Certificate?      @relation("CertificateVersions")
+  reissueKey          String?           @unique
+  revocationReason    String?
+  reissuedById        Int?
+
+  @@unique([attendanceId, version])
   @@index([studentRefRa, studentAccountId])
 }
 
@@ -230,18 +243,19 @@ model VisitorSession {
 }
 
 model EventParticipant {
-  id          String               @id @default(uuid())
-  eventId     String
-  event       Event                @relation(fields: [eventId], references: [id], onDelete: Restrict)
-  visitorId   String?
-  visitor     VisitorRegistration? @relation(fields: [visitorId], references: [id], onDelete: SetNull)
-  accountId   String?
-  name        String
-  course      String?
-  role        String               @default("ATTENDEE")
-  attendance  Attendance?
-  certificate Certificate?
-  createdAt   DateTime             @default(now())
+  id           String               @id @default(uuid())
+  eventId      String
+  event        Event                @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  visitorId    String?
+  visitor      VisitorRegistration? @relation(fields: [visitorId], references: [id], onDelete: SetNull)
+  accountId    String?
+  name         String
+  course       String?
+  role         String               @default("ATTENDEE")
+  attendance   Attendance?
+  certificate  Certificate?         @relation("CurrentParticipantCertificate")
+  certificates Certificate[]        @relation("ParticipantCertificateHistory")
+  createdAt    DateTime             @default(now())
 
   @@unique([eventId, visitorId])
   @@unique([eventId, accountId])

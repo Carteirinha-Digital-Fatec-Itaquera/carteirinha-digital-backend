@@ -79,6 +79,7 @@ describe('CertificateService Unit Tests', () => {
   it('returnsExistingWithoutChangingSnapshot: returns already existing certificate by attendanceId or ra', async () => {
     const existingCert = {
       id: 'cert-1',
+      studentAccountId: 'acc-1',
       verificationCode: 'FATEC-EVT-0123456789ABCDEF',
       payloadSnapshot: { studentName: 'Nome Original' },
     };

@@ -1,3 +1,6 @@
+import { ActiveEventAccountGuard } from '../auth/active-event-account.guard';
+import { AuthModule } from '../auth/auth.module';
+import { SecretaryActiveGuard } from '../project-credits/guards/secretary-active.guard';
 import { Module } from '@nestjs/common';
 import { StudentController } from './student.controller';
 import { StudentService } from './student.service';
@@ -21,9 +24,11 @@ import { StudentCleanupService } from './student-cleanup.service';
 
 
 @Module({
-  imports: [UploadModule, DatabaseModule, UtilsModule, ScheduleModule.forRoot()], 
+  imports: [AuthModule, UploadModule, DatabaseModule, UtilsModule, ScheduleModule.forRoot()],
   controllers: [StudentController],
   providers: [
+    SecretaryActiveGuard,
+    ActiveEventAccountGuard,
     StudentService,
     PrismaService,
     StudentMapper,

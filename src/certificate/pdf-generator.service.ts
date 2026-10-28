@@ -142,7 +142,10 @@ export class PdfGeneratorService {
     if (snapshot.version === 2) {
       if (!this.technologyPdf)
         throw new BadRequestException('Renderizador da Semana indisponível.');
-      return this.technologyPdf.render(certificate);
+      return this.technologyPdf.render(
+        certificate,
+        certificate.verificationCode === 'DEMONSTRACAO-SEM-VALIDADE',
+      );
     }
 
     const verificationUrl = this.getVerificationUrl(

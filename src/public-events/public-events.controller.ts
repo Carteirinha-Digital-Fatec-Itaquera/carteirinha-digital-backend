@@ -61,6 +61,7 @@ import {
   RoleMutationDto,
   ParticipantCorrectionDto,
   ReconcileDeliveryDto,
+  ReissueCertificateDto,
   CreateEventFeedbackDto,
 } from './public-events.dto';
 import { EventStorageService } from './event-storage.service';
@@ -707,6 +708,27 @@ export class EventManagementController {
         `attachment; filename="${file.code}.pdf"`,
       );
     res.send(file.buffer);
+  }
+  @Get('certificates/:id/versions') versions(
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.operations.certificateVersions(id);
+  }
+  @Post('certificates/:id/reissue') reissue(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(validation) dto: ReissueCertificateDto,
+    @Req() req: AuthRequest,
+  ) {
+    return this.operations.reissueCertificate(id, dto, Number(req.user.sub));
+  }
+  @Post('certificates/:id/reissue-preview') async reissuePreview(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(validation) dto: ReissueCertificateDto,
+    @Res() res: Response,
+  ) {
+    res
+      .type('application/pdf')
+      .send(await this.operations.reissuePreview(id, dto));
   }
   @Post('certificates/:id/retry') retry(
     @Param('id', ParseUUIDPipe) id: string,
