@@ -74,15 +74,23 @@ export class CheckpointService {
       const checkOut = checkpoints.find(
         (item) => item.type === CheckpointType.CHECK_OUT,
       );
-
+      const finalOnly = event.attendanceMode === 'FINAL_ONLY';
+      if (finalOnly && type === CheckpointType.CHECK_IN)
+        throw new ConflictException(
+          'Este evento usa apenas confirmação de presença ao final.',
+        );
+      if (finalOnly && checkIn?.isOpen)
+        throw new ConflictException(
+          'Atualize o evento: a etapa antiga de entrada precisa estar encerrada.',
+        );
       const isReopening = Boolean(checkpoint.openedAt);
-      if (type === CheckpointType.CHECK_IN) {
+      if (!finalOnly && type === CheckpointType.CHECK_IN) {
         if (checkOut?.isOpen) {
           throw new ConflictException(
             'Encerre o CHECK_OUT antes de reabrir o CHECK_IN',
           );
         }
-      } else if (type === CheckpointType.CHECK_OUT) {
+      } else if (!finalOnly && type === CheckpointType.CHECK_OUT) {
         if (!isReopening) {
           if (
             event.status !== EventStatus.IN_PROGRESS ||
@@ -145,7 +153,7 @@ export class CheckpointService {
       }
 
       if (
-        type === CheckpointType.CHECK_IN &&
+        (type === CheckpointType.CHECK_IN || finalOnly) &&
         event.status !== EventStatus.IN_PROGRESS
       ) {
         await tx.event.update({

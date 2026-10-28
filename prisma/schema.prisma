@@ -61,6 +61,7 @@ model Secretary {
 }
 
 model Event {
+  attendanceMode String @default("FINAL_ONLY")
   id                  String             @id @default(uuid())
   title               String
   description         String?

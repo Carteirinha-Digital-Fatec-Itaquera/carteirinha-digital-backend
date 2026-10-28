@@ -52,6 +52,7 @@ export class AttendanceController {
     return {
       event: {
         id: record.checkpoint.event.id,
+        attendanceMode: record.checkpoint.event.attendanceMode,
         title: record.checkpoint.event.title,
         speaker: record.checkpoint.event.speaker,
         location: record.checkpoint.event.location,
