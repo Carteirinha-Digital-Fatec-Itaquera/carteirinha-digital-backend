@@ -6,6 +6,11 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
+import {
+  parseParticipantFile,
+  normalizeParticipantName,
+  assertParticipantFileEvent,
+} from './participant-file';
 import { isEmail } from 'class-validator';
 import { lockEventForMutation } from '../event/event-mutation-lock';
 import { validCpf, visitorIdentityHash } from './visitor.service';
@@ -274,6 +279,77 @@ export class EventOperationsService {
         ...row,
         email: row.email.replace(/^(.).*(@.*)$/, '$1***$2'),
       })),
+    };
+  }
+  async analyzeParticipantFile(eventId: string, file: Express.Multer.File) {
+    const rows = parseParticipantFile(file);
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      select: {
+        id: true,
+        title: true,
+        startsAt: true,
+        status: true,
+        certificateEnabled: true,
+      },
+    });
+    if (!event) throw new NotFoundException('Evento não encontrado.');
+    assertParticipantFileEvent(file, event);
+    if (
+      event.status === 'CANCELLED' ||
+      event.status === 'SCHEDULED' ||
+      !event.certificateEnabled
+    )
+      throw new ConflictException(
+        'Evento indisponível para emissão administrativa.',
+      );
+    const students = await this.prisma.student.findMany({
+      select: {
+        ra: true,
+        accountId: true,
+        name: true,
+        status: true,
+        email: true,
+      },
+    });
+    const seen = new Set<string>();
+    return {
+      event,
+      items: rows.map((row, index) => {
+        const matches = students.filter(
+          (student) =>
+            normalizeParticipantName(student.name) ===
+            normalizeParticipantName(row.name),
+        );
+        const student = matches.length === 1 ? matches[0] : null;
+        let status = row.review
+          ? 'REVIEW'
+          : matches.length > 1
+            ? 'AMBIGUOUS'
+            : !student
+              ? 'NOT_FOUND'
+              : !['ativo', 'em curso'].includes(
+                    student.status.trim().toLowerCase(),
+                  ) || !isEmail(student.email)
+                ? 'INELIGIBLE'
+                : 'READY';
+        if (student && status === 'READY') {
+          if (seen.has(student.accountId)) status = 'DUPLICATE';
+          else seen.add(student.accountId);
+        }
+        return {
+          row: index + 1,
+          name: row.name,
+          status,
+          ...(student
+            ? {
+                ra: student.ra,
+                accountId: student.accountId,
+                officialName: student.name,
+              }
+            : {}),
+        };
+      }),
     };
   }
   async studentHistory(ra: string) {

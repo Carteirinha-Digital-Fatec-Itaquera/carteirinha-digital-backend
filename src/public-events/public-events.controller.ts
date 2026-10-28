@@ -487,6 +487,16 @@ export class EventManagementController {
     private readonly storage: EventStorageService,
     private readonly pdfGenerator: PdfGeneratorService,
   ) {}
+  @Post('events/:id/participant-file')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 2 * 1024 * 1024 } }),
+  )
+  analyzeParticipantFile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.operations.analyzeParticipantFile(id, file);
+  }
   @Get('students/search') searchStudents(@Query('q') query: string) {
     return this.operations.searchStudents(query);
   }
