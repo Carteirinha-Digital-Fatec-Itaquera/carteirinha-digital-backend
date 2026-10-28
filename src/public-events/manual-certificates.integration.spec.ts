@@ -20,6 +20,11 @@ import { EventCatalogService } from './event-catalog.service';
 import { EventStorageService } from './event-storage.service';
 import { EventJobsService } from './event-jobs.service';
 import { VisitorService, visitorIdentityHash } from './visitor.service';
+import { StudentController } from '../student/student.controller';
+import { StudentService } from '../student/student.service';
+import { StudentMapper } from '../student/mapper/student.mapper';
+import { UploadService } from '../upload/upload.service';
+import { ActiveEventAccountGuard } from '../auth/active-event-account.guard';
 import type { MailService } from '../mail/mail.service';
 
 const url = process.env.MANUAL_CERTIFICATE_TEST_DATABASE_URL;
@@ -106,11 +111,30 @@ integration('Manual certificate issuance with real PostgreSQL and HTTP', () => {
     );
     const module = await Test.createTestingModule({
       imports: [JwtModule.register({ secret: process.env.JWT_SECRET })],
-      controllers: [EventManagementController],
+      controllers: [EventManagementController, StudentController],
       providers: [
         AuthGuard,
         RolesGuard,
         SecretaryActiveGuard,
+        ActiveEventAccountGuard,
+        StudentMapper,
+        { provide: UploadService, useValue: {} },
+        {
+          provide: StudentService,
+          useValue: {
+            getStudentByRa: (ra: string) =>
+              db.student.findUniqueOrThrow({ where: { ra } }),
+            updateStudents: (student: {
+              ra: string;
+              name: string;
+              socialName?: string | null;
+            }) =>
+              db.student.update({
+                where: { ra: student.ra },
+                data: { name: student.name, socialName: student.socialName },
+              }),
+          },
+        },
         { provide: PrismaService, useValue: db },
         { provide: EventOperationsService, useValue: operations },
         { provide: EventCatalogService, useValue: {} },
@@ -281,6 +305,199 @@ integration('Manual certificate issuance with real PostgreSQL and HTTP', () => {
     expect((csv.body as { items: { status: string }[] }).items[0].status).toBe(
       'READY',
     );
+  });
+  it('reissues a corrected version without exposing or restoring the previous document', async () => {
+    const event = await createEvent();
+    const student = await db.student.create({
+      data: {
+        ra: randomUUID(),
+        name: 'Nome Fictício Inicial',
+        course: 'DSM',
+        status: 'Ativo',
+        admission: '20261',
+        email: randomUUID() + '@example.test',
+        password: randomUUID(),
+        dueDate: new Date(Date.now() + 86400000),
+      },
+    });
+    const original = await post(event.id, {
+      identityType: 'STUDENT',
+      ra: student.ra,
+      expectedAccountId: student.accountId,
+      reason: 'Participação conferida presencialmente',
+      participationConfirmed: true,
+    }).expect(201);
+    const originalId = (original.body as { certificateId: string })
+      .certificateId;
+    const previous = await db.certificate.findUniqueOrThrow({
+      where: { id: originalId },
+    });
+    const payload = {
+      requestId: randomUUID(),
+      expectedVersion: 1,
+      correctionType: 'SOCIAL_NAME',
+      name: 'Nome Fictício Correto',
+      reason: 'Correção solicitada e conferida pela Secretaria.',
+      confirmed: true,
+      saveSocialName: true,
+    };
+    const endpoint = `/event-management/certificates/${originalId}/reissue`;
+    await request(app.getHttpServer() as Server)
+      .post(endpoint)
+      .send(payload)
+      .expect(401);
+    const preview = await request(app.getHttpServer() as Server)
+      .post(endpoint + '-preview')
+      .auth(admin, { type: 'bearer' })
+      .send(payload)
+      .expect(201);
+    expect(preview.headers['content-type']).toContain('application/pdf');
+    expect(
+      await db.certificate.count({
+        where: { attendanceId: previous.attendanceId },
+      }),
+    ).toBe(1);
+    const result = await request(app.getHttpServer() as Server)
+      .post(endpoint)
+      .auth(admin, { type: 'bearer' })
+      .send(payload)
+      .expect(201);
+    const nextId = (result.body as { certificateId: string }).certificateId;
+    expect(nextId).not.toBe(originalId);
+    const next = await db.certificate.findUniqueOrThrow({
+      where: { id: nextId },
+      include: { artifact: true },
+    });
+    expect(next.version).toBe(2);
+    expect(next.replacesId).toBe(originalId);
+    expect(next.verificationCode).not.toBe(previous.verificationCode);
+    expect(next.payloadSnapshot).toMatchObject({ studentName: payload.name });
+    expect(
+      (await db.certificate.findUniqueOrThrow({ where: { id: originalId } }))
+        .payloadSnapshot,
+    ).toEqual(previous.payloadSnapshot);
+    expect(
+      await certificates.verifyCertificate(previous.verificationCode),
+    ).toMatchObject({ valid: false, revoked: true });
+    expect(
+      JSON.stringify(
+        await certificates.verifyCertificate(previous.verificationCode),
+      ),
+    ).not.toContain(student.name);
+    const identity = {
+      sub: student.ra,
+      accountId: student.accountId,
+      role: 'student' as const,
+    };
+    await expect(
+      certificates.getStudentCertificate(originalId, identity),
+    ).rejects.toThrow();
+    expect(
+      (await certificates.getStudentCertificates(identity)).map(
+        (item) => item.id,
+      ),
+    ).toEqual([nextId]);
+    const versionsPath = `/event-management/certificates/${nextId}/versions`;
+    await request(app.getHttpServer() as Server)
+      .get(versionsPath)
+      .expect(401);
+    await request(app.getHttpServer() as Server)
+      .get(versionsPath)
+      .auth(jwt.sign(identity), { type: 'bearer' })
+      .expect(403);
+    const history = await request(app.getHttpServer() as Server)
+      .get(versionsPath)
+      .auth(admin, { type: 'bearer' })
+      .expect(200);
+    expect(
+      (history.body as { version: number }[]).map((item) => item.version),
+    ).toEqual([2, 1]);
+    expect(JSON.stringify(history.body)).not.toContain(student.name);
+    const repeated = await request(app.getHttpServer() as Server)
+      .post(endpoint)
+      .auth(admin, { type: 'bearer' })
+      .send(payload)
+      .expect(201);
+    expect((repeated.body as { certificateId: string }).certificateId).toBe(
+      nextId,
+    );
+    await request(app.getHttpServer() as Server)
+      .post(endpoint)
+      .auth(admin, { type: 'bearer' })
+      .send({ ...payload, requestId: randomUUID() })
+      .expect(409);
+    await worker.process(next.artifact!.id);
+    expect(mail.sendCertificateNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ recipientName: payload.name }),
+    );
+    expect(
+      (
+        await db.attendance.findUniqueOrThrow({
+          where: { id: next.attendanceId },
+          include: { certificate: true },
+        })
+      ).certificate?.id,
+    ).toBe(nextId);
+    const after = await post(event.id, {
+      identityType: 'STUDENT',
+      ra: student.ra,
+      reason: 'Repetição administrativa conferida',
+      participationConfirmed: true,
+    }).expect(201);
+    expect((after.body as { certificateId: string }).certificateId).toBe(
+      nextId,
+    );
+    expect(
+      (await db.student.findUniqueOrThrow({ where: { ra: student.ra } }))
+        .socialName,
+    ).toBe(payload.name);
+  });
+  it('restricts social-name access and update to the authorized profile', async () => {
+    const student = await db.student.create({
+      data: {
+        ra: randomUUID(),
+        name: 'Cadastro Fictício',
+        socialName: 'Nome Social Fictício',
+        course: 'DSM',
+        status: 'Ativo',
+        admission: '20261',
+        email: randomUUID() + '@example.test',
+        password: randomUUID(),
+        dueDate: new Date(Date.now() + 86400000),
+      },
+    });
+    const endpoint = `/estudantes/encontrar-por-ra/${student.ra}`;
+    const token = jwt.sign({
+      sub: student.ra,
+      accountId: student.accountId,
+      role: 'student',
+    });
+    await request(app.getHttpServer() as Server)
+      .get(endpoint)
+      .expect(401);
+    const own = await request(app.getHttpServer() as Server)
+      .get(endpoint)
+      .auth(token, { type: 'bearer' })
+      .expect(200);
+    expect((own.body as { name: string }).name).toBe(student.socialName);
+    await request(app.getHttpServer() as Server)
+      .get('/estudantes/encontrar-por-ra/outra-matricula')
+      .auth(token, { type: 'bearer' })
+      .expect(403);
+    await request(app.getHttpServer() as Server)
+      .put(`/estudantes/atualizar/${student.ra}`)
+      .auth(token, { type: 'bearer' })
+      .send({ socialName: 'Alteração proibida' })
+      .expect(403);
+    await request(app.getHttpServer() as Server)
+      .put(`/estudantes/atualizar/${student.ra}`)
+      .auth(admin, { type: 'bearer' })
+      .send({ socialName: 'Nome Social Atualizado' })
+      .expect(200);
+    expect(
+      (await db.student.findUniqueOrThrow({ where: { ra: student.ra } }))
+        .socialName,
+    ).toBe('Nome Social Atualizado');
   });
   it('protects route, active secretary, DTO and confirmation', async () => {
     const event = await createEvent();
@@ -570,6 +787,105 @@ integration('Manual certificate issuance with real PostgreSQL and HTTP', () => {
         })
       ).state,
     ).toBe('READY');
+  });
+  it('reissues V2 with historical template and signers after the event configuration changes', async () => {
+    const template = await db.certificateTemplate.findFirstOrThrow({
+      where: { status: 'PUBLISHED' },
+      orderBy: { createdAt: 'desc' },
+    });
+    const signer = await db.certificateSigner.findFirstOrThrow({
+      orderBy: { createdAt: 'desc' },
+    });
+    // Use assets created during this test run, without any personal signature.
+    if (
+      !storageFiles.has(
+        (
+          await db.eventAsset.findUniqueOrThrow({
+            where: { id: signer.assetId },
+          })
+        ).storageKey,
+      )
+    )
+      throw new Error('Synthetic test asset missing');
+    const event = await createEvent({
+      certificatePolicies: {
+        ATTENDEE: { templateId: template.id, signerIds: [signer.id] },
+      },
+    });
+    const student = await db.student.create({
+      data: {
+        ra: randomUUID(),
+        name: 'Pessoa Modelo Teste',
+        course: 'DSM',
+        status: 'Ativo',
+        admission: '20261',
+        socialName: 'Pessoa Social Teste',
+        email: randomUUID() + '@example.test',
+        password: randomUUID(),
+        dueDate: new Date(Date.now() + 86400000),
+      },
+    });
+    const result = await post(event.id, {
+      identityType: 'STUDENT',
+      ra: student.ra,
+      reason: 'Presença conferida para teste local',
+      participationConfirmed: true,
+    }).expect(201);
+    const id = (result.body as { certificateId: string }).certificateId;
+    const original = await db.certificate.findUniqueOrThrow({ where: { id } });
+    expect(original.payloadSnapshot).toMatchObject({
+      version: 2,
+      studentName: student.socialName,
+    });
+    await db.event.update({
+      where: { id: event.id },
+      data: {
+        title: 'Título posterior que não deve alterar o documento',
+        workloadMinutes: 300,
+      },
+    });
+    const dto = {
+      requestId: randomUUID(),
+      expectedVersion: 1,
+      correctionType: 'SPELLING',
+      name: 'Pessoa Corrigida Teste',
+      reason: 'Correção individual conferida presencialmente.',
+      confirmed: true,
+    };
+    const responses = await Promise.all(
+      [1, 2].map(() =>
+        request(app.getHttpServer() as Server)
+          .post(`/event-management/certificates/${id}/reissue`)
+          .auth(admin, { type: 'bearer' })
+          .send(dto),
+      ),
+    );
+    expect(responses.map((response) => response.status)).toEqual([201, 201]);
+    const nextId = (responses[0].body as { certificateId: string })
+      .certificateId;
+    expect((responses[1].body as { certificateId: string }).certificateId).toBe(
+      nextId,
+    );
+    const next = await db.certificate.findUniqueOrThrow({
+      where: { id: nextId },
+      include: { artifact: true },
+    });
+    expect(next.payloadSnapshot).toEqual({
+      ...(original.payloadSnapshot as object),
+      studentName: dto.name,
+    });
+    await worker.process(next.artifact!.id);
+    expect(
+      (
+        await db.certificateArtifact.findUniqueOrThrow({
+          where: { certificateId: nextId },
+        })
+      ).state,
+    ).toBe('READY');
+    await expect(operations.download(id)).rejects.toThrow();
+    expect(
+      (await operations.download(nextId)).buffer.subarray(0, 4).toString(),
+    ).toBe('%PDF');
   });
   it('links CPF to an existing legacy visitor without creating another identity', async () => {
     const input = body();

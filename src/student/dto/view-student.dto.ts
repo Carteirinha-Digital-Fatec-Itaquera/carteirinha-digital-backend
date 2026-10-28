@@ -1,6 +1,7 @@
 import { PhotoStatus } from "@prisma/client";
 
 export class ViewStudentDTO {
+  socialName?: string | null;
   constructor(
     ra: string,
     course: string,

@@ -655,7 +655,7 @@ async function main() {
     participant.id,
   );
   const cert = await client.certificate.findUniqueOrThrow({
-    where: { participantId: participant.id },
+    where: { activeParticipantId: participant.id },
     include: { artifact: true },
   });
   assert.equal(cert.studentRa, null);
@@ -735,7 +735,7 @@ async function main() {
     1,
   );
   const speakerCert = await client.certificate.findUniqueOrThrow({
-    where: { participantId: speakerParticipant.id },
+    where: { activeParticipantId: speakerParticipant.id },
     include: { artifact: true },
   });
   assert.equal(

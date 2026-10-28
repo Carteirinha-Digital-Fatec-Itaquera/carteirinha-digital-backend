@@ -24,6 +24,17 @@ export function assertParticipantFileEvent(
   };
   const meta = data.evento;
   if (!meta) return;
+  if (
+    typeof meta !== 'object' ||
+    Array.isArray(meta) ||
+    [meta.id_evento_banco, meta.titulo, meta.data, meta.horario_inicio].some(
+      (value) =>
+        value !== null && value !== undefined && typeof value !== 'string',
+    )
+  )
+    throw new BadRequestException(
+      'Metadados inválidos. Baixe o modelo JSON deste evento.',
+    );
   const date = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Sao_Paulo',
     year: 'numeric',
@@ -60,6 +71,13 @@ export function parseParticipantFile(
     let rows: unknown;
     if (file.originalname.toLowerCase().endsWith('.json')) {
       const data: unknown = JSON.parse(text);
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        const version = (data as Record<string, unknown>).versao_formato;
+        if (version !== undefined && version !== '1.0')
+          throw new BadRequestException(
+            'Versão de arquivo desconhecida. Baixe o modelo atualizado.',
+          );
+      }
       rows = Array.isArray(data)
         ? data
         : data && typeof data === 'object'
@@ -67,7 +85,13 @@ export function parseParticipantFile(
           : null;
     } else if (file.originalname.toLowerCase().endsWith('.csv')) {
       rows = parse(text, {
-        columns: true,
+        columns: (headers: string[]) => {
+          if (new Set(headers).size !== headers.length)
+            throw new BadRequestException(
+              'Cabeçalho CSV duplicado. Mantenha nome_transcrito apenas uma vez.',
+            );
+          return headers;
+        },
         bom: true,
         skip_empty_lines: true,
         delimiter: text.split(/\r?\n/)[0].includes(';') ? ';' : ',',
@@ -75,12 +99,26 @@ export function parseParticipantFile(
     } else throw new Error();
     if (!Array.isArray(rows) || rows.length < 1 || rows.length > 1000)
       throw new Error();
-    return rows.map((row: unknown) => {
+    return rows.map((row: unknown, index: number) => {
       const data =
         typeof row === 'string'
           ? { nome: row }
           : (row as Record<string, unknown>);
       if (!data || typeof data !== 'object') throw new Error();
+      const aliases = [data.nome_transcrito, data.nome, data.name].filter(
+        (value) => value !== undefined,
+      );
+      if (
+        aliases.length > 1 &&
+        new Set(
+          aliases.map((value) =>
+            typeof value === 'string' ? normalizeParticipantName(value) : value,
+          ),
+        ).size > 1
+      )
+        throw new BadRequestException(
+          `Linha ${index + 1}: campos de nome conflitantes. Utilize somente nome_transcrito.`,
+        );
       const name = data.nome_transcrito ?? data.nome ?? data.name;
       if (
         typeof name !== 'string' ||
@@ -88,7 +126,9 @@ export function parseParticipantFile(
         name.length > 160 ||
         Array.from(name).some((character) => character.charCodeAt(0) < 32)
       )
-        throw new Error();
+        throw new BadRequestException(
+          `Linha ${index + 1}: informe nome_transcrito com 3 a 160 caracteres, sem quebras de linha.`,
+        );
       const review =
         data.revisao_identidade_pendente === 'SIM' ||
         data.precisa_revisao_grafia === 'SIM' ||
@@ -97,7 +137,8 @@ export function parseParticipantFile(
         data.confianca_leitura === 'baixa';
       return { name: name.trim(), review };
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof BadRequestException) throw error;
     throw new BadRequestException(
       'Arquivo inválido. Use JSON com participantes ou CSV com coluna nome_transcrito, nome ou name, de 1 a 1.000 nomes.',
     );

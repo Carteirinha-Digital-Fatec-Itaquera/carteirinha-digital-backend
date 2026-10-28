@@ -6,7 +6,13 @@ import { StudentMapper } from './mapper/student.mapper';
 import { ViewStudentDTO } from './dto/view-student.dto';
 import { UploadService } from '../upload/upload.service';
 import { UpdateStudentDto } from './dto/update-student.dto';
-import { Res } from '@nestjs/common';
+import { Res, Req, UseGuards, ForbiddenException } from '@nestjs/common';
+import { ActiveEventAccountGuard } from '../auth/active-event-account.guard';
+import { AuthGuard } from '../auth/auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+import { SecretaryActiveGuard } from '../project-credits/guards/secretary-active.guard';
+import type { TokenPayload } from '../auth/dto/payload.dto';
 import type{ Response } from 'express';
 
 
@@ -19,6 +25,8 @@ export class StudentController {
   ) {}
 
   @Get('historico-excluidos')
+  @UseGuards(AuthGuard, RolesGuard, SecretaryActiveGuard)
+  @Roles('secretary')
 async downloadHistorico(@Res() res: Response) {
   const logs = await this.service.getStudentLogs();
 
@@ -33,16 +41,27 @@ async downloadHistorico(@Res() res: Response) {
 }
 
   @Get('listar-todos')
+  @UseGuards(AuthGuard, RolesGuard, SecretaryActiveGuard)
+  @Roles('secretary')
     async getStudents(@Query('query') query?: string): Promise<ViewStudentDTO[]> {
     return this.mapper.toListDTO(await this.service.getStudents(query));
   }
   
   @Get('encontrar-por-ra/:ra')
-  async getStudentByRa(@Param('ra') ra: string): Promise<ViewStudentDTO> {
-    return this.mapper.toDTO(await this.service.getStudentByRa(ra));
+  @UseGuards(AuthGuard, RolesGuard, ActiveEventAccountGuard)
+  @Roles('student', 'secretary')
+  async getStudentByRa(@Param('ra') ra: string, @Req() req: { user: TokenPayload }): Promise<ViewStudentDTO> {
+    if (req.user.role === 'student' && req.user.sub !== ra) throw new ForbiddenException('Acesso restrito ao próprio cadastro.');
+    const student = await this.service.getStudentByRa(ra);
+    if (req.user.role === 'student' && (req.user.sub !== ra || req.user.accountId !== student.accountId)) throw new ForbiddenException('Acesso restrito ao próprio cadastro.');
+    const result = this.mapper.toDTO(student);
+    if (req.user.role === 'student') result.name = student.socialName || student.name;
+    return result;
   }
 
   @Get('encontrar-por-email/:email')
+  @UseGuards(AuthGuard, RolesGuard, SecretaryActiveGuard)
+  @Roles('secretary')
   async getStudentByEmail(
     @Param('email') email: string,
   ): Promise<ViewStudentDTO> {
@@ -53,22 +72,29 @@ async downloadHistorico(@Res() res: Response) {
   async verificarTokenQrcode(@Param('qrcode') qrcode: string): Promise<ViewStudentDTO>{
     const studentEntity = await this.service.validarTokenQrcode(qrcode)
     const dtoOutput = this.mapper.toDTO(studentEntity)
-    console.log("=== PAYLOAD ENVIADO PARA O FRONTEND ===", dtoOutput);console.log("=== PAYLOAD ENVIADO PARA O FRONTEND ===", dtoOutput);
+    dtoOutput.name = studentEntity.socialName || studentEntity.name;
+    delete dtoOutput.socialName;
     return dtoOutput
   }
 
 
   @Post('criar')
+  @UseGuards(AuthGuard, RolesGuard, SecretaryActiveGuard)
+  @Roles('secretary')
   async createStudent(@Body() student: CreateStudentDTO) {
     return await this.service.createStudent(student);
   }
 
   @Delete('deletar/:ra')
+  @UseGuards(AuthGuard, RolesGuard, SecretaryActiveGuard)
+  @Roles('secretary')
   async deleteStudent(@Param('ra') ra: string) {
     return await this.service.deleteStudent(ra);
   }
 
  @Put('atualizar/:ra')
+  @UseGuards(AuthGuard, RolesGuard, SecretaryActiveGuard)
+  @Roles('secretary')
 async updateStudent(
   @Param('ra') ra: string,
   @Body() student: UpdateStudentDto

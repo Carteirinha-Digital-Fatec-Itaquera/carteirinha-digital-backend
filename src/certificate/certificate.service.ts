@@ -31,6 +31,7 @@ import type {
 } from '../public-events/event-catalog.service';
 import { EventStorageService } from '../public-events/event-storage.service';
 import { randomUUID } from 'node:crypto';
+import type { ReissueCertificateDto } from '../public-events/public-events.dto';
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -81,24 +82,29 @@ export class CertificateService {
 
       // 3. Idempotência por attendanceId
       const existingByAttendance = await client.certificate.findUnique({
-        where: { attendanceId },
+        where: { activeAttendanceId: attendanceId },
       });
       if (existingByAttendance) {
+        if (
+          existingByAttendance.studentAccountId !== attendance.studentAccountId
+        )
+          throw new ConflictException('Conflito de identidade de certificado');
         return existingByAttendance;
       }
 
       // 4. Idempotência por [eventId, studentRa]
       const existingByRa = attendance.studentRa
-        ? await client.certificate.findUnique({
+        ? await client.certificate.findFirst({
             where: {
-              eventId_studentRa: {
-                eventId: attendance.eventId,
-                studentRa: attendance.studentRa,
-              },
+              eventId: attendance.eventId,
+              studentRa: attendance.studentRa,
+              activeAttendanceId: { not: null },
             },
           })
         : null;
       if (existingByRa) {
+        if (existingByRa.studentAccountId !== attendance.studentAccountId)
+          throw new ConflictException('Conflito de identidade de certificado');
         return existingByRa;
       }
 
@@ -131,6 +137,9 @@ export class CertificateService {
             attendance.event,
           );
 
+      if (studentRefRa && currentStudent?.socialName)
+        snapshot.studentName = currentStudent.socialName;
+
       if (snapshot.version === 2) {
         // ON CONFLICT evita abortar a transação de presença durante uma colisão.
         for (let attempt = 0; attempt < 5; attempt++) {
@@ -145,6 +154,8 @@ export class CertificateService {
                 studentAccountId: attendance.studentAccountId,
                 studentRefRa,
                 attendanceId: attendance.id,
+                activeAttendanceId: attendance.id,
+                activeParticipantId: attendance.participantId,
                 verificationCode: generateVerificationCode(),
                 payloadSnapshot: snapshot as unknown as Prisma.InputJsonValue,
               },
@@ -158,7 +169,7 @@ export class CertificateService {
             return client.certificate.findUniqueOrThrow({ where: { id } });
           }
           const existing = await client.certificate.findUnique({
-            where: { attendanceId: attendance.id },
+            where: { activeAttendanceId: attendance.id },
           });
           if (existing && existing.participantId === attendance.participantId)
             return existing;
@@ -181,6 +192,8 @@ export class CertificateService {
               studentRefRa,
               participantId: attendance.participantId,
               attendanceId: attendance.id,
+              activeAttendanceId: attendance.id,
+              activeParticipantId: attendance.participantId,
               verificationCode: code,
               payloadSnapshot: snapshot as unknown as Prisma.InputJsonValue,
             },
@@ -199,6 +212,7 @@ export class CertificateService {
             // Colisão de attendanceId ou eventId_studentRa: busca o registro criado concorrentemente
             const recovered = await client.certificate.findFirst({
               where: {
+                activeAttendanceId: { not: null },
                 OR: [
                   { attendanceId: attendance.id },
                   {
@@ -243,6 +257,200 @@ export class CertificateService {
       isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
       maxWait: 5000,
       timeout: 10000,
+    });
+  }
+
+  async reissue(id: string, dto: ReissueCertificateDto, secretaryId: number) {
+    dto.name = dto.name.trim().replace(/\s+/g, ' ');
+    if (dto.course) dto.course = dto.course.trim().replace(/\s+/g, ' ');
+    if (dto.saveSocialName && dto.correctionType !== 'SOCIAL_NAME')
+      throw new BadRequestException(
+        'Selecione correção de nome social para atualizar o cadastro.',
+      );
+    return this.prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT e."id" FROM "Event" e JOIN "Certificate" c ON c."eventId" = e."id" WHERE c."id" = ${id} FOR UPDATE OF e`;
+        await tx.$queryRaw`SELECT "id" FROM "Certificate" WHERE "id" = ${id} FOR UPDATE`;
+        const previous = await tx.certificate.findUnique({
+          where: { id },
+          include: { event: true, attendance: true },
+        });
+        if (!previous)
+          throw new NotFoundException('Certificado não encontrado.');
+        const replay = await tx.certificate.findUnique({
+          where: { reissueKey: dto.requestId },
+        });
+        if (replay) {
+          const snapshot =
+            replay.payloadSnapshot as unknown as CertificateSnapshot;
+          if (
+            replay.replacesId !== id ||
+            snapshot.studentName !== dto.name ||
+            (dto.course && snapshot.course !== dto.course)
+          )
+            throw new ConflictException(
+              'Solicitação já utilizada com dados diferentes.',
+            );
+          return {
+            certificateId: replay.id,
+            version: replay.version,
+            verificationCode: replay.verificationCode,
+          };
+        }
+        if (
+          previous.revokedAt ||
+          !previous.activeAttendanceId ||
+          previous.version !== dto.expectedVersion ||
+          previous.event.status === 'CANCELLED' ||
+          previous.attendance.status !== 'CONFIRMED'
+        )
+          throw new ConflictException(
+            'A versão ou a participação mudou. Atualize antes de reemitir.',
+          );
+        if (!previous.studentAccountId || !previous.studentRa)
+          throw new ConflictException(
+            'Esta correção exige uma conta de aluno identificada.',
+          );
+        await tx.$queryRaw`SELECT "ra" FROM "Student" WHERE "accountId" = ${previous.studentAccountId} FOR UPDATE`;
+        const student = await tx.student.findUnique({
+          where: { accountId: previous.studentAccountId },
+        });
+        if (!student || student.ra !== previous.studentRa)
+          throw new ConflictException(
+            'Conta original indisponível. Não é permitido reutilizar matrícula.',
+          );
+        await tx.$queryRaw`SELECT "id" FROM "CertificateArtifact" WHERE "certificateId" = ${id} FOR UPDATE`;
+        const artifact = await tx.certificateArtifact.findUnique({
+          where: { certificateId: id },
+        });
+        if (
+          artifact &&
+          ((artifact.leaseUntil && artifact.leaseUntil > new Date()) ||
+            ['DISPATCHING', 'AMBIGUOUS'].includes(artifact.deliveryState))
+        )
+          throw new ConflictException(
+            'Envio em andamento ou incerto. Aguarde ou reconcilie a entrega antes de reemitir.',
+          );
+        const snapshot =
+          previous.payloadSnapshot as unknown as CertificateSnapshot;
+        const corrected = {
+          ...snapshot,
+          studentName: dto.name,
+          ...(dto.course ? { course: dto.course } : {}),
+        };
+        if (dto.saveSocialName)
+          await tx.student.update({
+            where: { accountId: student.accountId },
+            data: { socialName: dto.name },
+          });
+        if (previous.participantId)
+          await tx.eventParticipant.update({
+            where: { id: previous.participantId },
+            data: {
+              name: dto.name,
+              ...(dto.course ? { course: dto.course } : {}),
+            },
+          });
+        await tx.certificate.update({
+          where: { id },
+          data: {
+            revokedAt: new Date(),
+            revocationReason: 'REPLACED',
+            activeAttendanceId: null,
+            activeParticipantId: null,
+          },
+        });
+        if (artifact)
+          await tx.certificateArtifact.update({
+            where: { id: artifact.id },
+            data: {
+              state: 'REVOKED',
+              deliveryState: 'EXPIRED',
+              leaseToken: null,
+              leaseUntil: null,
+            },
+          });
+        const next = await tx.certificate.create({
+          data: {
+            eventId: previous.eventId,
+            attendanceId: previous.attendanceId,
+            participantId: previous.participantId,
+            studentRa: previous.studentRa,
+            studentAccountId: previous.studentAccountId,
+            studentRefRa: student.ra,
+            activeAttendanceId: previous.attendanceId,
+            activeParticipantId: previous.participantId,
+            version: previous.version + 1,
+            replacesId: id,
+            reissueKey: dto.requestId,
+            reissuedById: secretaryId,
+            verificationCode: generateVerificationCode(),
+            payloadSnapshot: corrected,
+          },
+        });
+        await tx.certificateArtifact.create({
+          data: { certificateId: next.id },
+        });
+        await tx.eventAudit.create({
+          data: {
+            eventId: previous.eventId,
+            subjectId: next.id,
+            secretaryId,
+            action: 'CERTIFICATE_REISSUED',
+            reason: `${dto.correctionType}: ${dto.reason.trim()} [substitui ${id}]`,
+          },
+        });
+        return {
+          certificateId: next.id,
+          version: next.version,
+          verificationCode: next.verificationCode,
+        };
+      },
+      { timeout: 15000 },
+    );
+  }
+
+  async versionHistory(id: string) {
+    const certificate = await this.prisma.certificate.findUnique({
+      where: { id },
+      select: { attendanceId: true, studentAccountId: true },
+    });
+    if (!certificate)
+      throw new NotFoundException('Certificado não encontrado.');
+    return this.prisma.certificate.findMany({
+      where: {
+        attendanceId: certificate.attendanceId,
+        studentAccountId: certificate.studentAccountId,
+      },
+      select: {
+        id: true,
+        version: true,
+        verificationCode: true,
+        issuedAt: true,
+        revokedAt: true,
+        revocationReason: true,
+        reissuedById: true,
+      },
+      orderBy: { version: 'desc' },
+    });
+  }
+  async reissuePreview(id: string, dto: ReissueCertificateDto) {
+    dto.name = dto.name.trim().replace(/\s+/g, ' ');
+    const cert = await this.prisma.certificate.findUnique({ where: { id } });
+    if (!cert || cert.revokedAt || !cert.activeAttendanceId)
+      throw new NotFoundException('Versão vigente não encontrada.');
+    return this.pdfGenerator.generatePdf({
+      id: 'preview',
+      eventId: cert.eventId,
+      attendanceId: cert.attendanceId,
+      issuedAt: new Date().toISOString(),
+      revokedAt: null,
+      verificationCode: 'DEMONSTRACAO-SEM-VALIDADE',
+      payloadSnapshot: {
+        ...(cert.payloadSnapshot as unknown as CertificateSnapshot),
+        studentName: dto.name,
+        ...(dto.course ? { course: dto.course } : {}),
+      },
     });
   }
 
@@ -358,6 +566,8 @@ export class CertificateService {
         where: {
           studentRefRa: student.ra,
           studentAccountId: student.accountId,
+          revokedAt: null,
+          activeAttendanceId: { not: null },
         },
         orderBy: [{ issuedAt: 'desc' }, { id: 'asc' }],
       });
@@ -395,6 +605,8 @@ export class CertificateService {
 
       if (
         !row ||
+        row.revokedAt ||
+        !row.activeAttendanceId ||
         row.studentAccountId !== student.accountId ||
         row.studentRefRa !== student.ra
       ) {
@@ -409,7 +621,7 @@ export class CertificateService {
         verificationCode: row.verificationCode,
         payloadSnapshot: snapshot,
         issuedAt: row.issuedAt.toISOString(),
-        revokedAt: row.revokedAt ? row.revokedAt.toISOString() : null,
+        revokedAt: null,
       };
     });
   }
@@ -483,6 +695,12 @@ export class CertificateService {
         );
       buffer = await this.storage.get(artifact.storageKey, true);
     } else buffer = await this.pdfGenerator.generatePdf(certView);
+    const current = await this.prisma.certificate.findUnique({
+      where: { id },
+      select: { revokedAt: true, activeAttendanceId: true },
+    });
+    if (!current || current.revokedAt || !current.activeAttendanceId)
+      throw new ConflictException('Certificado revogado não pode ser baixado');
     return {
       buffer,
       verificationCode: certView.verificationCode,

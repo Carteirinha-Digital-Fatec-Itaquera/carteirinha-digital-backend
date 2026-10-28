@@ -9,7 +9,7 @@ export class StudentMapper {
   constructor() {}
 
   toEntity(student: CreateStudentDTO): StudentEntity {
-  return new StudentEntity(
+  return Object.assign(new StudentEntity(
     student.ra,
     student.course,
     student.status,
@@ -25,11 +25,11 @@ export class StudentMapper {
     student.password,
     student.photoStatus,
     null
-    );
+    ), { socialName: student.socialName == null ? student.socialName : student.socialName.trim().replace(/\s+/g, " ") });
   }
 
   toDTO(student: StudentEntity): ViewStudentDTO {
-    return new ViewStudentDTO(
+    return Object.assign(new ViewStudentDTO(
       student.ra,
       student.course,
       student.status,
@@ -42,7 +42,7 @@ export class StudentMapper {
       student.dueDate,
       student.birthDate ?? new Date(),
       student.photoStatus
-    );
+    ), { socialName: student.socialName == null ? student.socialName : student.socialName.trim().replace(/\s+/g, " ") });
   }
 
   toListDTO(student: StudentEntity[]): ViewStudentDTO[] {

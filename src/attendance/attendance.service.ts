@@ -329,13 +329,21 @@ export class AttendanceService {
         studentName: true,
         studentCourse: true,
         participant: { select: { name: true, course: true } },
+        certificate: { select: { payloadSnapshot: true } },
       },
       orderBy: [{ checkInAt: 'asc' }, { id: 'asc' }],
     });
     return rows.map((row) => ({
       ...this.toView(row),
       studentRa: row.studentRa ?? '',
-      studentName: row.participant?.name ?? row.studentName,
+      studentName:
+        (
+          row.certificate?.payloadSnapshot as
+            | { studentName?: string }
+            | undefined
+        )?.studentName ??
+        row.participant?.name ??
+        row.studentName,
       studentCourse: row.participant?.course ?? row.studentCourse,
     }));
   }

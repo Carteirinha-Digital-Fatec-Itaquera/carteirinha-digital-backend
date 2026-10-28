@@ -246,6 +246,22 @@ export class ManualCertificateDto {
   @Equals(true) participationConfirmed: boolean;
 }
 
+export class ReissueCertificateDto {
+  @IsUUID('4') requestId: string;
+  @IsInt() @Min(1) expectedVersion: number;
+  @IsIn(['SOCIAL_NAME', 'SPELLING', 'COURSE']) correctionType: string;
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : value,
+  )
+  @IsString()
+  @Length(3, 160)
+  name: string;
+  @IsOptional() @IsString() @Length(1, 120) course?: string;
+  @IsOptional() @IsBoolean() saveSocialName?: boolean;
+  @IsString() @Length(10, 1000) reason: string;
+  @Equals(true) confirmed: boolean;
+}
+
 export class BulkManualCheckoutDto {
   @IsArray()
   @ArrayMinSize(1)

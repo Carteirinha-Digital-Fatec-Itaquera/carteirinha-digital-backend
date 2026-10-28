@@ -261,6 +261,7 @@ export class EventOperationsService {
         ra: true,
         accountId: true,
         name: true,
+        socialName: true,
         course: true,
         status: true,
         email: true,
@@ -270,13 +271,17 @@ export class EventOperationsService {
     const tokens = normalize(query).split(' ');
     const matches = rows.filter(
       (row) =>
-        tokens.every((token) => normalize(row.name).includes(token)) ||
-        row.ra === query.trim(),
+        tokens.every(
+          (token) =>
+            normalize(row.name).includes(token) ||
+            normalize(row.socialName || '').includes(token),
+        ) || row.ra === query.trim(),
     );
     return {
       total: matches.length,
       items: matches.slice(0, 20).map((row) => ({
         ...row,
+        name: row.socialName || row.name,
         email: row.email.replace(/^(.).*(@.*)$/, '$1***$2'),
       })),
     };
@@ -308,6 +313,7 @@ export class EventOperationsService {
         ra: true,
         accountId: true,
         name: true,
+        socialName: true,
         status: true,
         email: true,
       },
@@ -345,7 +351,7 @@ export class EventOperationsService {
             ? {
                 ra: student.ra,
                 accountId: student.accountId,
-                officialName: student.name,
+                officialName: student.socialName || student.name,
               }
             : {}),
         };
@@ -379,6 +385,7 @@ export class EventOperationsService {
             select: {
               id: true,
               verificationCode: true,
+              version: true,
               issuedAt: true,
               revokedAt: true,
               artifact: { select: { state: true, deliveryState: true } },
@@ -388,6 +395,22 @@ export class EventOperationsService {
         orderBy: [{ event: { startsAt: 'desc' } }, { id: 'asc' }],
       });
     });
+  }
+  async reissueCertificate(
+    id: string,
+    dto: import('./public-events.dto').ReissueCertificateDto,
+    secretaryId: number,
+  ) {
+    return this.certificates.reissue(id, dto, secretaryId);
+  }
+  async certificateVersions(id: string) {
+    return this.certificates.versionHistory(id);
+  }
+  async reissuePreview(
+    id: string,
+    dto: import('./public-events.dto').ReissueCertificateDto,
+  ) {
+    return this.certificates.reissuePreview(id, dto);
   }
   async participants(eventId: string) {
     const list = await this.prisma.eventParticipant.findMany({
@@ -406,6 +429,7 @@ export class EventOperationsService {
           select: {
             id: true,
             verificationCode: true,
+            version: true,
             issuedAt: true,
             revokedAt: true,
             artifact: { select: { state: true, deliveryState: true } },
@@ -422,7 +446,12 @@ export class EventOperationsService {
       for (const att of unlinked) {
         list.push({
           id: `legacy-${att.id}`,
-          name: att.studentName,
+          name:
+            (
+              att.certificate?.payloadSnapshot as
+                | { studentName?: string }
+                | undefined
+            )?.studentName ?? att.studentName,
           course: att.studentCourse,
           role: 'ATTENDEE',
           visitorId: null,
@@ -437,6 +466,7 @@ export class EventOperationsService {
             ? {
                 id: att.certificate.id,
                 verificationCode: att.certificate.verificationCode,
+                version: att.certificate.version,
                 issuedAt: att.certificate.issuedAt,
                 revokedAt: att.certificate.revokedAt,
                 artifact: att.certificate.artifact
@@ -570,7 +600,7 @@ export class EventOperationsService {
         if (!['STUDENT', 'EXTERNAL'].includes(dto.identityType))
           throw new BadRequestException('Identificação inválida.');
         let visitorId: string | null = null;
-        let name = student?.name || '';
+        let name = student?.socialName || student?.name || '';
         let course = student?.course || null;
         let email = student?.email || '';
         if (dto.identityType === 'EXTERNAL') {
@@ -684,7 +714,7 @@ export class EventOperationsService {
           update: {},
         });
         let existingCertificate = await tx.certificate.findUnique({
-          where: { participantId: participant.id },
+          where: { activeParticipantId: participant.id },
         });
         if (existingCertificate?.revokedAt)
           throw new ConflictException(
@@ -704,7 +734,7 @@ export class EventOperationsService {
         }
         if (attendance && !existingCertificate) {
           existingCertificate = await tx.certificate.findUnique({
-            where: { attendanceId: attendance.id },
+            where: { activeAttendanceId: attendance.id },
           });
           if (existingCertificate?.revokedAt)
             throw new ConflictException(
@@ -769,7 +799,10 @@ export class EventOperationsService {
         if (!certificate.participantId) {
           await tx.certificate.update({
             where: { id: certificate.id },
-            data: { participantId: participant.id },
+            data: {
+              participantId: participant.id,
+              activeParticipantId: participant.id,
+            },
           });
         }
         await tx.eventAudit.create({
@@ -1077,8 +1110,15 @@ export class EventOperationsService {
       throw new ConflictException(
         'PDF em processamento. Tente novamente em instantes.',
       );
+    const buffer = await this.storage.get(row.artifact.storageKey, true);
+    const current = await this.prisma.certificate.findUnique({
+      where: { id },
+      select: { revokedAt: true, activeAttendanceId: true },
+    });
+    if (!current || current.revokedAt || !current.activeAttendanceId)
+      throw new ConflictException('Certificado revogado.');
     return {
-      buffer: await this.storage.get(row.artifact.storageKey, true),
+      buffer,
       code: row.verificationCode,
     };
   }

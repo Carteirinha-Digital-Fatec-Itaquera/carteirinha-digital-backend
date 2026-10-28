@@ -333,7 +333,13 @@ export class EventJobsService {
 
         // Marcar estado transitório persistente antes do envio externo
         const marked = await this.prisma.certificateArtifact.updateMany({
-          where: { id, leaseToken, deliveryState: 'PENDING' },
+          where: {
+            id,
+            leaseToken,
+            leaseUntil: { gt: new Date() },
+            deliveryState: 'PENDING',
+            certificate: { revokedAt: null, activeAttendanceId: { not: null } },
+          },
           data: { deliveryState: 'DISPATCHING' },
         });
         if (!marked.count) return;
@@ -342,8 +348,15 @@ export class EventJobsService {
         try {
           await this.mail.sendCertificateNotification({
             email: student.email,
-            recipientName: student.name,
-            eventTitle: latest.certificate.event.title,
+            recipientName: (
+              latest.certificate
+                .payloadSnapshot as unknown as CertificateSnapshot
+            ).studentName,
+            eventTitle:
+              (
+                latest.certificate
+                  .payloadSnapshot as unknown as CertificateSnapshot
+              )?.eventTitle || latest.certificate.event.title,
             accessUrl: `${studentAppUrl}/certificados`,
             profile: 'ALUNO',
           });
@@ -477,7 +490,13 @@ export class EventJobsService {
 
         // Marcar estado transitório persistente antes do envio externo
         const marked = await this.prisma.certificateArtifact.updateMany({
-          where: { id, leaseToken, deliveryState: 'PENDING' },
+          where: {
+            id,
+            leaseToken,
+            leaseUntil: { gt: new Date() },
+            deliveryState: 'PENDING',
+            certificate: { revokedAt: null, activeAttendanceId: { not: null } },
+          },
           data: { deliveryState: 'DISPATCHING' },
         });
         if (!marked.count) return;
@@ -487,7 +506,11 @@ export class EventJobsService {
           await this.mail.sendCertificateNotification({
             email: visitor.email,
             recipientName: visitor.name,
-            eventTitle: latest.certificate.event.title,
+            eventTitle:
+              (
+                latest.certificate
+                  .payloadSnapshot as unknown as CertificateSnapshot
+              )?.eventTitle || latest.certificate.event.title,
             accessUrl: `${studentAppUrl}/visitantes/certificados`,
             profile: 'VISITANTE',
           });
