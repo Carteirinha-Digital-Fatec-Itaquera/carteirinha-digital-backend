@@ -232,6 +232,16 @@ export class EventService {
       }
 
       // Marca evento como cancelado e registra auditoria
+      await tx.eventAudit.create({
+        data: {
+          eventId: id,
+          subjectId: id,
+          action: `EVENT_CANCELLED_FROM_${event.status}`,
+          secretaryId,
+          reason: trimmedReason,
+          createdAt: now,
+        },
+      });
       await tx.event.update({
         where: { id },
         data: {
@@ -258,6 +268,110 @@ export class EventService {
         include: eventInclude,
       });
       return updated!;
+    });
+  }
+
+  async restore(id: string, reason: string, secretaryId: number) {
+    const trimmed = typeof reason === 'string' ? reason.trim() : '';
+    if (trimmed.length < 3 || trimmed.length > 1000)
+      throw new BadRequestException(
+        'Informe uma justificativa de 3 a 1000 caracteres.',
+      );
+    return this.prisma.$transaction(async (tx) => {
+      const { event, checkpoints } = await lockEventForMutation(tx, id);
+      if (event.status !== EventStatus.CANCELLED)
+        throw new ConflictException(
+          'O evento já não está cancelado. Atualize a lista.',
+        );
+      if (event.seriesId) {
+        const series = await tx.eventSeries.findUnique({
+          where: { id: event.seriesId },
+          select: { purgedAt: true },
+        });
+        if (!series || series.purgedAt)
+          throw new ConflictException(
+            'Histórico expurgado não permite restaurar este evento.',
+          );
+      }
+      const now = new Date();
+      const before = event.cancelledAt
+        ? await tx.eventAudit.findFirst({
+            where: {
+              eventId: id,
+              createdAt: event.cancelledAt,
+              action: {
+                in: [
+                  'EVENT_CANCELLED_FROM_SCHEDULED',
+                  'EVENT_CANCELLED_FROM_IN_PROGRESS',
+                  'EVENT_CANCELLED_FROM_COMPLETED',
+                ],
+              },
+            },
+            orderBy: { id: 'asc' },
+          })
+        : null;
+      const recordedStatus = before?.action.replace(
+        'EVENT_CANCELLED_FROM_',
+        '',
+      ) as EventStatus | undefined;
+      const nextStatus =
+        recordedStatus ??
+        (event.endsAt <= now ||
+        checkpoints.some(
+          (cp) =>
+            cp.type === 'CHECK_OUT' &&
+            cp.closedAt &&
+            (!event.cancelledAt || cp.closedAt < event.cancelledAt),
+        )
+          ? EventStatus.COMPLETED
+          : event.startsAt <= now || checkpoints.some((cp) => cp.openedAt)
+            ? EventStatus.IN_PROGRESS
+            : EventStatus.SCHEDULED);
+      await tx.eventAudit.create({
+        data: {
+          eventId: id,
+          subjectId: id,
+          action: 'EVENT_CANCELLATION_CAPTURED',
+          secretaryId: event.cancelledById,
+          reason: event.cancelReason,
+          createdAt: event.cancelledAt ?? now,
+        },
+      });
+      // Repair inconsistent legacy cancellations without reviving any document.
+      await tx.certificate.updateMany({
+        where: { eventId: id, revokedAt: null },
+        data: { revokedAt: now, revocationReason: 'EVENT_CANCELLED' },
+      });
+      for (const cp of checkpoints)
+        await tx.eventCheckpoint.update({
+          where: { id: cp.id },
+          data: {
+            isOpen: false,
+            closesAt: null,
+            closedAt: cp.isOpen ? now : cp.closedAt,
+            version: { increment: 1 },
+          },
+        });
+      const restored = await tx.event.update({
+        where: { id },
+        data: {
+          status: nextStatus,
+          cancelReason: null,
+          cancelledAt: null,
+          cancelledById: null,
+        },
+        include: eventInclude,
+      });
+      await tx.eventAudit.create({
+        data: {
+          eventId: id,
+          subjectId: id,
+          action: 'EVENT_CANCELLATION_REVOKED',
+          secretaryId,
+          reason: `${trimmed} [status: ${nextStatus}]`,
+        },
+      });
+      return restored;
     });
   }
 

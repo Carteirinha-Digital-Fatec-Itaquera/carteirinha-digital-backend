@@ -13,6 +13,7 @@ import {
   Query,
   Request,
   UseGuards,
+  ValidationPipe,
 } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { TokenPayload } from '../auth/dto/payload.dto';
@@ -152,6 +153,19 @@ export class EventController {
     @Request() request: AuthenticatedRequest,
   ) {
     return this.eventService.cancel(id, dto.reason, Number(request.user.sub));
+  }
+
+  @Post(':id/restore')
+  @Roles('secretary')
+  @HttpCode(HttpStatus.OK)
+  @Header('Cache-Control', 'no-store')
+  restore(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    dto: CancelEventDto,
+    @Request() request: AuthenticatedRequest,
+  ) {
+    return this.eventService.restore(id, dto.reason, Number(request.user.sub));
   }
 
   @Delete(':id')

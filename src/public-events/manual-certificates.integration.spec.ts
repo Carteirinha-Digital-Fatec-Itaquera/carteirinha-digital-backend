@@ -25,6 +25,10 @@ import { StudentService } from '../student/student.service';
 import { StudentMapper } from '../student/mapper/student.mapper';
 import { UploadService } from '../upload/upload.service';
 import { ActiveEventAccountGuard } from '../auth/active-event-account.guard';
+import { EventController } from '../event/event.controller';
+import { EventService } from '../event/event.service';
+import { CheckpointService } from '../event/checkpoint.service';
+import { QrTokenService } from '../event/qr-token.service';
 import type { MailService } from '../mail/mail.service';
 
 const url = process.env.MANUAL_CERTIFICATE_TEST_DATABASE_URL;
@@ -111,12 +115,22 @@ integration('Manual certificate issuance with real PostgreSQL and HTTP', () => {
     );
     const module = await Test.createTestingModule({
       imports: [JwtModule.register({ secret: process.env.JWT_SECRET })],
-      controllers: [EventManagementController, StudentController],
+      controllers: [
+        EventManagementController,
+        StudentController,
+        EventController,
+      ],
       providers: [
         AuthGuard,
         RolesGuard,
         SecretaryActiveGuard,
         ActiveEventAccountGuard,
+        {
+          provide: EventService,
+          useValue: new EventService(db as unknown as PrismaService),
+        },
+        { provide: CheckpointService, useValue: {} },
+        { provide: QrTokenService, useValue: {} },
         StudentMapper,
         { provide: UploadService, useValue: {} },
         {
@@ -498,6 +512,164 @@ integration('Manual certificate issuance with real PostgreSQL and HTTP', () => {
       (await db.student.findUniqueOrThrow({ where: { ra: student.ra } }))
         .socialName,
     ).toBe('Nome Social Atualizado');
+  });
+  it('restores cancelled events with audit, closed checkpoints and unchanged revoked certificates', async () => {
+    const event = await createEvent();
+    const student = await db.student.create({
+      data: {
+        ra: randomUUID(),
+        name: 'Participante Fictício',
+        course: 'DSM',
+        status: 'Ativo',
+        admission: '20261',
+        email: randomUUID() + '@example.test',
+        password: randomUUID(),
+        dueDate: new Date(Date.now() + 86400000),
+      },
+    });
+    const result = await post(event.id, {
+      identityType: 'STUDENT',
+      ra: student.ra,
+      reason: 'Participação confirmada para teste',
+      participationConfirmed: true,
+    }).expect(201);
+    const certificateId = (result.body as { certificateId: string })
+      .certificateId;
+    const service = new EventService(db as unknown as PrismaService);
+    await service.cancel(
+      event.id,
+      'Cancelamento equivocado para teste',
+      adminId,
+    );
+    const revoked = await db.certificate.findUniqueOrThrow({
+      where: { id: certificateId },
+    });
+    const endpoint = `/events/${event.id}/restore`;
+    await request(app.getHttpServer() as Server)
+      .post(endpoint)
+      .send({ reason: 'Correção administrativa' })
+      .expect(401);
+    await request(app.getHttpServer() as Server)
+      .post(endpoint)
+      .auth(
+        jwt.sign({
+          sub: student.ra,
+          accountId: student.accountId,
+          role: 'student',
+        }),
+        { type: 'bearer' },
+      )
+      .send({ reason: 'Correção administrativa' })
+      .expect(403);
+    await request(app.getHttpServer() as Server)
+      .post(endpoint)
+      .auth(admin, { type: 'bearer' })
+      .send({ reason: ' ' })
+      .expect(400);
+    const response = await request(app.getHttpServer() as Server)
+      .post(endpoint)
+      .auth(admin, { type: 'bearer' })
+      .send({ reason: 'Cancelamento foi realizado por engano' })
+      .expect(200);
+    expect(response.body).toMatchObject({
+      status: 'COMPLETED',
+      cancelledAt: null,
+      cancelReason: null,
+      cancelledById: null,
+    });
+    expect(
+      await db.eventCheckpoint.count({
+        where: { eventId: event.id, isOpen: true },
+      }),
+    ).toBe(0);
+    expect(
+      (await db.certificate.findUniqueOrThrow({ where: { id: certificateId } }))
+        .revokedAt,
+    ).toEqual(revoked.revokedAt);
+    expect(
+      await db.eventAudit.count({
+        where: { eventId: event.id, action: 'EVENT_CANCELLATION_REVOKED' },
+      }),
+    ).toBe(1);
+    await request(app.getHttpServer() as Server)
+      .post(endpoint)
+      .auth(admin, { type: 'bearer' })
+      .send({ reason: 'Tentativa repetida de restauração' })
+      .expect(409);
+    const future = await createEvent({
+      status: 'SCHEDULED',
+      startsAt: new Date(Date.now() + 86400000),
+      endsAt: new Date(Date.now() + 90000000),
+    });
+    await service.cancel(future.id, 'Erro operacional', adminId);
+    expect(
+      (await service.restore(future.id, 'Correção administrativa', adminId))
+        .status,
+    ).toBe('SCHEDULED');
+    const ongoing = await createEvent({
+      status: 'IN_PROGRESS',
+      endsAt: new Date(Date.now() + 3600000),
+    });
+    await db.eventCheckpoint.updateMany({
+      where: { eventId: ongoing.id, type: 'CHECK_OUT' },
+      data: { isOpen: true, openedAt: new Date() },
+    });
+    await service.cancel(ongoing.id, 'Erro operacional durante saída', adminId);
+    expect(
+      (await service.restore(ongoing.id, 'Retomar operação conferida', adminId))
+        .status,
+    ).toBe('IN_PROGRESS');
+    expect(
+      await db.eventCheckpoint.count({
+        where: { eventId: ongoing.id, isOpen: true },
+      }),
+    ).toBe(0);
+    await service.cancel(
+      future.id,
+      'Novo cancelamento para teste concorrente',
+      adminId,
+    );
+    const concurrent = await Promise.all(
+      [1, 2].map(() =>
+        request(app.getHttpServer() as Server)
+          .post(`/events/${future.id}/restore`)
+          .auth(admin, { type: 'bearer' })
+          .send({ reason: 'Restauração concorrente conferida' }),
+      ),
+    );
+    expect(concurrent.map((item) => item.status).sort()).toEqual([200, 409]);
+    const legacy = await createEvent({
+      status: 'CANCELLED',
+      cancelReason: 'Histórico legado',
+      cancelledAt: new Date(Date.now() - 10000),
+    });
+    expect(
+      (
+        await service.restore(
+          legacy.id,
+          'Restauração de registro legado',
+          adminId,
+        )
+      ).status,
+    ).toBe('COMPLETED');
+    const series = await db.eventSeries.create({
+      data: {
+        title: 'Histórico expurgado fictício',
+        slug: randomUUID(),
+        startsAt: new Date(Date.now() - 7200000),
+        endsAt: new Date(Date.now() - 3600000),
+        retentionAt: new Date(Date.now() - 1000),
+        purgedAt: new Date(),
+        courses: [],
+      },
+    });
+    const purged = await createEvent({
+      status: 'CANCELLED',
+      series: { connect: { id: series.id } },
+    });
+    await expect(
+      service.restore(purged.id, 'Tentativa em histórico expurgado', adminId),
+    ).rejects.toThrow('Histórico expurgado');
   });
   it('protects route, active secretary, DTO and confirmation', async () => {
     const event = await createEvent();
