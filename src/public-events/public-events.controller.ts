@@ -137,6 +137,7 @@ export class PublicEventsController {
     return {
       event: {
         id: event.id,
+        attendanceMode: event.attendanceMode,
         title: event.title,
         description: event.description,
         location: event.location,
@@ -164,6 +165,7 @@ export class PublicEventsController {
       where: { id },
       select: {
         id: true,
+        attendanceMode: true,
         title: true,
         description: true,
         location: true,
@@ -189,6 +191,7 @@ export class PublicEventsController {
     return {
       event: {
         id: event.id,
+        attendanceMode: event.attendanceMode,
         title: event.title,
         description: event.description,
         location: event.location,

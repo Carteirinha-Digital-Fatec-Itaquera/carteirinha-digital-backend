@@ -29,6 +29,7 @@ import { EventController } from '../event/event.controller';
 import { EventService } from '../event/event.service';
 import { CheckpointService } from '../event/checkpoint.service';
 import { QrTokenService } from '../event/qr-token.service';
+import { AttendanceService } from '../attendance/attendance.service';
 import type { MailService } from '../mail/mail.service';
 
 const url = process.env.MANUAL_CERTIFICATE_TEST_DATABASE_URL;
@@ -76,6 +77,7 @@ integration('Manual certificate issuance with real PostgreSQL and HTTP', () => {
         endsAt: new Date(Date.now() - 3600000),
         workloadMinutes: 60,
         status: 'COMPLETED',
+        attendanceMode: 'TWO_PHASE',
         checkpoints: { create: [{ type: 'CHECK_IN' }, { type: 'CHECK_OUT' }] },
         ...overrides,
       },
@@ -670,6 +672,108 @@ integration('Manual certificate issuance with real PostgreSQL and HTTP', () => {
     await expect(
       service.restore(purged.id, 'Tentativa em histórico expurgado', adminId),
     ).rejects.toThrow('Histórico expurgado');
+  });
+  it('confirms student and visitor with one final QR without creating an entry timestamp', async () => {
+    const event = await createEvent({
+      attendanceMode: 'FINAL_ONLY',
+      status: 'SCHEDULED',
+    });
+    const checkpoints = new CheckpointService(db as unknown as PrismaService);
+    await expect(
+      checkpoints.open(event.id, 'CHECK_IN', adminId),
+    ).rejects.toThrow();
+    const opened = await checkpoints.open(event.id, 'CHECK_OUT', adminId);
+    const qr = await new QrTokenService(jwt).generate({
+      eventId: event.id,
+      checkpoint: 'CHECK_OUT',
+      checkpointVersion: opened.version,
+    });
+    const student = await db.student.create({
+      data: {
+        ra: randomUUID(),
+        name: 'Aluno Confirmação Final',
+        course: 'DSM',
+        status: 'Ativo',
+        admission: '20261',
+        email: randomUUID() + '@example.test',
+        password: randomUUID(),
+        dueDate: new Date(Date.now() + 86400000),
+      },
+    });
+    const attendance = new AttendanceService(
+      db as unknown as PrismaService,
+      jwt,
+      certificates,
+    );
+    const identity = {
+      sub: student.ra,
+      accountId: student.accountId,
+      role: 'student' as const,
+    };
+    await attendance.scan(qr.qrToken, identity);
+    await attendance.scan(qr.qrToken, identity);
+    const row = await db.attendance.findUniqueOrThrow({
+      where: {
+        eventId_studentRa: { eventId: event.id, studentRa: student.ra },
+      },
+      include: { certificate: true },
+    });
+    expect(row.checkInAt).toBeNull();
+    expect(row.checkOutAt).not.toBeNull();
+    expect(row.status).toBe('CONFIRMED');
+    expect(row.certificate).not.toBeNull();
+    expect(await db.certificate.count({ where: { eventId: event.id } })).toBe(
+      1,
+    );
+    await checkpoints.close(event.id, 'CHECK_OUT', adminId);
+    await expect(attendance.scan(qr.qrToken, identity)).rejects.toThrow();
+    const series = await db.eventSeries.create({
+      data: {
+        title: 'Final visitante',
+        slug: randomUUID(),
+        startsAt: event.startsAt,
+        endsAt: event.endsAt,
+        retentionAt: new Date(Date.now() + 86400000),
+        courses: [],
+      },
+    });
+    const externalEvent = await createEvent({
+      attendanceMode: 'FINAL_ONLY',
+      status: 'SCHEDULED',
+      visitorsAllowed: true,
+      series: { connect: { id: series.id } },
+    });
+    const visitor = await db.visitorRegistration.create({
+      data: {
+        seriesId: series.id,
+        name: 'Visitante Final',
+        email: randomUUID() + '@example.test',
+        emailHash: randomUUID(),
+        identifiedAt: new Date(),
+      },
+    });
+    const participant = await operations.enrollVisitor(
+      externalEvent.id,
+      visitor.id,
+    );
+    const final = await checkpoints.open(
+      externalEvent.id,
+      'CHECK_OUT',
+      adminId,
+    );
+    const visitorQr = await new QrTokenService(jwt).generate({
+      eventId: externalEvent.id,
+      checkpoint: 'CHECK_OUT',
+      checkpointVersion: final.version,
+    });
+    await attendance.scan(visitorQr.qrToken, null, undefined, participant.id);
+    const visitorPresence = await db.attendance.findUniqueOrThrow({
+      where: { participantId: participant.id },
+      include: { certificate: true },
+    });
+    expect(visitorPresence.checkInAt).toBeNull();
+    expect(visitorPresence.status).toBe('CONFIRMED');
+    expect(visitorPresence.certificate).not.toBeNull();
   });
   it('protects route, active secretary, DTO and confirmation', async () => {
     const event = await createEvent();

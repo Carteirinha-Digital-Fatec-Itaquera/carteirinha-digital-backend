@@ -109,6 +109,13 @@ export class AttendanceService {
         const event = events[0];
         const checkpoint = checkpoints[0];
         if (!event) throw new NotFoundException('Evento não encontrado');
+        if (
+          event.attendanceMode === 'FINAL_ONLY' &&
+          claims.checkpoint === 'CHECK_IN'
+        )
+          throw new BadRequestException(
+            'Use o QR de confirmação de presença ao final da atividade.',
+          );
         if (event.status === 'CANCELLED')
           throw new ConflictException({
             statusCode: 409,
@@ -260,7 +267,39 @@ export class AttendanceService {
             message: 'Entrada registrada com sucesso!',
           };
         }
-        if (!previous?.checkInAt) {
+        if (event.attendanceMode === 'FINAL_ONLY' && !previous?.checkOutAt) {
+          const data = {
+            checkOutAt: now,
+            status: 'CONFIRMED' as const,
+            participantId: identityParticipant.id,
+            ...(evidence ? { evidence } : {}),
+          };
+          const confirmed = previous
+            ? await tx.attendance.update({ where, data })
+            : await tx.attendance.create({
+                data: {
+                  ...data,
+                  eventId: event.id,
+                  studentRa: student.ra,
+                  studentRefRa: student.ra,
+                  studentAccountId: student.accountId,
+                  studentName: student.name,
+                  studentCourse: student.course,
+                },
+              });
+          if (event.certificateEnabled)
+            await this.certificateService.issueCertificate(confirmed.id, tx);
+          return {
+            success: true,
+            type: 'CHECK_OUT',
+            eventTitle: event.title,
+            timestamp: now.toISOString(),
+            status: 'CONFIRMED',
+            message:
+              'Presença confirmada ao final da atividade. Consulte seus certificados.',
+          };
+        }
+        if (event.attendanceMode !== 'FINAL_ONLY' && !previous?.checkInAt) {
           throw new BadRequestException({
             statusCode: 400,
             error: 'Bad Request',
@@ -268,7 +307,7 @@ export class AttendanceService {
             message: 'Não é possível registrar saída sem entrada prévia',
           });
         }
-        if (previous.checkOutAt) {
+        if (previous?.checkOutAt) {
           if (event.certificateEnabled) {
             await this.certificateService.issueCertificate(previous.id, tx);
           }
@@ -284,7 +323,7 @@ export class AttendanceService {
           },
         });
         if (event.certificateEnabled) {
-          await this.certificateService.issueCertificate(previous.id, tx);
+          await this.certificateService.issueCertificate(previous!.id, tx);
         }
         return {
           success: true,
