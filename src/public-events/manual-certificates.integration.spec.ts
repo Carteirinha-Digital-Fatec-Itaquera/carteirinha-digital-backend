@@ -224,6 +224,64 @@ integration('Manual certificate issuance with real PostgreSQL and HTTP', () => {
       ).deliveryState,
     ).toBe('SENT');
   });
+  it('analyzes JSON and CSV without writes and scopes duplicate names to one eligible item', async () => {
+    const event = await createEvent();
+    const name = `Aluno Lote ${randomUUID()}`;
+    await db.student.create({
+      data: {
+        ra: randomUUID(),
+        name,
+        course: 'DSM',
+        status: 'Ativo',
+        admission: '20261',
+        email: randomUUID() + '@example.test',
+        password: randomUUID(),
+        dueDate: new Date(Date.now() + 86400000),
+      },
+    });
+    const endpoint = `/event-management/events/${event.id}/participant-file`;
+    await request(app.getHttpServer() as Server)
+      .post(endpoint)
+      .attach('file', Buffer.from(JSON.stringify([name])), 'test.json')
+      .expect(401);
+    const response = await request(app.getHttpServer() as Server)
+      .post(endpoint)
+      .auth(admin, { type: 'bearer' })
+      .attach(
+        'file',
+        Buffer.from(
+          JSON.stringify({
+            participantes: [
+              { nome: name },
+              { nome: name },
+              { nome: 'Pessoa inexistente no cadastro de teste' },
+              { nome: name, status: 'professor' },
+            ],
+          }),
+        ),
+        'test.json',
+      )
+      .expect(201);
+    const result = response.body as { items: { status: string }[] };
+    expect(result.items.map((item) => item.status)).toEqual([
+      'READY',
+      'DUPLICATE',
+      'NOT_FOUND',
+      'REVIEW',
+    ]);
+    expect(await db.attendance.count({ where: { eventId: event.id } })).toBe(0);
+    expect(await db.certificate.count({ where: { eventId: event.id } })).toBe(
+      0,
+    );
+    const csv = await request(app.getHttpServer() as Server)
+      .post(endpoint)
+      .auth(admin, { type: 'bearer' })
+      .attach('file', Buffer.from(`nome\n${name}`), 'test.csv')
+      .expect(201);
+    expect((csv.body as { items: { status: string }[] }).items[0].status).toBe(
+      'READY',
+    );
+  });
   it('protects route, active secretary, DTO and confirmation', async () => {
     const event = await createEvent();
     await post(event.id, body(), '').expect(401);
