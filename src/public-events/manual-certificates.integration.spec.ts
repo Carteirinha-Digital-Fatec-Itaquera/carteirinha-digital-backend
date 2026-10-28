@@ -139,6 +139,91 @@ integration('Manual certificate issuance with real PostgreSQL and HTTP', () => {
     await db?.$disconnect();
   });
 
+  it('finds a system student without enrollment and issues once to the selected account', async () => {
+    const event = await createEvent();
+    const marker = randomUUID();
+    const student = await db.student.create({
+      data: {
+        ra: randomUUID(),
+        name: `Álvaro ${marker}`,
+        course: 'DSM',
+        email: randomUUID() + '@example.test',
+        password: randomUUID(),
+        status: 'Ativo',
+        admission: '20261',
+        dueDate: new Date(Date.now() + 86400000),
+      },
+    });
+    const search = () =>
+      request(app.getHttpServer() as Server)
+        .get('/event-management/students/search')
+        .query({ q: `alvaro ${marker}` });
+    await search().expect(401);
+    await search()
+      .auth(
+        jwt.sign({
+          sub: student.ra,
+          accountId: student.accountId,
+          role: 'student',
+        }),
+        { type: 'bearer' },
+      )
+      .expect(403);
+    const found = await search().auth(admin, { type: 'bearer' }).expect(200);
+    expect((found.body as { items: { accountId: string }[] }).items).toEqual([
+      expect.objectContaining({ accountId: student.accountId }),
+    ]);
+    expect(
+      await db.eventParticipant.count({ where: { eventId: event.id } }),
+    ).toBe(0);
+    const input = {
+      identityType: 'STUDENT',
+      ra: student.ra,
+      expectedAccountId: randomUUID(),
+      reason: 'Participação conferida em lista pelo responsável.',
+      participationConfirmed: true,
+    };
+    await post(event.id, input).expect(409);
+    expect(await db.attendance.count({ where: { eventId: event.id } })).toBe(0);
+    input.expectedAccountId = student.accountId;
+    const response = await post(event.id, input).expect(201);
+    const id = (response.body as { certificateId: string }).certificateId;
+    const cert = await db.certificate.findUniqueOrThrow({
+      where: { id },
+      include: { attendance: true, artifact: true },
+    });
+    expect(cert.studentAccountId).toBe(student.accountId);
+    expect(cert.studentRefRa).toBe(student.ra);
+    expect(cert.attendance.status).toBe('CONFIRMED');
+    expect(cert.attendance.checkInAt).not.toBeNull();
+    expect(cert.attendance.checkOutAt).not.toBeNull();
+    const mine = await certificates.getStudentCertificates({
+      sub: student.ra,
+      accountId: student.accountId,
+      role: 'student',
+    });
+    expect(mine.some((item) => item.id === id)).toBe(true);
+    await worker.process(cert.artifact!.id);
+    expect(mail.sendCertificateNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: student.email,
+        profile: 'ALUNO',
+        accessUrl: `${(process.env.STUDENT_APP_URL || 'https://carteirinha-digital-front-end-aluno.vercel.app').replace(/\/$/, '')}/certificados`,
+      }),
+    );
+    const repeated = await post(event.id, input).expect(201);
+    expect((repeated.body as { certificateId: string }).certificateId).toBe(id);
+    expect(await db.certificate.count({ where: { eventId: event.id } })).toBe(
+      1,
+    );
+    expect(
+      (
+        await db.certificateArtifact.findUniqueOrThrow({
+          where: { certificateId: id },
+        })
+      ).deliveryState,
+    ).toBe('SENT');
+  });
   it('protects route, active secretary, DTO and confirmation', async () => {
     const event = await createEvent();
     await post(event.id, body(), '').expect(401);

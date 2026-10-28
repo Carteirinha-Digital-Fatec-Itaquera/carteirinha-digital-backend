@@ -10,6 +10,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
   Res,
   UploadedFile,
@@ -486,6 +487,9 @@ export class EventManagementController {
     private readonly storage: EventStorageService,
     private readonly pdfGenerator: PdfGeneratorService,
   ) {}
+  @Get('students/search') searchStudents(@Query('q') query: string) {
+    return this.operations.searchStudents(query);
+  }
   @Get('students/:ra/history') studentHistory(@Param('ra') ra: string) {
     return this.operations.studentHistory(ra);
   }

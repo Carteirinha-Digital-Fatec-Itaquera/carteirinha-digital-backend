@@ -237,6 +237,45 @@ export class EventOperationsService {
       return person;
     });
   }
+  async searchStudents(query: string) {
+    const normalize = (value: string) =>
+      value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, ' ');
+    if (
+      typeof query !== 'string' ||
+      query.trim().length < 3 ||
+      query.length > 160
+    )
+      throw new BadRequestException('Informe entre 3 e 160 caracteres.');
+    const rows = await this.prisma.student.findMany({
+      select: {
+        ra: true,
+        accountId: true,
+        name: true,
+        course: true,
+        status: true,
+        email: true,
+      },
+      orderBy: [{ name: 'asc' }, { ra: 'asc' }],
+    });
+    const tokens = normalize(query).split(' ');
+    const matches = rows.filter(
+      (row) =>
+        tokens.every((token) => normalize(row.name).includes(token)) ||
+        row.ra === query.trim(),
+    );
+    return {
+      total: matches.length,
+      items: matches.slice(0, 20).map((row) => ({
+        ...row,
+        email: row.email.replace(/^(.).*(@.*)$/, '$1***$2'),
+      })),
+    };
+  }
   async studentHistory(ra: string) {
     return this.prisma.$transaction(async (tx) => {
       const student = await tx.student.findUnique({
@@ -426,6 +465,9 @@ export class EventOperationsService {
             'Prazo de atendimento do evento encerrado.',
           );
         }
+        if (dto.identityType === 'STUDENT' && dto.expectedAccountId) {
+          await tx.$queryRaw`SELECT "ra" FROM "Student" WHERE "ra" = ${dto.ra?.trim() || ''} FOR SHARE`;
+        }
         const student =
           dto.identityType === 'STUDENT'
             ? await tx.student.findUnique({
@@ -441,6 +483,13 @@ export class EventOperationsService {
         )
           throw new BadRequestException(
             'Aluno não encontrado ou inativo. Confira o RA.',
+          );
+        if (
+          dto.expectedAccountId &&
+          student?.accountId !== dto.expectedAccountId
+        )
+          throw new ConflictException(
+            'O cadastro mudou. Busque e selecione o aluno novamente.',
           );
         if (!['STUDENT', 'EXTERNAL'].includes(dto.identityType))
           throw new BadRequestException('Identificação inválida.');

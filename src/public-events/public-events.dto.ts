@@ -218,6 +218,7 @@ export class ReconcileDeliveryDto {
 }
 
 export class ManualCertificateDto {
+  @IsOptional() @IsUUID() expectedAccountId?: string;
   @IsIn(['STUDENT', 'EXTERNAL']) identityType: 'STUDENT' | 'EXTERNAL';
   @ValidateIf((dto: ManualCertificateDto) => dto.identityType === 'STUDENT')
   @IsString()
