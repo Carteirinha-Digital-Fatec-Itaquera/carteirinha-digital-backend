@@ -88,6 +88,7 @@ export class CatalogVersionDto {
   @IsInt() @Min(1) expectedVersion: number;
 }
 export class EventConfigurationDto {
+  @IsOptional() @IsBoolean() locationEnabled?: boolean;
   @IsOptional()
   @IsArray()
   @ArrayMinSize(1)

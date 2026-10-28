@@ -170,7 +170,10 @@ export class AttendanceService {
               );
           }
         }
-        const geoPolicy = assertGeoPolicy(event.geoPolicy);
+        const geoPolicy =
+          event.locationEnabled === false
+            ? null
+            : assertGeoPolicy(event.geoPolicy);
         const identityParticipant =
           participant ||
           (await tx.eventParticipant.upsert({

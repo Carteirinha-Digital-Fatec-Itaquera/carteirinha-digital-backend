@@ -775,6 +775,119 @@ integration('Manual certificate issuance with real PostgreSQL and HTTP', () => {
     expect(visitorPresence.status).toBe('CONFIRMED');
     expect(visitorPresence.certificate).not.toBeNull();
   });
+  it('toggles GPS for final attendance without deleting its configured area', async () => {
+    const policy = {
+      latitude: -23.545,
+      longitude: -46.467,
+      radius: 150,
+      maxAccuracy: 50,
+    };
+    const event = await createEvent({
+      attendanceMode: 'FINAL_ONLY',
+      status: 'SCHEDULED',
+      geoPolicy: policy,
+    });
+    const student = await db.student.create({
+      data: {
+        ra: randomUUID(),
+        name: 'Aluno GPS Fictício',
+        course: 'DSM',
+        status: 'Ativo',
+        admission: '20261',
+        email: randomUUID() + '@example.test',
+        password: randomUUID(),
+        dueDate: new Date(Date.now() + 86400000),
+      },
+    });
+    const checkpoints = new CheckpointService(db as unknown as PrismaService);
+    const opened = await checkpoints.open(event.id, 'CHECK_OUT', adminId);
+    const qr = await new QrTokenService(jwt).generate({
+      eventId: event.id,
+      checkpoint: 'CHECK_OUT',
+      checkpointVersion: opened.version,
+    });
+    const attendance = new AttendanceService(
+      db as unknown as PrismaService,
+      jwt,
+      certificates,
+    );
+    const identity = {
+      sub: student.ra,
+      accountId: student.accountId,
+      role: 'student' as const,
+    };
+    await expect(attendance.scan(qr.qrToken, identity)).rejects.toThrow();
+    const endpoint = `/events/${event.id}/location-verification`;
+    await request(app.getHttpServer() as Server)
+      .post(endpoint)
+      .send({ enabled: false, reason: 'Falha de infraestrutura' })
+      .expect(401);
+    await request(app.getHttpServer() as Server)
+      .post(endpoint)
+      .auth(jwt.sign(identity), { type: 'bearer' })
+      .send({ enabled: false, reason: 'Tentativa indevida' })
+      .expect(403);
+    await request(app.getHttpServer() as Server)
+      .post(endpoint)
+      .auth(admin, { type: 'bearer' })
+      .send({ enabled: false, reason: 'Falha de infraestrutura' })
+      .expect(200);
+    expect(
+      (await db.event.findUniqueOrThrow({ where: { id: event.id } })).geoPolicy,
+    ).toEqual(policy);
+    await attendance.scan(qr.qrToken, identity);
+    expect(await db.certificate.count({ where: { eventId: event.id } })).toBe(
+      1,
+    );
+    const series = await db.eventSeries.create({
+      data: {
+        title: 'GPS visitante teste',
+        slug: randomUUID(),
+        startsAt: event.startsAt,
+        endsAt: event.endsAt,
+        retentionAt: new Date(Date.now() + 86400000),
+        courses: [],
+      },
+    });
+    await db.event.update({
+      where: { id: event.id },
+      data: { visitorsAllowed: true, seriesId: series.id },
+    });
+    const visitor = await db.visitorRegistration.create({
+      data: {
+        seriesId: series.id,
+        name: 'Visitante GPS Fictício',
+        email: randomUUID() + '@example.test',
+        emailHash: randomUUID(),
+        identifiedAt: new Date(),
+      },
+    });
+    const person = await operations.enrollVisitor(event.id, visitor.id);
+    await attendance.scan(qr.qrToken, null, undefined, person.id);
+    expect(
+      (
+        await db.attendance.findUniqueOrThrow({
+          where: { participantId: person.id },
+        })
+      ).status,
+    ).toBe('CONFIRMED');
+    await request(app.getHttpServer() as Server)
+      .post(endpoint)
+      .auth(admin, { type: 'bearer' })
+      .send({ enabled: true, reason: 'Localização disponível novamente' })
+      .expect(200);
+    expect(
+      (await db.event.findUniqueOrThrow({ where: { id: event.id } }))
+        .locationEnabled,
+    ).toBe(true);
+    await expect(attendance.scan(qr.qrToken, identity)).rejects.toThrow();
+    const empty = await createEvent();
+    await request(app.getHttpServer() as Server)
+      .post(`/events/${empty.id}/location-verification`)
+      .auth(admin, { type: 'bearer' })
+      .send({ enabled: true, reason: 'Sem área configurada' })
+      .expect(400);
+  });
   it('protects route, active secretary, DTO and confirmation', async () => {
     const event = await createEvent();
     await post(event.id, body(), '').expect(401);

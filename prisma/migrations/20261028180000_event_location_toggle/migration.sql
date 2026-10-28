@@ -1,0 +1,1 @@
+ALTER TABLE "Event" ADD COLUMN "locationEnabled" BOOLEAN NOT NULL DEFAULT true;
