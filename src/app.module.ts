@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { SupportModule } from './support/support.module';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { StudentModule } from './student/student.module';
 import { AuthModule } from './auth/auth.module';
@@ -15,6 +16,7 @@ import { join } from 'path';
 
 @Module({
   imports: [
+    SupportModule,
     StudentModule,
     AuthModule,
     SecretaryModule,
