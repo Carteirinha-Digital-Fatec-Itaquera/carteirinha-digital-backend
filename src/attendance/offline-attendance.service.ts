@@ -164,7 +164,7 @@ export class OfflineAttendanceService {
             });
           return this.view(prior);
         }
-        const record = await this.refs.resolveReference(dto.reference);
+        const record = await this.refs.resolveReference(dto.reference, tx);
         const result = await this.attendance.scan(
           record.jwtToken,
           {

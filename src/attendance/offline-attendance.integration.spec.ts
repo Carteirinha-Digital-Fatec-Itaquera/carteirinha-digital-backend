@@ -69,7 +69,14 @@ integration('Student offline presence: real HTTP and PostgreSQL', () => {
     )
       throw new Error('Only dedicated local disposable database allowed');
     process.env.JWT_SECRET = randomBytes(32).toString('hex');
-    db = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
+    // A transaction must never acquire a second connection from the same pool.
+    db = new PrismaClient({
+      adapter: new PrismaPg({
+        connectionString: url,
+        max: 1,
+        connectionTimeoutMillis: 1000,
+      }),
+    });
     certificates = new CertificateService(
       db as unknown as PrismaService,
       {} as PdfGeneratorService,
@@ -255,6 +262,20 @@ integration('Student offline presence: real HTTP and PostgreSQL', () => {
         where: { requestId: body.requestId },
       }),
     ).toBe(1);
+  });
+  it('ten concurrent submissions complete with a single-connection pool', async () => {
+    const bodies = Array.from({ length: 10 }, payload);
+    const responses = await Promise.all(
+      bodies.map((body) => post('submit', body).timeout({ deadline: 5000 })),
+    );
+    responses.forEach((response) => expect(response.status).toBe(200));
+    expect(
+      await db.studentOfflineReceipt.count({
+        where: { requestId: { in: bodies.map((body) => body.requestId) } },
+      }),
+    ).toBe(10);
+    expect(await db.attendance.count({ where: { eventId } })).toBe(1);
+    expect(await db.certificate.count({ where: { eventId } })).toBe(1);
   });
   it('concurrent exact replay yields one attendance/certificate/receipt and identical response', async () => {
     const body = payload();

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 
 export interface CreateReferenceParams {
@@ -48,7 +49,10 @@ export class AttendanceQrReferenceService {
     };
   }
 
-  async resolveReference(reference: string) {
+  async resolveReference(
+    reference: string,
+    client: Prisma.TransactionClient = this.prisma,
+  ) {
     if (
       !reference ||
       typeof reference !== 'string' ||
@@ -63,7 +67,7 @@ export class AttendanceQrReferenceService {
     }
 
     const referenceHash = this.hashReference(reference);
-    const record = await this.prisma.attendanceQrReference.findUnique({
+    const record = await client.attendanceQrReference.findUnique({
       where: { referenceHash },
       include: {
         checkpoint: {
