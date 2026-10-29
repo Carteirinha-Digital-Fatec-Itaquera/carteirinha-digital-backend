@@ -46,6 +46,7 @@ import {
   ManualPresenceDto,
   BulkManualCheckoutDto,
   ManualCertificateDto,
+  ManualOperationStatusDto,
   RegisterVisitorDto,
   SeriesDto,
   SignerDto,
@@ -666,6 +667,17 @@ export class EventManagementController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.operations.getFeedbackMetrics(id);
+  }
+  @Post('events/:id/manual-certificate-operations/status') operationStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(validation) dto: ManualOperationStatusDto,
+    @Req() req: AuthRequest,
+  ) {
+    return this.operations.manualOperationStatus(
+      id,
+      dto.operationIds,
+      Number(req.user.sub),
+    );
   }
   @Post('events/:id/manual-certificates')
   manualCertificate(

@@ -602,3 +602,13 @@ model ProjectCreditAssetCleanup {
 
   @@index([status, scheduledFor])
 }
+
+model ManualCertificateOperation {
+  requestId String @id
+  eventId String
+  secretaryId Int
+  payloadHash String
+  certificateId String
+  createdAt DateTime @default(now())
+  @@index([eventId, secretaryId])
+}

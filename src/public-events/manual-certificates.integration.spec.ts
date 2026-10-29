@@ -179,6 +179,159 @@ integration('Manual certificate issuance with real PostgreSQL and HTTP', () => {
     await db?.$disconnect();
   });
 
+  it('persists a receipt atomically, replays a lost response and isolates actor/event/payload', async () => {
+    const event = await createEvent();
+    const input = { ...body(), requestId: randomUUID() };
+    const results = await Promise.all([
+      post(event.id, input),
+      post(event.id, input),
+    ]);
+    expect(results.map((row) => row.status)).toEqual([201, 201]);
+    const id = (results[0].body as { certificateId: string }).certificateId;
+    expect((results[1].body as { certificateId: string }).certificateId).toBe(
+      id,
+    );
+    expect(
+      await db.manualCertificateOperation.count({
+        where: { eventId: event.id },
+      }),
+    ).toBe(1);
+    expect(await db.certificate.count({ where: { eventId: event.id } })).toBe(
+      1,
+    );
+    expect(
+      await db.eventAudit.count({
+        where: { eventId: event.id, action: 'MANUAL_CERTIFICATE_ISSUED' },
+      }),
+    ).toBe(1);
+    await post(event.id, {
+      ...input,
+      reason: 'Outra justificativa para a mesma tentativa.',
+    }).expect(409);
+    const status = (eventId: string, ids: string[], token = admin) =>
+      request(app.getHttpServer() as Server)
+        .post(
+          `/event-management/events/${eventId}/manual-certificate-operations/status`,
+        )
+        .auth(token, { type: 'bearer' })
+        .send({ operationIds: ids });
+    const found = await status(event.id, [
+      input.requestId,
+      randomUUID(),
+    ]).expect(201);
+    expect(
+      (found.body as { items: { known: boolean }[] }).items.map(
+        (row) => row.known,
+      ),
+    ).toEqual([true, false]);
+    const secondOperator = await db.secretary.create({
+      data: {
+        name: 'Outra Secretaria de teste',
+        email: randomUUID() + '@example.test',
+        password: randomUUID(),
+        birthDate: new Date('1990-01-01'),
+        dueDate: new Date(Date.now() + 86400000),
+      },
+    });
+    const otherToken = jwt.sign({ sub: secondOperator.id, role: 'secretary' });
+    expect(
+      (
+        (await status(event.id, [input.requestId], otherToken)).body as {
+          items: { known: boolean }[];
+        }
+      ).items[0].known,
+    ).toBe(false);
+    await post(event.id, input, otherToken).expect(409);
+    const other = await createEvent();
+    expect(
+      (
+        (await status(other.id, [input.requestId])).body as {
+          items: { known: boolean }[];
+        }
+      ).items[0].known,
+    ).toBe(false);
+    await post(other.id, input).expect(409);
+    await status(
+      event.id,
+      Array.from({ length: 101 }, () => randomUUID()),
+    ).expect(400);
+    await db.event.update({
+      where: { id: event.id },
+      data: { status: 'CANCELLED' },
+    });
+    const replay = await post(event.id, input).expect(201);
+    expect((replay.body as { eventCancelled: boolean }).eventCancelled).toBe(
+      true,
+    );
+    await post(event.id, { ...input, requestId: randomUUID() }).expect(409);
+    await db.certificate.update({
+      where: { id },
+      data: { revokedAt: new Date() },
+    });
+    expect(
+      (
+        (await status(event.id, [input.requestId])).body as {
+          items: { revoked: boolean }[];
+        }
+      ).items[0].revoked,
+    ).toBe(true);
+  });
+  it('rolls back receipt creation with domain failure and rejects identity aliases across accounts', async () => {
+    const event = await createEvent({ status: 'CANCELLED' });
+    const input = { ...body(), requestId: randomUUID() };
+    await post(event.id, input).expect(409);
+    expect(
+      await db.manualCertificateOperation.count({
+        where: { requestId: input.requestId },
+      }),
+    ).toBe(0);
+    const name = 'Nome Social ' + randomUUID();
+    for (const index of [1, 2])
+      await db.student.create({
+        data: {
+          ra: randomUUID(),
+          name: 'Cadastro ' + index + ' ' + randomUUID(),
+          socialName: name,
+          course: 'DSM',
+          email: randomUUID() + '@example.test',
+          password: randomUUID(),
+          status: 'ativo',
+          admission: '2026',
+          dueDate: new Date(Date.now() + 86400000),
+        },
+      });
+    const active = await createEvent();
+    const response = await request(app.getHttpServer() as Server)
+      .post(`/event-management/events/${active.id}/participant-file`)
+      .auth(admin, { type: 'bearer' })
+      .attach('file', Buffer.from(JSON.stringify([name])), 'names.json')
+      .expect(201);
+    expect(
+      (response.body as { items: { status: string }[] }).items[0].status,
+    ).toBe('AMBIGUOUS');
+    const unique = 'Nome Social Único ' + randomUUID();
+    await db.student.create({
+      data: {
+        ra: randomUUID(),
+        name: 'Outro Cadastro ' + randomUUID(),
+        socialName: unique,
+        course: 'DSM',
+        email: randomUUID() + '@example.test',
+        password: randomUUID(),
+        status: 'ativo',
+        admission: '2026',
+        dueDate: new Date(Date.now() + 86400000),
+      },
+    });
+    const exact = await request(app.getHttpServer() as Server)
+      .post(`/event-management/events/${active.id}/participant-file`)
+      .auth(admin, { type: 'bearer' })
+      .attach('file', Buffer.from(JSON.stringify([unique])), 'names.json')
+      .expect(201);
+    expect(
+      (exact.body as { items: { status: string }[] }).items[0].status,
+    ).toBe('READY');
+  });
   it('finds a system student without enrollment and issues once to the selected account', async () => {
     const event = await createEvent();
     const marker = randomUUID();

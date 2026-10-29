@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   parseParticipantFile,
   normalizeParticipantName,
@@ -325,7 +325,10 @@ export class EventOperationsService {
         const matches = students.filter(
           (student) =>
             normalizeParticipantName(student.name) ===
-            normalizeParticipantName(row.name),
+              normalizeParticipantName(row.name) ||
+            (!!student.socialName &&
+              normalizeParticipantName(student.socialName) ===
+                normalizeParticipantName(row.name)),
         );
         const student = matches.length === 1 ? matches[0] : null;
         let status = row.review
@@ -543,8 +546,42 @@ export class EventOperationsService {
       throw new BadRequestException(
         'Confirme a participação e informe uma justificativa de pelo menos 10 caracteres.',
       );
+    const payloadHash = createHash('sha256')
+      .update(
+        JSON.stringify([
+          eventId,
+          secretaryId,
+          dto.identityType,
+          dto.ra?.trim(),
+          dto.expectedAccountId,
+          dto.name?.trim(),
+          dto.email?.trim().toLowerCase(),
+          dto.cpf?.replace(/\D/g, ''),
+          dto.course?.trim(),
+          dto.reason.trim(),
+          dto.participationConfirmed,
+        ]),
+      )
+      .digest('hex');
     return this.prisma.$transaction(
       async (tx) => {
+        if (dto.requestId) {
+          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${dto.requestId}, 0))::text`;
+          const receipt = await tx.manualCertificateOperation.findUnique({
+            where: { requestId: dto.requestId },
+          });
+          if (receipt) {
+            if (
+              receipt.eventId !== eventId ||
+              receipt.secretaryId !== secretaryId ||
+              receipt.payloadHash !== payloadHash
+            )
+              throw new ConflictException(
+                'Chave de operação já utilizada com outros dados.',
+              );
+            return this.manualOperationResult(tx, receipt.certificateId, true);
+          }
+        }
         const { event } = await lockEventForMutation(tx, eventId);
         if (
           event.status === 'CANCELLED' ||
@@ -816,6 +853,16 @@ export class EventOperationsService {
               : 'MANUAL_CERTIFICATE_ISSUED',
           },
         });
+        if (dto.requestId)
+          await tx.manualCertificateOperation.create({
+            data: {
+              requestId: dto.requestId,
+              eventId,
+              secretaryId,
+              payloadHash,
+              certificateId: certificate.id,
+            },
+          });
         return {
           certificateId: certificate.id,
           verificationCode: certificate.verificationCode,
@@ -832,6 +879,70 @@ export class EventOperationsService {
       },
       { maxWait: 5000, timeout: 15000 },
     );
+  }
+  private async manualOperationResult(
+    tx: Prisma.TransactionClient,
+    certificateId: string,
+    replay: boolean,
+  ) {
+    const certificate = await tx.certificate.findUnique({
+      where: { id: certificateId },
+      include: { artifact: true, event: { select: { status: true } } },
+    });
+    if (!certificate)
+      throw new NotFoundException('Certificado da operação indisponível.');
+    return {
+      certificateId: certificate.id,
+      verificationCode: certificate.verificationCode,
+      alreadyIssued: replay,
+      artifactState: certificate.artifact?.state ?? 'PENDING_RENDER',
+      deliveryState: certificate.artifact?.deliveryState ?? 'NONE',
+      revoked: !!certificate.revokedAt,
+      eventCancelled: certificate.event.status === 'CANCELLED',
+      message:
+        'Operação já registrada. Consulte o processamento do certificado.',
+    };
+  }
+  async manualOperationStatus(
+    eventId: string,
+    operationIds: string[],
+    secretaryId: number,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const rows = await tx.manualCertificateOperation.findMany({
+        where: { eventId, secretaryId, requestId: { in: operationIds } },
+      });
+      const certificates = await tx.certificate.findMany({
+        where: { id: { in: rows.map((row) => row.certificateId) }, eventId },
+        select: {
+          id: true,
+          verificationCode: true,
+          revokedAt: true,
+          event: { select: { status: true } },
+          artifact: { select: { state: true, deliveryState: true } },
+        },
+      });
+      return {
+        items: operationIds.map((operationId) => {
+          const receipt = rows.find((row) => row.requestId === operationId);
+          if (!receipt) return { operationId, known: false };
+          const certificate = certificates.find(
+            (row) => row.id === receipt.certificateId,
+          );
+          return {
+            operationId,
+            known: true,
+            certificateId: receipt.certificateId,
+            verificationCode: certificate?.verificationCode,
+            artifactState: certificate?.artifact?.state ?? 'RENDER_FAILED',
+            deliveryState: certificate?.artifact?.deliveryState ?? 'EXPIRED',
+            revoked: !certificate || !!certificate.revokedAt,
+            eventCancelled:
+              !certificate || certificate.event.status === 'CANCELLED',
+          };
+        }),
+      };
+    });
   }
   async bulkManualCheckout(
     eventId: string,
