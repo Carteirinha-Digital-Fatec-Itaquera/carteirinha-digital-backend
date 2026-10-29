@@ -4,21 +4,113 @@ generator client {
   moduleFormat = "cjs"
 }
 
+enum SupportStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_STUDENT
+  RESOLVED
+  CLOSED
+}
+
+enum SupportCategory {
+  DATA
+  PHOTO_CARD
+  EVENT
+  CERTIFICATE
+  ACCESS
+  OTHER
+}
+
+model SupportTicket {
+  id                   String           @id @default(uuid())
+  protocol             String           @unique
+  requestId            String
+  requestHash          String
+  ownerIdentity        String
+  ownerAccountId       String?
+  owner                Student?         @relation("SupportOwner", fields: [ownerAccountId], references: [accountId], onDelete: SetNull)
+  category             SupportCategory
+  subject              String
+  requestedField       String?
+  proposedValue        String?
+  status               SupportStatus    @default(OPEN)
+  assignedSecretaryId  Int?
+  assignee             Secretary?       @relation("SupportAssignee", fields: [assignedSecretaryId], references: [id], onDelete: SetNull)
+  eventId              String?
+  event                Event?           @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  certificateId        String?
+  certificate          Certificate?     @relation(fields: [certificateId], references: [id], onDelete: SetNull)
+  version              Int              @default(1)
+  studentReadVersion   Int              @default(1)
+  secretaryReadVersion Int              @default(0)
+  lastActorRole        String           @default("STUDENT")
+  closeReason          String?
+  resolvedAt           DateTime?
+  closedAt             DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  messages             SupportMessage[]
+  audits               SupportAudit[]
+
+  @@unique([ownerIdentity, requestId])
+  @@index([status, createdAt])
+  @@index([ownerAccountId, createdAt])
+  @@index([assignedSecretaryId, status])
+}
+
+model SupportMessage {
+  id              String        @id @default(uuid())
+  ticketId        String
+  ticket          SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  clientMessageId String
+  authorRole      String
+  authorIdentity  String
+  body            String
+  redactedAt      DateTime?
+  createdAt       DateTime      @default(now())
+
+  @@unique([ticketId, clientMessageId])
+  @@index([ticketId, createdAt])
+  @@index([authorIdentity, createdAt])
+}
+
+model SupportAudit {
+  id                 String         @id @default(uuid())
+  ticketId           String
+  ticket             SupportTicket  @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  requestId          String
+  requestHash        String
+  action             String
+  actorRole          String
+  actorIdentity      String
+  previousStatus     SupportStatus?
+  nextStatus         SupportStatus?
+  previousAssigneeId Int?
+  nextAssigneeId     Int?
+  reason             String?
+  resultReference    String?
+  createdAt          DateTime       @default(now())
+
+  @@unique([ticketId, requestId])
+  @@index([ticketId, createdAt])
+}
+
 datasource db {
   provider = "postgresql"
 }
 
 model Student {
-  ra              String        @id
-  accountId       String        @unique @default(dbgenerated("(gen_random_uuid())::text"))
+  supportTickets  SupportTicket[] @relation("SupportOwner")
+  ra              String          @id
+  accountId       String          @unique @default(dbgenerated("(gen_random_uuid())::text"))
   course          String
   status          String
   name            String
   socialName      String?
   admission       String
-  email           String        @unique
-  cpf             String?       @unique
-  qrcode          String?       @unique
+  email           String          @unique
+  cpf             String?         @unique
+  qrcode          String?         @unique
   photo           String?
   birthDate       DateTime?
   dueDate         DateTime
@@ -26,7 +118,7 @@ model Student {
   lastLogin       DateTime?
   approvedAt      DateTime?
   approvedBy      String?
-  photoStatus     PhotoStatus   @default(PENDING)
+  photoStatus     PhotoStatus     @default(PENDING)
   rejectionReason String?
   attendances     Attendance[]
   certificates    Certificate[]
@@ -48,6 +140,7 @@ model StudentLog {
 }
 
 model Secretary {
+  supportTickets  SupportTicket[]      @relation("SupportAssignee")
   id              Int                  @id @default(autoincrement())
   name            String
   email           String               @unique
@@ -61,8 +154,9 @@ model Secretary {
 }
 
 model Event {
-  locationEnabled Boolean @default(false)
-  attendanceMode String @default("FINAL_ONLY")
+  supportTickets      SupportTicket[]
+  locationEnabled     Boolean            @default(false)
+  attendanceMode      String             @default("FINAL_ONLY")
   id                  String             @id @default(uuid())
   title               String
   description         String?
@@ -157,6 +251,7 @@ model Attendance {
 }
 
 model Certificate {
+  supportTickets   SupportTicket[]
   id               String               @id @default(uuid())
   eventId          String
   event            Event                @relation(fields: [eventId], references: [id], onDelete: Restrict)
