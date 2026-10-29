@@ -612,3 +612,31 @@ model ManualCertificateOperation {
   createdAt DateTime @default(now())
   @@index([eventId, secretaryId])
 }
+
+// Scoped, revocable capability; only a hash of the opaque cookie is persisted.
+model StudentOfflineSession {
+  id        String @id @default(uuid())
+  tokenHash String @unique
+  accountId String
+  studentRa String
+  origin    String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([accountId, expiresAt])
+}
+
+model StudentOfflineReceipt {
+  id          String @id @default(uuid())
+  accountId   String
+  requestId   String
+  requestHash String
+  reference   String
+  scannedAt   DateTime
+  receivedAt  DateTime @default(now())
+  result      Json
+
+  @@unique([accountId, requestId])
+  @@index([receivedAt])
+}
