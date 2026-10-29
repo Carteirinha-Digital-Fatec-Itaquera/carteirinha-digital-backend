@@ -133,7 +133,7 @@ export class PublicEventsController {
     @Req() req: Request,
   ) {
     await this.visitors.limit(`qr:${req.ip}`, 6000, 60);
-    const row = await this.refs.resolveReference(ref);
+    const row = await this.refs.resolveReference(ref, undefined, true);
     const event = row.checkpoint.event;
     return {
       event: {
@@ -149,10 +149,11 @@ export class PublicEventsController {
         status: event.status,
       },
       checkpoint: { type: row.checkpoint.type },
+      available: row.available,
+      permanent: row.permanent,
       visitorsAllowed: event.visitorsAllowed,
       seriesId: event.seriesId,
-      locationRequired:
-        event.locationEnabled !== false && Boolean(event.geoPolicy),
+      locationRequired: event.locationEnabled !== false,
       expiresAt: row.expiresAt?.toISOString() ?? null,
       serverTime: new Date().toISOString(),
     };

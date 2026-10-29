@@ -195,6 +195,8 @@ describe('Attendance HTTP authorization and DTO', () => {
 
       expect(qrRefService.resolveReference).toHaveBeenCalledWith(
         'valid-ref-1234567890',
+        undefined,
+        true,
       );
       expect(service.scan).not.toHaveBeenCalled();
       expect(response.body).toEqual({

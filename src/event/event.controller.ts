@@ -28,6 +28,7 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { EventQueryDto } from './dto/event-query.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { EventService } from './event.service';
+import { AttendanceQrReferenceService } from '../attendance/attendance-qr-reference.service';
 import { QrTokenService } from './qr-token.service';
 
 interface AuthenticatedRequest {
@@ -41,6 +42,7 @@ export class EventController {
     private readonly eventService: EventService,
     private readonly checkpointService: CheckpointService,
     private readonly qrTokenService: QrTokenService,
+    private readonly attendanceReferences: AttendanceQrReferenceService,
   ) {}
 
   @Post()
@@ -83,6 +85,13 @@ export class EventController {
   ) {
     return this.checkpointService.close(id, type, Number(request.user.sub));
   }
+  @Get(':id/attendance-link')
+  @Roles('secretary')
+  @Header('Cache-Control', 'no-store')
+  permanentAttendanceLink(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.attendanceReferences.permanentQr(id);
+  }
+
   @Get(':id/checkpoints/:type/qr')
   @Roles('secretary')
   @Header('Cache-Control', 'no-store')

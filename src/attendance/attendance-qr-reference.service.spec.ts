@@ -163,7 +163,11 @@ describe('AttendanceQrReferenceService', () => {
       prisma.attendanceQrReference.findUnique.mockResolvedValue(record);
 
       const resolved = await service.resolveReference('valid-ref-123456789012');
-      expect(resolved).toEqual(record);
+      expect(resolved).toEqual({
+        ...record,
+        available: true,
+        permanent: false,
+      });
     });
   });
 

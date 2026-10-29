@@ -183,6 +183,7 @@ model Event {
   cancelledAt         DateTime?
   cancelledById       Int?
   cancelledBy         Secretary?         @relation("EventCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  attendancePublicReference String? @unique
   checkpoints         EventCheckpoint[]
   attendances         Attendance[]
   certificates        Certificate[]
