@@ -61,7 +61,7 @@ model Secretary {
 }
 
 model Event {
-  locationEnabled Boolean @default(true)
+  locationEnabled Boolean @default(false)
   attendanceMode String @default("FINAL_ONLY")
   id                  String             @id @default(uuid())
   title               String

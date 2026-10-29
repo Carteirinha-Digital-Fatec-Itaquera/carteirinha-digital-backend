@@ -46,7 +46,7 @@ export class EventService {
         ? assertGeoPolicy(dto.geoPolicy)
         : null;
 
-    if (dto.visitorsAllowed && dto.locationEnabled !== false && !geoPolicy) {
+    if (dto.visitorsAllowed && dto.locationEnabled === true && !geoPolicy) {
       throw new BadRequestException(
         'Atividades abertas a visitantes exigem localização configurada.',
       );
@@ -107,7 +107,7 @@ export class EventService {
           certificateEnabled: dto.certificateEnabled ?? true,
           createdById,
           visitorsAllowed: dto.visitorsAllowed ?? false,
-          locationEnabled: dto.locationEnabled ?? true,
+          locationEnabled: dto.locationEnabled ?? false,
           organizerCourse: dto.organizerCourse ?? null,
           promoter: dto.promoter ?? null,
           windowMinutes: dto.visitorsAllowed ? 15 : null,

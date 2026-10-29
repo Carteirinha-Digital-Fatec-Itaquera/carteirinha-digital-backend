@@ -786,6 +786,7 @@ integration('Manual certificate issuance with real PostgreSQL and HTTP', () => {
       attendanceMode: 'FINAL_ONLY',
       status: 'SCHEDULED',
       geoPolicy: policy,
+      locationEnabled: true,
     });
     const student = await db.student.create({
       data: {

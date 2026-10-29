@@ -73,6 +73,7 @@ describe('EventService', () => {
         data: expect.objectContaining({
           createdById: 7,
           certificateEnabled: true,
+          locationEnabled: false,
           checkpoints: {
             create: [
               { type: 'CHECK_IN', isOpen: false, version: 1 },
