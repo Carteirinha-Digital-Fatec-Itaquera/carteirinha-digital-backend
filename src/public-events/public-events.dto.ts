@@ -219,6 +219,7 @@ export class ReconcileDeliveryDto {
 }
 
 export class ManualCertificateDto {
+  @IsOptional() @IsUUID('4') requestId?: string;
   @IsOptional() @IsUUID() expectedAccountId?: string;
   @IsIn(['STUDENT', 'EXTERNAL']) identityType: 'STUDENT' | 'EXTERNAL';
   @ValidateIf((dto: ManualCertificateDto) => dto.identityType === 'STUDENT')
@@ -277,4 +278,13 @@ export class BulkManualCheckoutDto {
   @Length(10, 1000)
   reason: string;
   @Equals(true) confirmed: boolean;
+}
+
+export class ManualOperationStatusDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  operationIds: string[];
 }
