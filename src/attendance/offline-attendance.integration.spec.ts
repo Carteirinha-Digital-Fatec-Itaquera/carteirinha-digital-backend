@@ -463,4 +463,62 @@ integration('Student offline presence: real HTTP and PostgreSQL', () => {
         .status,
     ).toBe(400);
   });
+  it('keeps one printable reference before opening and across close/reopen without bypassing current state', async () => {
+    const refs = new AttendanceQrReferenceService(
+      db as unknown as PrismaService,
+    );
+    await db.eventCheckpoint.update({
+      where: { id: checkpointId },
+      data: { isOpen: false },
+    });
+    const links = await Promise.all(
+      Array.from({ length: 5 }, () => refs.permanentQr(eventId)),
+    );
+    expect(new Set(links.map((link) => link.qrUrl)).size).toBe(1);
+    reference = links[0].qrUrl.split('/').pop()!;
+    const preview = await refs.resolveReference(reference, undefined, true);
+    expect(preview.available).toBe(false);
+    expect(preview.jwtToken).toBe('');
+    const closed = await post('submit', payload());
+    expect(closed.status).toBe(400);
+    expect(await db.attendance.count({ where: { eventId } })).toBe(0);
+    await db.eventCheckpoint.update({
+      where: { id: checkpointId },
+      data: { isOpen: true, version: { increment: 1 } },
+    });
+    const body = payload();
+    expect((await post('submit', body)).status).toBe(200);
+    await db.eventCheckpoint.update({
+      where: { id: checkpointId },
+      data: { isOpen: false, version: { increment: 1 } },
+    });
+    expect((await post('submit', body)).status).toBe(200); // Lost response uses existing receipt.
+    expect((await refs.permanentQr(eventId)).qrUrl).toBe(links[0].qrUrl);
+    await db.eventCheckpoint.update({
+      where: { id: checkpointId },
+      data: { isOpen: true, version: { increment: 1 } },
+    });
+    expect((await post('submit', payload())).status).toBe(200);
+    expect(await db.attendance.count({ where: { eventId } })).toBe(1);
+    expect(await db.certificate.count({ where: { eventId } })).toBe(1);
+    await db.event.update({
+      where: { id: eventId },
+      data: { status: 'CANCELLED' },
+    });
+    expect((await post('submit', payload())).status).toBe(400);
+  });
+  it('stable references never authorize background submission after GPS is enabled', async () => {
+    const refs = new AttendanceQrReferenceService(
+      db as unknown as PrismaService,
+    );
+    reference = (await refs.permanentQr(eventId)).qrUrl.split('/').pop()!;
+    await db.event.update({
+      where: { id: eventId },
+      data: { locationEnabled: true },
+    });
+    const response = await post('submit', payload());
+    expect(response.status).toBe(400);
+    expect((response.body as { code: string }).code).toBe('LOCATION_REQUIRED');
+    expect(await db.certificate.count({ where: { eventId } })).toBe(0);
+  });
 });

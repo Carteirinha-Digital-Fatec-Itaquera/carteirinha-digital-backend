@@ -47,8 +47,11 @@ export class AttendanceController {
   @Get('qr/:reference')
   @Header('Cache-Control', 'no-store')
   async getQrPreview(@Param('reference') reference: string) {
-    const record =
-      await this.attendanceQrReferenceService.resolveReference(reference);
+    const record = await this.attendanceQrReferenceService.resolveReference(
+      reference,
+      undefined,
+      true,
+    );
     return {
       event: {
         id: record.checkpoint.event.id,
@@ -60,6 +63,8 @@ export class AttendanceController {
       checkpoint: {
         type: record.checkpoint.type,
       },
+      available: record.available,
+      permanent: record.permanent,
       locationRequired: record.checkpoint.event.locationEnabled !== false,
       expiresAt: record.expiresAt?.toISOString() ?? null,
       serverTime: new Date().toISOString(),

@@ -1,6 +1,12 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import { createHash, randomBytes } from 'crypto';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import type { Prisma } from '@prisma/client';
+import { JwtService } from '@nestjs/jwt';
+import { loadAuthSecrets } from '../auth/auth.config';
 import { PrismaService } from '../database/prisma.service';
 
 export interface CreateReferenceParams {
@@ -49,9 +55,40 @@ export class AttendanceQrReferenceService {
     };
   }
 
+  async permanentQr(eventId: string) {
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+    });
+    if (!event) throw new NotFoundException('Evento não encontrado');
+    if (event.status === 'CANCELLED')
+      throw new BadRequestException('Evento cancelado');
+    if (!event.attendancePublicReference) {
+      await this.prisma.event.updateMany({
+        where: { id: eventId, attendancePublicReference: null },
+        data: {
+          attendancePublicReference:
+            'ev_' + randomBytes(16).toString('base64url'),
+        },
+      });
+    }
+    const current = await this.prisma.event.findUniqueOrThrow({
+      where: { id: eventId },
+    });
+    return {
+      qrUrl: this.buildQrUrl(current.attendancePublicReference!),
+      permanent: true,
+      checkpointVersion: 0,
+      qrToken: '',
+      expiresAt: null,
+      expiresInSeconds: null,
+      serverTime: new Date().toISOString(),
+    };
+  }
+
   async resolveReference(
     reference: string,
     client: Prisma.TransactionClient = this.prisma,
+    allowClosedPreview = false,
   ) {
     if (
       !reference ||
@@ -66,6 +103,62 @@ export class AttendanceQrReferenceService {
       });
     }
 
+    if (/^ev_[A-Za-z0-9_-]{22}$/.test(reference)) {
+      const event = await client.event.findUnique({
+        where: { attendancePublicReference: reference },
+        include: { checkpoints: true },
+      });
+      if (!event || event.status === 'CANCELLED')
+        throw new BadRequestException({
+          code: 'EVENT_CANCELLED',
+          message: 'Evento indisponível.',
+        });
+      const checkpoint = event.checkpoints.find(
+        (cp) => cp.type === 'CHECK_OUT',
+      );
+      if (!checkpoint)
+        throw new BadRequestException({
+          code: 'CHECKPOINT_CLOSED',
+          message: 'Registro de presença ainda não disponível.',
+        });
+      const available =
+        checkpoint.isOpen &&
+        event.status === 'IN_PROGRESS' &&
+        (!checkpoint.closesAt || checkpoint.closesAt.getTime() > Date.now());
+      if (!available && !allowClosedPreview)
+        throw new BadRequestException({
+          code: 'CHECKPOINT_CLOSED',
+          message:
+            'O registro de presença está fechado. Aguarde a organização liberar.',
+        });
+      // The public link identifies the event; AttendanceService rechecks this version under its existing locks.
+      const jwtToken = available
+        ? await new JwtService().signAsync(
+            {
+              eventId: event.id,
+              checkpoint: 'CHECK_OUT',
+              checkpointVersion: checkpoint.version,
+              manual: true,
+            },
+            {
+              secret: loadAuthSecrets().attendanceQrSecret,
+              jwtid: randomUUID(),
+            },
+          )
+        : '';
+      return {
+        id: event.id,
+        referenceHash: this.hashReference(reference),
+        checkpointId: checkpoint.id,
+        checkpointVersion: checkpoint.version,
+        jwtToken,
+        expiresAt: null,
+        createdAt: event.createdAt,
+        checkpoint: { ...checkpoint, event },
+        permanent: true,
+        available,
+      };
+    }
     const referenceHash = this.hashReference(reference);
     const record = await client.attendanceQrReference.findUnique({
       where: { referenceHash },
@@ -106,6 +199,6 @@ export class AttendanceQrReferenceService {
       });
     }
 
-    return record;
+    return { ...record, permanent: false, available: true };
   }
 }

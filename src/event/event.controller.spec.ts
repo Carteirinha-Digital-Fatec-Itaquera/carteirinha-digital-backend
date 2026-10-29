@@ -1,3 +1,4 @@
+import { AttendanceQrReferenceService } from '../attendance/attendance-qr-reference.service';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
@@ -53,6 +54,17 @@ describe('EventController authorization and validation', () => {
                 .fn()
                 .mockResolvedValue({ id: 7, dueDate: new Date('2030-01-01') }),
             },
+          },
+        },
+        {
+          provide: AttendanceQrReferenceService,
+          useValue: {
+            permanentQr: jest
+              .fn()
+              .mockResolvedValue({
+                qrUrl: 'https://example.test/p/ev_abcdefghijklmnopqrstuv',
+                permanent: true,
+              }),
           },
         },
         { provide: EventService, useValue: eventService },
@@ -369,5 +381,20 @@ describe('EventController authorization and validation', () => {
       '11111111-1111-4111-8111-111111111111',
       7,
     );
+  });
+  it('restricts permanent printable event links to active secretaries', async () => {
+    const url = '/events/11111111-1111-4111-8111-111111111111/attendance-link';
+    await request(app.getHttpServer() as Server)
+      .get(url)
+      .expect(401);
+    await request(app.getHttpServer() as Server)
+      .get(url)
+      .auth(studentToken, { type: 'bearer' })
+      .expect(403);
+    const result = await request(app.getHttpServer() as Server)
+      .get(url)
+      .auth(secretaryToken, { type: 'bearer' })
+      .expect(200);
+    expect(result.body.permanent).toBe(true);
   });
 });
