@@ -70,279 +70,283 @@ export class AttendanceService {
     user: TokenPayload | null,
     position?: PositionEvidence,
     visitorParticipantId?: string,
+    transaction?: Prisma.TransactionClient,
+    offlineWithoutLocation = false,
   ): Promise<AttendanceScanResponse> {
     const claims = await this.verifyQr(qrToken);
-    return this.prisma.$transaction(
-      async (tx) => {
-        const participant = visitorParticipantId
-          ? await tx.eventParticipant.findUnique({
-              where: { id: visitorParticipantId },
-            })
-          : null;
-        if (
-          visitorParticipantId &&
-          (!participant?.visitorId || participant.eventId !== claims.eventId)
-        )
-          throw new ForbiddenException('Participação inválida');
-        if (!participant && !user)
-          throw new UnauthorizedException('Identidade obrigatória.');
-        const student = participant
-          ? {
-              ra: null,
-              accountId: null,
-              name: participant.name,
-              course: participant.course || 'Participante/ouvinte',
-            }
-          : await this.activeStudent(tx, user!);
-        // Serializa o par mesmo antes de existir a linha. A chave única permanece no banco.
-        // Colisão de hash apenas serializa pares extras; não altera a identidade consultada.
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify([claims.eventId, participant?.id || student.ra])}, 0))::text`;
-        // Mesma ordem de escrita da #25: checkpoint antes de evento. FOR SHARE impede
-        // fechamento/reabertura enquanto validamos e gravamos a presença.
-        const checkpoints = await tx.$queryRaw<EventCheckpoint[]>`
+    const operation = async (
+      tx: Prisma.TransactionClient,
+    ): Promise<AttendanceScanResponse> => {
+      const participant = visitorParticipantId
+        ? await tx.eventParticipant.findUnique({
+            where: { id: visitorParticipantId },
+          })
+        : null;
+      if (
+        visitorParticipantId &&
+        (!participant?.visitorId || participant.eventId !== claims.eventId)
+      )
+        throw new ForbiddenException('Participação inválida');
+      if (!participant && !user)
+        throw new UnauthorizedException('Identidade obrigatória.');
+      const student = participant
+        ? {
+            ra: null,
+            accountId: null,
+            name: participant.name,
+            course: participant.course || 'Participante/ouvinte',
+          }
+        : await this.activeStudent(tx, user!);
+      // Serializa o par mesmo antes de existir a linha. A chave única permanece no banco.
+      // Colisão de hash apenas serializa pares extras; não altera a identidade consultada.
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify([claims.eventId, participant?.id || student.ra])}, 0))::text`;
+      // Mesma ordem de escrita da #25: checkpoint antes de evento. FOR SHARE impede
+      // fechamento/reabertura enquanto validamos e gravamos a presença.
+      const checkpoints = await tx.$queryRaw<EventCheckpoint[]>`
         SELECT * FROM "EventCheckpoint"
         WHERE "eventId" = ${claims.eventId} AND "type" = ${claims.checkpoint}::"CheckpointType"
         FOR SHARE`;
-        const events = await tx.$queryRaw<
-          Event[]
-        >`SELECT * FROM "Event" WHERE "id" = ${claims.eventId} FOR SHARE`;
-        const event = events[0];
-        const checkpoint = checkpoints[0];
-        if (!event) throw new NotFoundException('Evento não encontrado');
-        if (
-          event.attendanceMode === 'FINAL_ONLY' &&
-          claims.checkpoint === 'CHECK_IN'
-        )
-          throw new BadRequestException(
-            'Use o QR de confirmação de presença ao final da atividade.',
-          );
-        if (event.status === 'CANCELLED')
-          throw new ConflictException({
-            statusCode: 409,
-            error: 'Conflict',
-            code: 'EVENT_CANCELLED',
-            message: 'Evento cancelado',
+      const events = await tx.$queryRaw<
+        Event[]
+      >`SELECT * FROM "Event" WHERE "id" = ${claims.eventId} FOR SHARE`;
+      const event = events[0];
+      const checkpoint = checkpoints[0];
+      if (!event) throw new NotFoundException('Evento não encontrado');
+      if (
+        event.attendanceMode === 'FINAL_ONLY' &&
+        claims.checkpoint === 'CHECK_IN'
+      )
+        throw new BadRequestException(
+          'Use o QR de confirmação de presença ao final da atividade.',
+        );
+      if (event.status === 'CANCELLED')
+        throw new ConflictException({
+          statusCode: 409,
+          error: 'Conflict',
+          code: 'EVENT_CANCELLED',
+          message: 'Evento cancelado',
+        });
+      if (!checkpoint || !checkpoint.isOpen || event.status !== 'IN_PROGRESS') {
+        throw new BadRequestException({
+          statusCode: 400,
+          error: 'Bad Request',
+          code: 'CHECKPOINT_CLOSED',
+          message: 'Checkpoint encerrado',
+        });
+      }
+      if (checkpoint.version !== claims.checkpointVersion) {
+        throw new BadRequestException({
+          statusCode: 400,
+          error: 'Bad Request',
+          code: 'QR_VERSION_MISMATCH',
+          message: 'QR Code inválido para este período',
+        });
+      }
+      const now = new Date();
+      if (checkpoint.closesAt && checkpoint.closesAt <= now)
+        throw new BadRequestException({
+          code: 'WINDOW_CLOSED',
+          message: 'A janela de registro foi encerrada.',
+        });
+      if (participant && !event.visitorsAllowed)
+        throw new ForbiddenException('Atividade não permite visitantes.');
+      if (event.seriesId) {
+        const [series] = await tx.$queryRaw<
+          { purgedAt: Date | null; retentionAt: Date }[]
+        >`SELECT "purgedAt", "retentionAt" FROM "EventSeries" WHERE "id" = ${event.seriesId} FOR SHARE`;
+        if (!series || series.purgedAt || series.retentionAt <= now)
+          throw new ForbiddenException('Período operacional encerrado.');
+        if (participant?.visitorId) {
+          const visitor = await tx.visitorRegistration.findUnique({
+            where: { id: participant.visitorId },
           });
-        if (
-          !checkpoint ||
-          !checkpoint.isOpen ||
-          event.status !== 'IN_PROGRESS'
-        ) {
-          throw new BadRequestException({
-            statusCode: 400,
-            error: 'Bad Request',
-            code: 'CHECKPOINT_CLOSED',
-            message: 'Checkpoint encerrado',
-          });
+          if (
+            !(visitor?.identifiedAt || visitor?.verifiedAt) ||
+            visitor.seriesId !== event.seriesId
+          )
+            throw new ForbiddenException(
+              'Inscrição inválida para esta edição.',
+            );
         }
-        if (checkpoint.version !== claims.checkpointVersion) {
-          throw new BadRequestException({
-            statusCode: 400,
-            error: 'Bad Request',
-            code: 'QR_VERSION_MISMATCH',
-            message: 'QR Code inválido para este período',
-          });
-        }
-        const now = new Date();
-        if (checkpoint.closesAt && checkpoint.closesAt <= now)
-          throw new BadRequestException({
-            code: 'WINDOW_CLOSED',
-            message: 'A janela de registro foi encerrada.',
-          });
-        if (participant && !event.visitorsAllowed)
-          throw new ForbiddenException('Atividade não permite visitantes.');
-        if (event.seriesId) {
-          const [series] = await tx.$queryRaw<
-            { purgedAt: Date | null; retentionAt: Date }[]
-          >`SELECT "purgedAt", "retentionAt" FROM "EventSeries" WHERE "id" = ${event.seriesId} FOR SHARE`;
-          if (!series || series.purgedAt || series.retentionAt <= now)
-            throw new ForbiddenException('Período operacional encerrado.');
-          if (participant?.visitorId) {
-            const visitor = await tx.visitorRegistration.findUnique({
-              where: { id: participant.visitorId },
-            });
-            if (
-              !(visitor?.identifiedAt || visitor?.verifiedAt) ||
-              visitor.seriesId !== event.seriesId
-            )
-              throw new ForbiddenException(
-                'Inscrição inválida para esta edição.',
-              );
-          }
-        }
-        const geoPolicy =
-          event.locationEnabled === false
-            ? null
-            : assertGeoPolicy(event.geoPolicy);
-        const identityParticipant =
-          participant ||
-          (await tx.eventParticipant.upsert({
-            where: {
-              eventId_accountId: {
-                eventId: event.id,
-                accountId: student.accountId!,
-              },
-            },
-            create: {
+      }
+      if (offlineWithoutLocation && event.locationEnabled !== false)
+        throw new BadRequestException({
+          code: 'LOCATION_REQUIRED',
+          message: 'Volte ao aplicativo para obter sua localização atual.',
+        });
+      const geoPolicy =
+        event.locationEnabled === false
+          ? null
+          : assertGeoPolicy(event.geoPolicy);
+      const identityParticipant =
+        participant ||
+        (await tx.eventParticipant.upsert({
+          where: {
+            eventId_accountId: {
               eventId: event.id,
-              accountId: student.accountId,
-              name: student.name,
-              course: student.course,
+              accountId: student.accountId!,
             },
-            update: {},
-          }));
-        let evidence: Prisma.InputJsonValue | undefined;
-        if (geoPolicy) {
-          if (!position?.challengeId)
-            throw new BadRequestException({
-              code: 'LOCATION_REQUIRED',
-              message: 'Obtenha sua localização para confirmar.',
-            });
-          const consumed = await tx.presenceChallenge.deleteMany({
-            where: {
-              id: position.challengeId,
-              eventId: event.id,
-              identity: participant?.id || student.accountId!,
-              checkpoint: claims.checkpoint,
-              checkpointVersion: checkpoint.version,
-              expiresAt: { gt: now },
-            },
-          });
-          if (consumed.count !== 1)
-            throw new BadRequestException('Desafio de localização inválido.');
-          evidence = {
-            ...evaluatePosition(geoPolicy, position),
-            policy: { ...geoPolicy },
-            recordedAt: now.toISOString(),
-          };
-        }
-        // Uma requisição pode esperar por locks e vencer durante a espera.
-        if (claims.exp !== undefined && claims.exp * 1000 <= now.getTime())
-          this.expiredQr();
-        const where = participant
-          ? { participantId: participant.id }
-          : {
-              eventId_studentRa: { eventId: event.id, studentRa: student.ra! },
-            };
-        const previous = await tx.attendance.findUnique({ where });
-        if (
-          previous &&
-          !participant &&
-          (previous.studentAccountId !== student.accountId ||
-            previous.studentRefRa !== student.ra)
-        ) {
-          throw new ConflictException({
-            statusCode: 409,
-            error: 'Conflict',
-            code: 'RA_REUSE_HISTORY_CONFLICT',
-            message: 'Histórico vinculado a outra conta. Procure a Secretaria.',
-          });
-        }
-        if (claims.checkpoint === 'CHECK_IN') {
-          if (previous?.checkInAt)
-            return this.duplicate('ALREADY_CHECKED_IN', now);
-          const data = {
-            studentRa: student.ra,
-            studentRefRa: student.ra,
-            studentAccountId: student.accountId,
-            studentName: student.name,
-            studentCourse: student.course,
-            ...(identityParticipant
-              ? { participantId: identityParticipant.id }
-              : {}),
-            ...(evidence ? { evidence } : {}),
-            checkInAt: now,
-            status: 'CHECKED_IN' as const,
-          };
-          if (previous) {
-            await tx.attendance.update({ where, data });
-          } else {
-            await tx.attendance.create({
-              data: { ...data, eventId: event.id },
-            });
-          }
-          return {
-            success: true,
-            type: 'CHECK_IN',
-            eventTitle: event.title,
-            timestamp: now.toISOString(),
-            status: 'CHECKED_IN',
-            message: 'Entrada registrada com sucesso!',
-          };
-        }
-        if (event.attendanceMode === 'FINAL_ONLY' && !previous?.checkOutAt) {
-          const data = {
-            checkOutAt: now,
-            status: 'CONFIRMED' as const,
-            participantId: identityParticipant.id,
-            ...(evidence ? { evidence } : {}),
-          };
-          const confirmed = previous
-            ? await tx.attendance.update({ where, data })
-            : await tx.attendance.create({
-                data: {
-                  ...data,
-                  eventId: event.id,
-                  studentRa: student.ra,
-                  studentRefRa: student.ra,
-                  studentAccountId: student.accountId,
-                  studentName: student.name,
-                  studentCourse: student.course,
-                },
-              });
-          if (event.certificateEnabled)
-            await this.certificateService.issueCertificate(confirmed.id, tx);
-          return {
-            success: true,
-            type: 'CHECK_OUT',
-            eventTitle: event.title,
-            timestamp: now.toISOString(),
-            status: 'CONFIRMED',
-            message:
-              'Presença confirmada ao final da atividade. Consulte seus certificados.',
-          };
-        }
-        if (event.attendanceMode !== 'FINAL_ONLY' && !previous?.checkInAt) {
+          },
+          create: {
+            eventId: event.id,
+            accountId: student.accountId,
+            name: student.name,
+            course: student.course,
+          },
+          update: {},
+        }));
+      let evidence: Prisma.InputJsonValue | undefined;
+      if (geoPolicy) {
+        if (!position?.challengeId)
           throw new BadRequestException({
-            statusCode: 400,
-            error: 'Bad Request',
-            code: 'CHECK_IN_REQUIRED',
-            message: 'Não é possível registrar saída sem entrada prévia',
+            code: 'LOCATION_REQUIRED',
+            message: 'Obtenha sua localização para confirmar.',
           });
-        }
-        if (previous?.checkOutAt) {
-          if (event.certificateEnabled) {
-            await this.certificateService.issueCertificate(previous.id, tx);
-          }
-          return this.duplicate('ALREADY_CHECKED_OUT', now);
-        }
-        await tx.attendance.update({
-          where,
-          data: {
-            checkOutAt: now,
-            status: 'CONFIRMED',
-            participantId: identityParticipant.id,
-            ...(evidence ? { evidence } : {}),
+        const consumed = await tx.presenceChallenge.deleteMany({
+          where: {
+            id: position.challengeId,
+            eventId: event.id,
+            identity: participant?.id || student.accountId!,
+            checkpoint: claims.checkpoint,
+            checkpointVersion: checkpoint.version,
+            expiresAt: { gt: now },
           },
         });
-        if (event.certificateEnabled) {
-          await this.certificateService.issueCertificate(previous!.id, tx);
+        if (consumed.count !== 1)
+          throw new BadRequestException('Desafio de localização inválido.');
+        evidence = {
+          ...evaluatePosition(geoPolicy, position),
+          policy: { ...geoPolicy },
+          recordedAt: now.toISOString(),
+        };
+      }
+      // Uma requisição pode esperar por locks e vencer durante a espera.
+      if (claims.exp !== undefined && claims.exp * 1000 <= now.getTime())
+        this.expiredQr();
+      const where = participant
+        ? { participantId: participant.id }
+        : {
+            eventId_studentRa: { eventId: event.id, studentRa: student.ra! },
+          };
+      const previous = await tx.attendance.findUnique({ where });
+      if (
+        previous &&
+        !participant &&
+        (previous.studentAccountId !== student.accountId ||
+          previous.studentRefRa !== student.ra)
+      ) {
+        throw new ConflictException({
+          statusCode: 409,
+          error: 'Conflict',
+          code: 'RA_REUSE_HISTORY_CONFLICT',
+          message: 'Histórico vinculado a outra conta. Procure a Secretaria.',
+        });
+      }
+      if (claims.checkpoint === 'CHECK_IN') {
+        if (previous?.checkInAt)
+          return this.duplicate('ALREADY_CHECKED_IN', now);
+        const data = {
+          studentRa: student.ra,
+          studentRefRa: student.ra,
+          studentAccountId: student.accountId,
+          studentName: student.name,
+          studentCourse: student.course,
+          ...(identityParticipant
+            ? { participantId: identityParticipant.id }
+            : {}),
+          ...(evidence ? { evidence } : {}),
+          checkInAt: now,
+          status: 'CHECKED_IN' as const,
+        };
+        if (previous) {
+          await tx.attendance.update({ where, data });
+        } else {
+          await tx.attendance.create({
+            data: { ...data, eventId: event.id },
+          });
         }
+        return {
+          success: true,
+          type: 'CHECK_IN',
+          eventTitle: event.title,
+          timestamp: now.toISOString(),
+          status: 'CHECKED_IN',
+          message: 'Entrada registrada com sucesso!',
+        };
+      }
+      if (event.attendanceMode === 'FINAL_ONLY' && !previous?.checkOutAt) {
+        const data = {
+          checkOutAt: now,
+          status: 'CONFIRMED' as const,
+          participantId: identityParticipant.id,
+          ...(evidence ? { evidence } : {}),
+        };
+        const confirmed = previous
+          ? await tx.attendance.update({ where, data })
+          : await tx.attendance.create({
+              data: {
+                ...data,
+                eventId: event.id,
+                studentRa: student.ra,
+                studentRefRa: student.ra,
+                studentAccountId: student.accountId,
+                studentName: student.name,
+                studentCourse: student.course,
+              },
+            });
+        if (event.certificateEnabled)
+          await this.certificateService.issueCertificate(confirmed.id, tx);
         return {
           success: true,
           type: 'CHECK_OUT',
           eventTitle: event.title,
           timestamp: now.toISOString(),
           status: 'CONFIRMED',
-          message: 'Presença confirmada com sucesso!',
+          message:
+            'Presença confirmada ao final da atividade. Consulte seus certificados.',
         };
-      },
-      {
-        isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
-        maxWait: 5000,
-        timeout: 10000,
-      },
-    );
+      }
+      if (event.attendanceMode !== 'FINAL_ONLY' && !previous?.checkInAt) {
+        throw new BadRequestException({
+          statusCode: 400,
+          error: 'Bad Request',
+          code: 'CHECK_IN_REQUIRED',
+          message: 'Não é possível registrar saída sem entrada prévia',
+        });
+      }
+      if (previous?.checkOutAt) {
+        if (event.certificateEnabled) {
+          await this.certificateService.issueCertificate(previous.id, tx);
+        }
+        return this.duplicate('ALREADY_CHECKED_OUT', now);
+      }
+      await tx.attendance.update({
+        where,
+        data: {
+          checkOutAt: now,
+          status: 'CONFIRMED',
+          participantId: identityParticipant.id,
+          ...(evidence ? { evidence } : {}),
+        },
+      });
+      if (event.certificateEnabled) {
+        await this.certificateService.issueCertificate(previous!.id, tx);
+      }
+      return {
+        success: true,
+        type: 'CHECK_OUT',
+        eventTitle: event.title,
+        timestamp: now.toISOString(),
+        status: 'CONFIRMED',
+        message: 'Presença confirmada com sucesso!',
+      };
+    };
+    if (transaction) return operation(transaction);
+    return this.prisma.$transaction(operation, {
+      isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+      maxWait: 5000,
+      timeout: 10000,
+    });
   }
 
   async findMine(user: TokenPayload): Promise<MyAttendanceView[]> {

@@ -72,6 +72,7 @@ describe('Attendance HTTP authorization and DTO', () => {
         type: 'CHECK_IN',
         event: {
           id,
+          locationEnabled: false,
           title: 'Palestra Teste',
           speaker: 'Palestrante',
           location: 'Sala 1',
@@ -206,8 +207,21 @@ describe('Attendance HTTP authorization and DTO', () => {
         checkpoint: {
           type: 'CHECK_IN',
         },
-        expiresAt: expect.any(String),
-        serverTime: expect.any(String),
+        expiresAt: expect.any(String) as unknown,
+        serverTime: expect.any(String) as unknown,
+        locationRequired: false,
+      });
+    });
+    it('explicitly marks enabled GPS even if the policy is missing', async () => {
+      qrRefService.resolveReference.mockResolvedValue({
+        checkpoint: { type: 'CHECK_IN', event: { locationEnabled: true } },
+      });
+      const response = await request(app.getHttpServer() as Server)
+        .get('/attendances/qr/valid-ref-1234567890')
+        .auth(student, { type: 'bearer' })
+        .expect(200);
+      expect(response.body as unknown).toMatchObject({
+        locationRequired: true,
       });
     });
   });
