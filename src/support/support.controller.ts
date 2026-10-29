@@ -74,6 +74,20 @@ export class SupportController {
   ) {
     return this.service.act(req.user, id, 'CLOSE', body);
   }
+  @Post(':id/cancel') cancel(
+    @Req() req: Request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: SupportActionDto,
+  ) {
+    return this.service.act(req.user, id, 'CANCEL', body);
+  }
+  @Post(':id/delete') remove(
+    @Req() req: Request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: SupportActionDto,
+  ) {
+    return this.service.act(req.user, id, 'DELETE', body);
+  }
   @Post(':id/reopen') reopen(
     @Req() req: Request,
     @Param('id', ParseUUIDPipe) id: string,
@@ -90,6 +104,20 @@ export class SupportController {
 @UseInterceptors(NoStoreInterceptor)
 export class SupportAdminController {
   constructor(private readonly service: SupportService) {}
+  @Post('tickets/:id/cancel') cancel(
+    @Req() req: Request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: SupportActionDto,
+  ) {
+    return this.service.act(req.user, id, 'CANCEL', body, true);
+  }
+  @Post('tickets/:id/delete') remove(
+    @Req() req: Request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: SupportActionDto,
+  ) {
+    return this.service.act(req.user, id, 'DELETE', body, true);
+  }
   @Get('summary') summary(@Req() req: Request) {
     return this.service.summary(req.user);
   }

@@ -436,6 +436,121 @@ const url = process.env.SUPPORT_TEST_DATABASE_URL;
         authorRole: 'SECRETARY',
       }).expect(400);
     });
+    it.each(['student', 'secretary'])(
+      'allows %s to cancel an assigned ticket and preserves audit without claiming resolution',
+      async (role) => {
+        let ticket = await create();
+        ticket = (
+          await post(
+            '/support/admin/tickets/' + ticket.id + '/claim',
+            action(ticket, 'claim'),
+            admin,
+          ).expect(201)
+        ).body as TicketBody;
+        const path =
+          role === 'student' ? '/support/tickets/' : '/support/admin/tickets/';
+        const token = role === 'student' ? student : admin2;
+        const body = action(ticket, 'cancel', {
+          reason: 'Solicitação aberta por engano.',
+          confirmed: true,
+        });
+        await post(
+          path + ticket.id + '/cancel',
+          { ...body, confirmed: false },
+          token,
+        ).expect(400);
+        await post(path + ticket.id + '/cancel', body, token).expect(201);
+        await post(path + ticket.id + '/cancel', body, token).expect(201);
+        const saved = await db.supportTicket.findUniqueOrThrow({
+          where: { id: ticket.id },
+        });
+        expect(saved.status).toBe('CLOSED');
+        expect(saved.resolvedAt).toBeNull();
+        expect(saved.closeReason).toBe('CANCELLED_BY_' + role.toUpperCase());
+        expect(
+          await db.supportAudit.count({
+            where: { ticketId: ticket.id, action: 'CANCEL' },
+          }),
+        ).toBe(1);
+        expect(
+          (
+            (await get('/support/admin/summary', admin)).body as {
+              pending: number;
+            }
+          ).pending,
+        ).toBe(0);
+      },
+    );
+    it.each(['student', 'secretary'])(
+      'allows %s to delete a ticket from both flows while retaining its audit',
+      async (role) => {
+        const ticket = await create();
+        const path =
+          role === 'student' ? '/support/tickets/' : '/support/admin/tickets/';
+        const token = role === 'student' ? student : admin;
+        const body = action(ticket, 'delete', {
+          reason: 'Registro duplicado por engano.',
+          confirmed: true,
+        });
+        await post(
+          '/support/tickets/' + ticket.id + '/delete',
+          body,
+          other,
+        ).expect(404);
+        await post(
+          path + ticket.id + '/delete',
+          { ...body, expectedVersion: 99 },
+          token,
+        ).expect(409);
+        await post(path + ticket.id + '/delete', body, token).expect(201);
+        await post(path + ticket.id + '/delete', body, token).expect(201);
+        await get('/support/tickets/' + ticket.id).expect(404);
+        await get('/support/admin/tickets/' + ticket.id, admin).expect(404);
+        expect(
+          ((await get('/support/tickets/me')).body as { items: TicketBody[] })
+            .items,
+        ).toEqual([]);
+        expect(
+          (
+            (await get('/support/admin/tickets', admin)).body as {
+              items: TicketBody[];
+            }
+          ).items,
+        ).toEqual([]);
+        expect(
+          (
+            (await get('/support/admin/summary', admin)).body as {
+              pending: number;
+            }
+          ).pending,
+        ).toBe(0);
+        expect(
+          (
+            await db.supportTicket.findUniqueOrThrow({
+              where: { id: ticket.id },
+            })
+          ).deletedAt,
+        ).not.toBeNull();
+        expect(
+          await db.supportAudit.count({
+            where: { ticketId: ticket.id, action: 'DELETE' },
+          }),
+        ).toBe(1);
+        expect(
+          await db.supportMessage.count({ where: { ticketId: ticket.id } }),
+        ).toBe(1);
+        await post(
+          '/support/tickets/' + ticket.id + '/reopen',
+          action(ticket, 'reopen', { message: 'Reabrir removido.' }),
+        ).expect(404);
+        await post('/support/tickets/' + ticket.id + '/read', {
+          version: 1,
+        }).expect(404);
+        await get('/support/admin/tickets?cursor=' + ticket.id, admin).expect(
+          400,
+        );
+      },
+    );
     it('enforces opening and reply rate limits with idempotent replay', async () => {
       const first = await create();
       for (let i = 0; i < 4; i++) await create();

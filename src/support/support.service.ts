@@ -47,7 +47,9 @@ type Action =
   | 'STATUS'
   | 'CLOSE'
   | 'REOPEN'
-  | 'REDACT';
+  | 'REDACT'
+  | 'CANCEL'
+  | 'DELETE';
 const hash = (value: unknown) =>
   createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const text = (value: string | undefined, min: number, max: number) => {
@@ -277,6 +279,7 @@ export class SupportService {
     return this.prisma.$transaction(async (tx) => {
       const actor = await this.actor(tx, user, admin);
       const where: Prisma.SupportTicketWhereInput = {
+        deletedAt: null,
         ...this.scope(actor),
         ...(query.status ? { status: query.status as SupportStatus } : {}),
         ...(query.category
@@ -337,7 +340,7 @@ export class SupportService {
       if (
         query.cursor &&
         !(await tx.supportTicket.count({
-          where: { id: query.cursor, ...this.scope(actor) },
+          where: { id: query.cursor, deletedAt: null, ...this.scope(actor) },
         }))
       )
         throw new BadRequestException('Página indisponível. Atualize a lista.');
@@ -375,7 +378,7 @@ export class SupportService {
     return this.prisma.$transaction(async (tx) => {
       const actor = await this.actor(tx, user, admin);
       const ticket = await tx.supportTicket.findFirst({
-        where: { id, ...this.scope(actor) },
+        where: { id, deletedAt: null, ...this.scope(actor) },
         select: { ...summarySelect, requestedField: true, proposedValue: true },
       });
       if (!ticket) throw new NotFoundException('Solicitação não encontrada.');
@@ -418,7 +421,7 @@ export class SupportService {
     return this.prisma.$transaction(async (tx) => {
       await this.actor(tx, user, true);
       const pending = await tx.supportTicket.count({
-        where: { status: { in: ['OPEN', 'IN_PROGRESS'] } },
+        where: { deletedAt: null, status: { in: ['OPEN', 'IN_PROGRESS'] } },
       });
       return { pending };
     });
@@ -462,7 +465,7 @@ export class SupportService {
     return this.prisma.$transaction(async (tx) => {
       const actor = await this.actor(tx, user, admin);
       const ticket = await tx.supportTicket.findFirst({
-        where: { id, ...this.scope(actor) },
+        where: { id, deletedAt: null, ...this.scope(actor) },
         select: { version: true },
       });
       if (!ticket) throw new NotFoundException('Solicitação não encontrada.');
@@ -496,7 +499,8 @@ export class SupportService {
         const ticket = await tx.supportTicket.findFirst({
           where: { id, ...this.scope(actor) },
         });
-        if (!ticket) throw new NotFoundException('Solicitação não encontrada.');
+        if (!ticket || (ticket.deletedAt && action !== 'DELETE'))
+          throw new NotFoundException('Solicitação não encontrada.');
         const fingerprint = hash([
           action,
           actor.id,
@@ -526,6 +530,8 @@ export class SupportService {
             actor,
           );
         }
+        if (ticket.deletedAt)
+          throw new NotFoundException('Solicitação não encontrada.');
         if (ticket.version !== dto.expectedVersion)
           throw new ConflictException(
             'Solicitação alterada por outro atendimento. Atualize antes de continuar.',
@@ -592,6 +598,19 @@ export class SupportService {
             throw new BadRequestException(
               'Transição inválida ou confirmação da solução pendente.',
             );
+        } else if (action === 'CANCEL' || action === 'DELETE') {
+          if (dto.confirmed !== true)
+            throw new BadRequestException(
+              'Confirme a ação antes de continuar.',
+            );
+          if (action === 'CANCEL' && terminal)
+            throw new ConflictException('Solicitação já finalizada.');
+          text(dto.reason, 3, 1000);
+          status = 'CLOSED';
+          data.closedAt = new Date();
+          data.resolvedAt = null;
+          data.closeReason = `${action === 'CANCEL' ? 'CANCELLED' : 'DELETED'}_BY_${actor.role}`;
+          if (action === 'DELETE') data.deletedAt = new Date();
         } else if (action === 'CLOSE') {
           if (
             actor.role !== 'STUDENT' ||
