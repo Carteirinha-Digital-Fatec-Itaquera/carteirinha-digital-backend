@@ -143,7 +143,7 @@ export class EventService {
   async findAll(query: EventQueryDto, role: UserRole) {
     const filters: Prisma.EventWhereInput[] = [];
 
-    if (role === 'student') {
+    if (role === 'student' || role === 'employee') {
       filters.push({
         OR: [
           { status: EventStatus.IN_PROGRESS },
@@ -176,7 +176,11 @@ export class EventService {
       include: eventInclude,
     });
 
-    if (!event || (role === 'student' && event.status === 'CANCELLED')) {
+    if (
+      !event ||
+      ((role === 'student' || role === 'employee') &&
+        event.status === 'CANCELLED')
+    ) {
       throw new NotFoundException('Evento não encontrado');
     }
 

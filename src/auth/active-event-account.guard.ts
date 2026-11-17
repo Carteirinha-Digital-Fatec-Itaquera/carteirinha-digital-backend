@@ -12,6 +12,8 @@ export class ActiveEventAccountGuard extends SecretaryActiveGuard {
     const user = context
       .switchToHttp()
       .getRequest<{ user?: TokenPayload }>().user;
-    return user?.role === 'student' ? true : super.canActivate(context);
+    return user?.role === 'student' || user?.role === 'employee'
+      ? true
+      : super.canActivate(context);
   }
 }

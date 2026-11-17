@@ -221,7 +221,13 @@ export class ReconcileDeliveryDto {
 export class ManualCertificateDto {
   @IsOptional() @IsUUID('4') requestId?: string;
   @IsOptional() @IsUUID() expectedAccountId?: string;
-  @IsIn(['STUDENT', 'EXTERNAL']) identityType: 'STUDENT' | 'EXTERNAL';
+  @IsIn(['STUDENT', 'EXTERNAL', 'EMPLOYEE']) identityType:
+    | 'STUDENT'
+    | 'EXTERNAL'
+    | 'EMPLOYEE';
+  @ValidateIf((dto: ManualCertificateDto) => dto.identityType === 'EMPLOYEE')
+  @IsUUID()
+  employeeId?: string;
   @ValidateIf((dto: ManualCertificateDto) => dto.identityType === 'STUDENT')
   @IsString()
   @Length(1, 40)

@@ -37,7 +37,7 @@ export class CertificateVerificationController {
  */
 @Controller('certificates')
 @UseGuards(AuthGuard, RolesGuard)
-@Roles('student')
+@Roles('student', 'employee')
 export class CertificateController {
   constructor(private readonly certificateService: CertificateService) {}
 

@@ -54,7 +54,7 @@ export class EventController {
     return this.eventService.create(dto, Number(request.user.sub));
   }
   @Get()
-  @Roles('student', 'secretary')
+  @Roles('student', 'employee', 'secretary')
   findAll(
     @Query() query: EventQueryDto,
     @Request() request: AuthenticatedRequest,
@@ -135,7 +135,7 @@ export class EventController {
   }
 
   @Get(':id')
-  @Roles('student', 'secretary')
+  @Roles('student', 'employee', 'secretary')
   findOne(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Request() request: AuthenticatedRequest,

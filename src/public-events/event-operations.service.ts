@@ -415,6 +415,92 @@ export class EventOperationsService {
   ) {
     return this.certificates.reissuePreview(id, dto);
   }
+  async searchEmployees(query: string) {
+    const q = (query ?? '').trim();
+    if (q.length < 2) return [];
+    const normalized = q
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+    const rows = await this.prisma.employee.findMany({
+      where: {
+        archivedAt: null,
+        OR: [
+          { searchText: { contains: normalized, mode: 'insensitive' } },
+          { registrationNumber: { contains: q, mode: 'insensitive' } },
+        ],
+      },
+      select: {
+        id: true,
+        accountId: true,
+        name: true,
+        socialName: true,
+        registrationNumber: true,
+        accountStatus: true,
+      },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      take: 25,
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      accountId: r.accountId,
+      name: r.name,
+      socialName: r.socialName,
+      displayName: r.socialName?.trim() || r.name,
+      registrationNumber: r.registrationNumber,
+      accountStatus: r.accountStatus,
+    }));
+  }
+
+  async employeeHistory(employeeId: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: {
+        id: true,
+        accountId: true,
+        name: true,
+        socialName: true,
+        registrationNumber: true,
+        accountStatus: true,
+      },
+    });
+    if (!employee) throw new NotFoundException('Funcionário não encontrado.');
+
+    const participants = await this.prisma.eventParticipant.findMany({
+      where: { employeeAccountId: employee.accountId },
+      include: {
+        event: {
+          select: { id: true, title: true, startsAt: true, endsAt: true },
+        },
+        attendance: {
+          select: { id: true, status: true, checkInAt: true, checkOutAt: true },
+        },
+        certificate: {
+          select: {
+            id: true,
+            version: true,
+            verificationCode: true,
+            issuedAt: true,
+            revokedAt: true,
+          },
+        },
+      },
+      orderBy: [{ createdAt: 'desc' }],
+    });
+
+    return {
+      employee: {
+        id: employee.id,
+        accountId: employee.accountId,
+        displayName: employee.socialName?.trim() || employee.name,
+        registrationNumber: employee.registrationNumber,
+        accountStatus: employee.accountStatus,
+      },
+      participations: participants,
+    };
+  }
+
   async participants(eventId: string) {
     const list = await this.prisma.eventParticipant.findMany({
       where: { eventId },
@@ -425,6 +511,7 @@ export class EventOperationsService {
         role: true,
         visitorId: true,
         accountId: true,
+        employeeAccountId: true,
         attendance: {
           select: { id: true, checkInAt: true, checkOutAt: true, status: true },
         },
@@ -459,6 +546,7 @@ export class EventOperationsService {
           role: 'ATTENDEE',
           visitorId: null,
           accountId: att.studentAccountId,
+          employeeAccountId: null,
           attendance: {
             id: att.id,
             checkInAt: att.checkInAt,
@@ -552,6 +640,7 @@ export class EventOperationsService {
           eventId,
           secretaryId,
           dto.identityType,
+          dto.employeeId,
           dto.ra?.trim(),
           dto.expectedAccountId,
           dto.name?.trim(),
@@ -634,12 +723,48 @@ export class EventOperationsService {
           throw new ConflictException(
             'O cadastro mudou. Busque e selecione o aluno novamente.',
           );
-        if (!['STUDENT', 'EXTERNAL'].includes(dto.identityType))
+        if (!['STUDENT', 'EXTERNAL', 'EMPLOYEE'].includes(dto.identityType))
           throw new BadRequestException('Identificação inválida.');
+
+        const employee =
+          dto.identityType === 'EMPLOYEE'
+            ? await (async () => {
+                if (!dto.employeeId)
+                  throw new BadRequestException('Informe o funcionário.');
+                await tx.$queryRaw`SELECT "id" FROM "Employee" WHERE "id" = ${dto.employeeId} FOR SHARE`;
+                const emp = await tx.employee.findUnique({
+                  where: { id: dto.employeeId },
+                });
+                if (
+                  !emp ||
+                  emp.archivedAt !== null ||
+                  emp.accountStatus !== 'ACTIVE'
+                ) {
+                  throw new BadRequestException(
+                    'Funcionário não encontrado ou bloqueado.',
+                  );
+                }
+                if (
+                  dto.expectedAccountId &&
+                  emp.accountId !== dto.expectedAccountId
+                ) {
+                  throw new ConflictException(
+                    'O cadastro mudou. Busque e selecione o funcionário novamente.',
+                  );
+                }
+                return emp;
+              })()
+            : null;
+
         let visitorId: string | null = null;
-        let name = student?.socialName || student?.name || '';
-        let course = student?.course || null;
-        let email = student?.email || '';
+        let name =
+          employee?.socialName?.trim() ||
+          employee?.name ||
+          student?.socialName ||
+          student?.name ||
+          '';
+        let course = employee ? null : student?.course || null;
+        let email = employee?.email || student?.email || '';
         if (dto.identityType === 'EXTERNAL') {
           const cpf = dto.cpf?.replace(/\D/g, '') || '';
           email = dto.email?.trim().toLowerCase() || '';
@@ -738,12 +863,20 @@ export class EventOperationsService {
             'Cadastro sem e-mail válido para envio.',
           );
         const participant = await tx.eventParticipant.upsert({
-          where: student
-            ? { eventId_accountId: { eventId, accountId: student.accountId } }
-            : { eventId_visitorId: { eventId, visitorId: visitorId! } },
+          where: employee
+            ? {
+                eventId_employeeAccountId: {
+                  eventId,
+                  employeeAccountId: employee.accountId,
+                },
+              }
+            : student
+              ? { eventId_accountId: { eventId, accountId: student.accountId } }
+              : { eventId_visitorId: { eventId, visitorId: visitorId! } },
           create: {
             eventId,
             accountId: student?.accountId,
+            employeeAccountId: employee?.accountId,
             visitorId,
             name,
             course,

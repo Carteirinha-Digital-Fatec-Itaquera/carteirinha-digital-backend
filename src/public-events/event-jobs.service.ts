@@ -295,7 +295,112 @@ export class EventJobsService {
       const studentAccountId =
         latest.certificate.studentAccountId ||
         latest.certificate.participant?.accountId;
+      const employeeAccountId =
+        latest.certificate.participant?.employeeAccountId;
       const visitor = latest.certificate.participant?.visitor;
+
+      if (employeeAccountId) {
+        const employee = await this.prisma.employee.findUnique({
+          where: { accountId: employeeAccountId },
+          select: {
+            id: true,
+            name: true,
+            socialName: true,
+            email: true,
+            accountStatus: true,
+            archivedAt: true,
+          },
+        });
+        if (
+          !employee ||
+          !employee.email ||
+          employee.archivedAt !== null ||
+          employee.accountStatus !== 'ACTIVE'
+        ) {
+          await this.prisma.certificateArtifact.updateMany({
+            where: { id, leaseToken },
+            data: {
+              deliveryState: 'FAILED',
+              leaseUntil: null,
+              leaseToken: null,
+            },
+          });
+          return;
+        }
+
+        const employeeAppUrl = process.env.EMPLOYEE_APP_URL?.trim().replace(
+          /\/$/,
+          '',
+        );
+        if (!employeeAppUrl) {
+          await this.prisma.certificateArtifact.updateMany({
+            where: { id, leaseToken },
+            data: {
+              deliveryState: 'FAILED',
+              leaseUntil: null,
+              leaseToken: null,
+            },
+          });
+          return;
+        }
+
+        const marked = await this.prisma.certificateArtifact.updateMany({
+          where: {
+            id,
+            leaseToken,
+            leaseUntil: { gt: new Date() },
+            deliveryState: 'PENDING',
+            certificate: { revokedAt: null, activeAttendanceId: { not: null } },
+          },
+          data: { deliveryState: 'DISPATCHING' },
+        });
+        if (!marked.count) return;
+
+        let employeeSentRecorded = false;
+        try {
+          const snapshot = latest.certificate
+            .payloadSnapshot as unknown as CertificateSnapshot;
+          await this.mail.sendCertificateNotification({
+            email: employee.email,
+            recipientName:
+              snapshot?.recipient?.displayName ||
+              snapshot?.studentName ||
+              employee.socialName?.trim() ||
+              employee.name,
+            eventTitle:
+              snapshot?.eventTitle || latest.certificate.event.title,
+            accessUrl: `${employeeAppUrl}/certificados`,
+            profile: 'FUNCIONARIO',
+          });
+          const updateRes = await this.prisma.certificateArtifact.updateMany({
+            where: { id, leaseToken, deliveryState: 'DISPATCHING' },
+            data: { deliveryState: 'SENT', leaseUntil: null, leaseToken: null },
+          });
+          if (updateRes.count > 0) employeeSentRecorded = true;
+          if (!employeeSentRecorded) {
+            await this.prisma.certificateArtifact.updateMany({
+              where: { id, leaseToken },
+              data: {
+                deliveryState: 'AMBIGUOUS',
+                leaseUntil: null,
+                leaseToken: null,
+              },
+            });
+          }
+        } catch {
+          if (!employeeSentRecorded) {
+            await this.prisma.certificateArtifact.updateMany({
+              where: { id, leaseToken },
+              data: {
+                deliveryState: 'AMBIGUOUS',
+                leaseUntil: null,
+                leaseToken: null,
+              },
+            });
+          }
+        }
+        return;
+      }
 
       if (studentAccountId) {
         const student = await this.prisma.student.findUnique({
