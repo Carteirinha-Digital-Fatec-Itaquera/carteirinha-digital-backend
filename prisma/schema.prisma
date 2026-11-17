@@ -27,9 +27,11 @@ model SupportTicket {
   protocol             String           @unique
   requestId            String
   requestHash          String
-  ownerIdentity        String
-  ownerAccountId       String?
-  owner                Student?         @relation("SupportOwner", fields: [ownerAccountId], references: [accountId], onDelete: SetNull)
+  ownerIdentity          String
+  ownerAccountId         String?
+  owner                  Student?         @relation("SupportOwner", fields: [ownerAccountId], references: [accountId], onDelete: SetNull)
+  ownerEmployeeAccountId String?
+  employeeOwner          Employee?        @relation("SupportEmployeeOwner", fields: [ownerEmployeeAccountId], references: [accountId], onDelete: SetNull)
   category             SupportCategory
   subject              String
   requestedField       String?
@@ -56,6 +58,7 @@ model SupportTicket {
   @@unique([ownerIdentity, requestId])
   @@index([status, createdAt])
   @@index([ownerAccountId, createdAt])
+  @@index([ownerEmployeeAccountId, createdAt])
   @@index([assignedSecretaryId, status])
 }
 
@@ -149,9 +152,11 @@ model Secretary {
   password        String
   birthDate       DateTime
   lastLogin       DateTime?
-  events          Event[]              @relation("EventCreatedBy")
-  cancelledEvents Event[]              @relation("EventCancelledBy")
-  creditAudits    ProjectCreditAudit[]
+  events                 Event[]               @relation("EventCreatedBy")
+  cancelledEvents        Event[]               @relation("EventCancelledBy")
+  creditAudits           ProjectCreditAudit[]
+  approvedEmployeePhotos EmployeePhoto[]       @relation("EmployeePhotoApprovedBy")
+  employeeImportBatches  EmployeeImportBatch[] @relation("EmployeeImportBatchSecretary")
 }
 
 model Event {
@@ -342,23 +347,27 @@ model VisitorSession {
 }
 
 model EventParticipant {
-  id           String               @id @default(uuid())
-  eventId      String
-  event        Event                @relation(fields: [eventId], references: [id], onDelete: Restrict)
-  visitorId    String?
-  visitor      VisitorRegistration? @relation(fields: [visitorId], references: [id], onDelete: SetNull)
-  accountId    String?
-  name         String
-  course       String?
-  role         String               @default("ATTENDEE")
-  attendance   Attendance?
-  certificate  Certificate?         @relation("CurrentParticipantCertificate")
-  certificates Certificate[]        @relation("ParticipantCertificateHistory")
-  createdAt    DateTime             @default(now())
+  id                String               @id @default(uuid())
+  eventId           String
+  event             Event                @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  visitorId         String?
+  visitor           VisitorRegistration? @relation(fields: [visitorId], references: [id], onDelete: SetNull)
+  accountId         String?
+  employeeAccountId String?
+  employee          Employee?            @relation(fields: [employeeAccountId], references: [accountId], onDelete: SetNull)
+  name              String
+  course            String?
+  role              String               @default("ATTENDEE")
+  attendance        Attendance?
+  certificate       Certificate?         @relation("CurrentParticipantCertificate")
+  certificates      Certificate[]        @relation("ParticipantCertificateHistory")
+  createdAt         DateTime             @default(now())
 
   @@unique([eventId, visitorId])
   @@unique([eventId, accountId])
+  @@unique([eventId, employeeAccountId])
   @@unique([id, eventId], map: "participant_event_unique")
+  @@index([employeeAccountId])
 }
 
 model EventFeedback {
@@ -631,6 +640,248 @@ model StudentOfflineSession {
 model StudentOfflineReceipt {
   id          String @id @default(uuid())
   accountId   String
+  requestId   String
+  requestHash String
+  reference   String
+  scannedAt   DateTime
+  receivedAt  DateTime @default(now())
+  result      Json
+
+  @@unique([accountId, requestId])
+  @@index([receivedAt])
+}
+
+enum EmployeeAccountStatus {
+  ACTIVE
+  BLOCKED
+  ARCHIVED
+}
+
+enum EmployeePhotoProcessingState {
+  UPLOADING
+  READY
+  FAILED
+  DELETE_PENDING
+  DELETED
+}
+
+enum EmployeeAccessTokenPurpose {
+  ACTIVATE
+  RESET_PASSWORD
+}
+
+enum EmployeeTokenDeliveryState {
+  PENDING
+  ACCEPTED
+  FAILED
+  UNKNOWN
+}
+
+enum EmployeeImportMode {
+  CREATE_ONLY
+  UPDATE
+}
+
+enum EmployeeImportBatchState {
+  ANALYZED
+  RUNNING
+  COMPLETED
+  PARTIAL
+  CANCELLED
+  EXPIRED
+}
+
+enum EmployeeImportRowDecision {
+  READY_CREATE
+  READY_UPDATE
+  EXISTS
+  INVALID
+  AMBIGUOUS
+}
+
+enum EmployeeImportRowState {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  STALE
+}
+
+model Employee {
+  id                 String                   @id @default(uuid())
+  accountId          String                   @unique @default(uuid())
+  name               String
+  socialName         String?
+  searchText         String
+  email              String                   @unique
+  registrationNumber String?                  @unique
+  rg                 String?
+  admissionDate      DateTime                 @db.Date
+  accountStatus      EmployeeAccountStatus    @default(ACTIVE)
+  passwordHash       String?
+  authVersion        Int                      @default(1)
+  version            Int                      @default(1)
+  qrcode             String                   @unique
+  lastLoginAt        DateTime?
+  archivedAt         DateTime?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  assignments        EmployeeAssignment[]
+  photos             EmployeePhoto[]
+  accessTokens       EmployeeAccessToken[]
+  audits             EmployeeAudit[]
+  eventParticipants  EventParticipant[]
+  supportTickets     SupportTicket[]          @relation("SupportEmployeeOwner")
+  offlineSessions    EmployeeOfflineSession[]
+  offlineReceipts    EmployeeOfflineReceipt[]
+
+  @@index([accountStatus, archivedAt])
+  @@index([name, id])
+}
+
+model EmployeeAssignment {
+  id         String    @id @default(uuid())
+  employeeId String
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  title      String
+  startsOn   DateTime? @db.Date
+  validUntil DateTime? @db.Date
+  active     Boolean   @default(true)
+  endedAt    DateTime?
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([employeeId, active, archivedAt])
+}
+
+model EmployeePhoto {
+  id              String                       @id @default(uuid())
+  employeeId      String
+  employee        Employee                     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  requestId       String
+  storageKey      String                       @unique
+  reviewStatus    PhotoStatus                  @default(PENDING)
+  processingState EmployeePhotoProcessingState @default(UPLOADING)
+  currentApproved Boolean                      @default(false)
+  currentPending  Boolean                      @default(false)
+  version         Int                          @default(1)
+  contentHash     String?
+  approvedById    Int?
+  approvedBy      Secretary?                   @relation("EmployeePhotoApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  reviewReason    String?
+  createdAt       DateTime                     @default(now())
+  reviewedAt      DateTime?
+  cleanupAttempts Int                          @default(0)
+  nextCleanupAt   DateTime?
+
+  @@unique([employeeId, requestId])
+  @@index([reviewStatus, processingState, createdAt])
+  @@index([processingState, nextCleanupAt])
+}
+
+model EmployeeAccessToken {
+  id            String                     @id @default(uuid())
+  employeeId    String
+  employee      Employee                   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  tokenHash     String                     @unique
+  purpose       EmployeeAccessTokenPurpose
+  authVersion   Int
+  expiresAt     DateTime
+  usedAt        DateTime?
+  deliveryState EmployeeTokenDeliveryState @default(PENDING)
+  createdAt     DateTime                   @default(now())
+
+  @@index([employeeId, purpose, createdAt])
+  @@index([expiresAt])
+}
+
+model EmployeeImportBatch {
+  id            String                   @id @default(uuid())
+  secretaryId   Int
+  secretary     Secretary                @relation("EmployeeImportBatchSecretary", fields: [secretaryId], references: [id], onDelete: Restrict)
+  fileHash      String
+  schemaVersion String                   @default("1.0")
+  mode          EmployeeImportMode       @default(CREATE_ONLY)
+  state         EmployeeImportBatchState @default(ANALYZED)
+  revision      Int                      @default(1)
+  reviewDigest  String
+  requestId     String?
+  counts        Json
+  leaseUntil    DateTime?
+  leaseToken    String?
+  createdAt     DateTime                 @default(now())
+  expiresAt     DateTime
+  confirmedAt   DateTime?
+  finishedAt    DateTime?
+  rows          EmployeeImportRow[]
+  audits        EmployeeAudit[]
+
+  @@index([secretaryId, createdAt])
+  @@index([state, leaseUntil])
+  @@index([expiresAt])
+}
+
+model EmployeeImportRow {
+  id                      String                    @id @default(uuid())
+  batchId                 String
+  batch                   EmployeeImportBatch       @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  rowNumber               Int
+  groupKey                String
+  groupId                 String
+  input                   Json
+  decision                EmployeeImportRowDecision
+  state                   EmployeeImportRowState    @default(PENDING)
+  employeeId              String?
+  expectedEmployeeVersion Int?
+  operationKey            String?                   @unique
+  errorCode               String?
+  errorMessage            String?
+  createdAt               DateTime                  @default(now())
+  processedAt             DateTime?
+
+  @@unique([batchId, rowNumber])
+  @@index([batchId, groupId])
+  @@index([batchId, state])
+}
+
+model EmployeeAudit {
+  id                  String               @id @default(uuid())
+  employeeId          String?
+  employee            Employee?            @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  actorRole           String
+  actorId             String
+  action              String
+  requestId           String
+  reason              String?
+  changedFields       Json
+  sourceImportBatchId String?
+  sourceImportBatch   EmployeeImportBatch? @relation(fields: [sourceImportBatchId], references: [id], onDelete: SetNull)
+  createdAt           DateTime             @default(now())
+
+  @@index([employeeId, createdAt])
+  @@index([sourceImportBatchId])
+}
+
+model EmployeeOfflineSession {
+  id          String    @id @default(uuid())
+  tokenHash   String    @unique
+  accountId   String
+  employee    Employee  @relation(fields: [accountId], references: [accountId], onDelete: Cascade)
+  origin      String
+  authVersion Int
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([accountId, expiresAt])
+}
+
+model EmployeeOfflineReceipt {
+  id          String   @id @default(uuid())
+  accountId   String
+  employee    Employee @relation(fields: [accountId], references: [accountId], onDelete: Cascade)
   requestId   String
   requestHash String
   reference   String
