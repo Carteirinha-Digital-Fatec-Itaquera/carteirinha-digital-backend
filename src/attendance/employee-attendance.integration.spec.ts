@@ -340,7 +340,7 @@ describe('Employee Events, Attendance & Certificates Integration (HTTP + Postgre
       .set('Origin', 'https://funcionarios.example.test')
       .expect(200);
 
-    const setCookie = sessRes.headers['set-cookie'] as string[];
+    const setCookie = sessRes.headers['set-cookie'] as unknown as string[];
     const cookieHeader = setCookie[0].split(';')[0];
     expect(setCookie[0]).toContain('event_employee_offline=');
     expect(setCookie[0]).toContain('Path=/api/attendances/employee-offline');

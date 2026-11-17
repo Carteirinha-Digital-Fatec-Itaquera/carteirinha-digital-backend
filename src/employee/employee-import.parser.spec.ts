@@ -84,7 +84,10 @@ describe('EmployeeImportParser', () => {
     ]);
     ws['D2'] = { t: 'n', f: 'SUM(1,1)', v: 2 };
     XLSX.utils.book_append_sheet(wb, ws, 'Funcionarios');
-    const formulaBuf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+    const formulaBuf = XLSX.write(wb, {
+      type: 'buffer',
+      bookType: 'xlsx',
+    }) as Buffer;
 
     expect(() =>
       parseEmployeeImportFile({

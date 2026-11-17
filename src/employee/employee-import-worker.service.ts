@@ -5,10 +5,7 @@ import { randomUUID } from 'node:crypto';
 import type { EmployeeImportBatchCounts } from '../contracts/v1-employees.types';
 import { PrismaService } from '../database/prisma.service';
 import { buildEmployeeSearchText } from './employee-eligibility.service';
-import {
-  generateOpaqueQrToken,
-  parseIsoDateOnly,
-} from './employee.errors';
+import { generateOpaqueQrToken, parseIsoDateOnly } from './employee.errors';
 
 const LEASE_TTL_MS = 60_000;
 const GROUPS_PER_TICK = 25;
@@ -72,7 +69,11 @@ export class EmployeeImportWorkerService {
     if (claimed.count !== 1) return false;
 
     try {
-      await this.executeBatch(candidate.id, candidate.secretaryId, candidate.mode);
+      await this.executeBatch(
+        candidate.id,
+        candidate.secretaryId,
+        candidate.mode,
+      );
     } catch (err) {
       this.logger.error(`Erro ao processar lote ${candidate.id}`, err);
     } finally {
@@ -99,7 +100,8 @@ export class EmployeeImportWorkerService {
         data: {
           state: 'FAILED',
           errorCode: 'SECRETARY_INACTIVE',
-          errorMessage: 'Secretaria criadora do lote está inativa ou com senha vencida.',
+          errorMessage:
+            'Secretaria criadora do lote está inativa ou com senha vencida.',
         },
       });
       await this.finalizeBatchCounts(batchId);
@@ -357,19 +359,31 @@ export class EmployeeImportWorkerService {
               await tx.employeeAssignment.update({
                 where: { id: existingAssign.id },
                 data: {
-                  ...(inp.assignmentTitle ? { title: inp.assignmentTitle } : {}),
+                  ...(inp.assignmentTitle
+                    ? { title: inp.assignmentTitle }
+                    : {}),
                   ...(inp.startsOn
-                    ? { startsOn: parseIsoDateOnly(inp.startsOn, 'inicio_funcao') }
+                    ? {
+                        startsOn: parseIsoDateOnly(
+                          inp.startsOn,
+                          'inicio_funcao',
+                        ),
+                      }
                     : {}),
                   ...(inp.validUntil
-                    ? { validUntil: parseIsoDateOnly(inp.validUntil, 'fim_funcao') }
+                    ? {
+                        validUntil: parseIsoDateOnly(
+                          inp.validUntil,
+                          'fim_funcao',
+                        ),
+                      }
                     : {}),
                   ...(inp.active !== null && inp.active !== undefined
                     ? {
                         active: inp.active,
                         endedAt: inp.active
                           ? null
-                          : existingAssign.endedAt ?? new Date(),
+                          : (existingAssign.endedAt ?? new Date()),
                       }
                     : {}),
                 },

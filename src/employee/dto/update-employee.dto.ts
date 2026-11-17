@@ -52,6 +52,8 @@ export class UpdateEmployeeDto {
 
   @IsOptional()
   @IsString()
-  @Matches(ISO_DATE_REGEX, { message: 'admissionDate deve estar no formato YYYY-MM-DD' })
+  @Matches(ISO_DATE_REGEX, {
+    message: 'admissionDate deve estar no formato YYYY-MM-DD',
+  })
   admissionDate?: string;
 }

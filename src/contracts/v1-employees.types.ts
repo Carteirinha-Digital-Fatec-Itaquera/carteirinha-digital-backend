@@ -97,7 +97,7 @@ export type EmployeeApiErrorCode =
 
 export interface EmployeeErrorEnvelope {
   statusCode: number;
-  code: EmployeeApiErrorCode | string;
+  code: EmployeeApiErrorCode;
   message: string;
   fieldErrors?: Record<string, string[]>;
   requestId?: string;
@@ -252,7 +252,11 @@ export interface EmployeeCredentialCardView {
   displayName: string;
   registrationNumber: string | null;
   admissionDate: IsoDate;
-  activeAssignments: Array<{ id: Uuid; title: string; validUntil: IsoDate | null }>;
+  activeAssignments: Array<{
+    id: Uuid;
+    title: string;
+    validUntil: IsoDate | null;
+  }>;
   credential: EmployeeCredentialSummary;
   approvedPhotoId: Uuid | null;
   approvedPhotoUrl: string | null;

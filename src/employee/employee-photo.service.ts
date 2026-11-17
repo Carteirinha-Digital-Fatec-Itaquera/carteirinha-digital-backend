@@ -447,7 +447,9 @@ export class EmployeePhotoService {
           actorRole,
           actorId,
           action: 'PHOTO_REMOVED',
-          requestId: dto.requestId ?? `photo-remove-${employeeId}-${current.version + 1}`,
+          requestId:
+            dto.requestId ??
+            `photo-remove-${employeeId}-${current.version + 1}`,
           reason: dto.reason?.trim() ?? 'Remoção de foto',
           changedFields: { removed: true },
         },

@@ -17,11 +17,16 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
   let jwtService: JwtService;
   let importWorker: EmployeeImportWorkerService;
   let secretaryToken: string;
-  const sentEmails: Array<{ email: string; actionUrl: string; purpose: string }> = [];
+  const sentEmails: Array<{
+    email: string;
+    actionUrl: string;
+    purpose: string;
+  }> = [];
   const storedPhotos = new Map<string, Buffer>();
 
   beforeAll(async () => {
-    process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-employee-only';
+    process.env.JWT_SECRET =
+      process.env.JWT_SECRET || 'test-jwt-secret-employee-only';
     process.env.EMPLOYEE_APP_URL = 'https://funcionarios.example.test';
 
     const moduleRef = await Test.createTestingModule({
@@ -50,7 +55,10 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
       })
       .overrideProvider(UploadService)
       .useValue({
-        uploadPrivateEmployeePhoto: async (buffer: Buffer, storageKey: string) => {
+        uploadPrivateEmployeePhoto: async (
+          buffer: Buffer,
+          storageKey: string,
+        ) => {
           storedPhotos.set(storageKey, buffer);
         },
         getPrivateEmployeePhotoBuffer: async (storageKey: string) => {
@@ -126,8 +134,18 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
         rg: null,
         admissionDate: '2024-02-01',
         assignments: [
-          { title: 'Secretaria', startsOn: null, validUntil: null, active: true },
-          { title: 'Docente', startsOn: '2026-01-01', validUntil: '2027-12-31', active: true },
+          {
+            title: 'Secretaria',
+            startsOn: null,
+            validUntil: null,
+            active: true,
+          },
+          {
+            title: 'Docente',
+            startsOn: '2026-01-01',
+            validUntil: '2027-12-31',
+            active: true,
+          },
         ],
       })
       .expect(201);
@@ -150,8 +168,18 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
         rg: null,
         admissionDate: '2024-02-01',
         assignments: [
-          { title: 'Secretaria', startsOn: null, validUntil: null, active: true },
-          { title: 'Docente', startsOn: '2026-01-01', validUntil: '2027-12-31', active: true },
+          {
+            title: 'Secretaria',
+            startsOn: null,
+            validUntil: null,
+            active: true,
+          },
+          {
+            title: 'Docente',
+            startsOn: '2026-01-01',
+            validUntil: '2027-12-31',
+            active: true,
+          },
         ],
       })
       .expect(201);
@@ -215,11 +243,19 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
       request(app.getHttpServer())
         .patch(`/funcionarios/${emp1.body.id}`)
         .set('Authorization', `Bearer ${secretaryToken}`)
-        .send({ expectedVersion: 1, reason: 'Ajuste A', name: 'Pessoa Um Editada A' }),
+        .send({
+          expectedVersion: 1,
+          reason: 'Ajuste A',
+          name: 'Pessoa Um Editada A',
+        }),
       request(app.getHttpServer())
         .patch(`/funcionarios/${emp1.body.id}`)
         .set('Authorization', `Bearer ${secretaryToken}`)
-        .send({ expectedVersion: 1, reason: 'Ajuste B', name: 'Pessoa Um Editada B' }),
+        .send({
+          expectedVersion: 1,
+          reason: 'Ajuste B',
+          name: 'Pessoa Um Editada B',
+        }),
     ]);
 
     const statuses = [r1.status, r2.status].sort();
@@ -227,7 +263,9 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
 
     // Assignment of emp2 cannot be edited under emp1
     await request(app.getHttpServer())
-      .patch(`/funcionarios/${emp1.body.id}/funcoes/${emp2.body.assignments[0].id}`)
+      .patch(
+        `/funcionarios/${emp1.body.id}/funcoes/${emp2.body.assignments[0].id}`,
+      )
       .set('Authorization', `Bearer ${secretaryToken}`)
       .send({ expectedVersion: 2, reason: 'Tentativa cruzada', active: false })
       .expect(404);
@@ -264,7 +302,9 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
     expect(inviteRes.body.deliveryState).toBe('ACCEPTED');
 
     const lastEmail = sentEmails[sentEmails.length - 1];
-    const token = new URL(lastEmail.actionUrl).searchParams.get('token') as string;
+    const token = new URL(lastEmail.actionUrl).searchParams.get(
+      'token',
+    ) as string;
     expect(token).toBeTruthy();
 
     // Concurrent activation: only 1 succeeds
@@ -304,7 +344,11 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
     await request(app.getHttpServer())
       .post(`/funcionarios/${created.body.id}/status`)
       .set('Authorization', `Bearer ${secretaryToken}`)
-      .send({ expectedVersion: 2, reason: 'Suspensao teste', status: 'BLOCKED' })
+      .send({
+        expectedVersion: 2,
+        reason: 'Suspensao teste',
+        status: 'BLOCKED',
+      })
       .expect(201);
 
     await request(app.getHttpServer())
@@ -316,7 +360,11 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
     await request(app.getHttpServer())
       .post(`/funcionarios/${created.body.id}/status`)
       .set('Authorization', `Bearer ${secretaryToken}`)
-      .send({ expectedVersion: 3, reason: 'Reativacao teste', status: 'ACTIVE' })
+      .send({
+        expectedVersion: 3,
+        reason: 'Reativacao teste',
+        status: 'ACTIVE',
+      })
       .expect(201);
 
     await request(app.getHttpServer())
@@ -459,7 +507,9 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
 
     // Approve photo
     await request(app.getHttpServer())
-      .patch(`/funcionarios/${emp.body.id}/fotos/${uploadRes.body.photoId}/avaliacao`)
+      .patch(
+        `/funcionarios/${emp.body.id}/fotos/${uploadRes.body.photoId}/avaliacao`,
+      )
       .set('Authorization', `Bearer ${secretaryToken}`)
       .send({ expectedVersion: 2, approved: true })
       .expect(200);
@@ -529,7 +579,8 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
         requestId: '55555555-5555-4555-8555-555555555502',
         category: 'DATA',
         subject: 'Solicitação de ajuste cadastral',
-        description: 'Gostaria de solicitar a atualização do meu nome social no cadastro.',
+        description:
+          'Gostaria de solicitar a atualização do meu nome social no cadastro.',
         requestedField: 'SOCIAL_NAME',
         proposedValue: 'Nome Social Novo',
       })
@@ -538,7 +589,9 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
     expect(ticketRes.body.ownerType).toBe('EMPLOYEE');
 
     // Cadastro não é alterado automaticamente pelo ticket
-    const empAfter = await prisma.employee.findUnique({ where: { id: emp.body.id } });
+    const empAfter = await prisma.employee.findUnique({
+      where: { id: emp.body.id },
+    });
     expect(empAfter?.socialName).toBeNull();
 
     // Admin filter ownerType=EMPLOYEE & summary
@@ -546,7 +599,11 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
       .get('/support/admin/tickets?ownerType=EMPLOYEE')
       .set('Authorization', `Bearer ${secretaryToken}`)
       .expect(200);
-    expect(adminList.body.items.some((t: { id: string }) => t.id === ticketRes.body.id)).toBe(true);
+    expect(
+      adminList.body.items.some(
+        (t: { id: string }) => t.id === ticketRes.body.id,
+      ),
+    ).toBe(true);
 
     const summaryRes = await request(app.getHttpServer())
       .get('/support/admin/summary')

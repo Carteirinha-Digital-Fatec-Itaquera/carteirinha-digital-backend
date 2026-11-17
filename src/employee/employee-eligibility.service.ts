@@ -4,7 +4,7 @@ import type {
   EmployeeCredentialEvaluation,
   EmployeeCredentialReasonCode,
   EmployeeValidityKind,
-} from '../../contracts/v1-employees.types';
+} from '../contracts/v1-employees.types';
 import type {
   EmployeeAssignmentEntity,
   EmployeeEntity,
@@ -39,7 +39,11 @@ export function buildEmployeeSearchText(input: {
   socialName?: string | null;
   registrationNumber?: string | null;
 }): string {
-  const parts = [input.name, input.socialName ?? '', input.registrationNumber ?? '']
+  const parts = [
+    input.name,
+    input.socialName ?? '',
+    input.registrationNumber ?? '',
+  ]
     .map((part) => normalizeEmployeeText(part))
     .filter((part) => part.length > 0);
   return parts.join(' ');
@@ -80,12 +84,20 @@ export class EmployeeEligibilityService {
     photos: Array<
       Pick<
         EmployeePhotoSummaryEntity,
-        'id' | 'reviewStatus' | 'processingState' | 'currentApproved' | 'currentPending'
+        | 'id'
+        | 'reviewStatus'
+        | 'processingState'
+        | 'currentApproved'
+        | 'currentPending'
       >
     >,
     now: Date = new Date(),
   ): EmployeeCredentialEvaluation & {
-    activeAssignments: Array<{ id: string; title: string; validUntil: string | null }>;
+    activeAssignments: Array<{
+      id: string;
+      title: string;
+      validUntil: string | null;
+    }>;
     approvedPhotoId: string | null;
     pendingPhotoId: string | null;
   } {
@@ -110,9 +122,13 @@ export class EmployeeEligibilityService {
     const pendingPhoto = photos.find(
       (p) => p.currentPending && p.processingState === 'READY',
     );
-    const latestRejected = !approvedPhoto && !pendingPhoto
-      ? photos.find((p) => p.reviewStatus === 'REJECTED' && p.processingState === 'READY')
-      : undefined;
+    const latestRejected =
+      !approvedPhoto && !pendingPhoto
+        ? photos.find(
+            (p) =>
+              p.reviewStatus === 'REJECTED' && p.processingState === 'READY',
+          )
+        : undefined;
 
     let accountAllowed = true;
     let accountReason: EmployeeCredentialReasonCode | null = null;
@@ -132,16 +148,19 @@ export class EmployeeEligibilityService {
     let validUntil: string | null = null;
 
     if (activeAssignments.length > 0) {
-      const hasIndeterminate = activeAssignments.some((a) => a.validUntil === null);
+      const hasIndeterminate = activeAssignments.some(
+        (a) => a.validUntil === null,
+      );
       if (hasIndeterminate) {
         validityKind = 'INDETERMINATE';
         validUntil = null;
       } else {
         validityKind = 'UNTIL_DATE';
-        validUntil = activeAssignments
-          .map((a) => a.validUntil as string)
-          .sort()
-          .at(-1) ?? null;
+        validUntil =
+          activeAssignments
+            .map((a) => a.validUntil as string)
+            .sort()
+            .at(-1) ?? null;
       }
     }
 

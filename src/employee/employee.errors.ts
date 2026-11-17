@@ -7,7 +7,7 @@ import type {
 
 export function throwEmployeeError(
   statusCode: HttpStatus,
-  code: EmployeeApiErrorCode | string,
+  code: EmployeeApiErrorCode,
   message: string,
   extra?: {
     fieldErrors?: Record<string, string[]>;
@@ -28,10 +28,7 @@ export function throwEmployeeError(
   throw new HttpException(body, statusCode);
 }
 
-export function parseIsoDateOnly(
-  value: string,
-  fieldName: string,
-): Date {
+export function parseIsoDateOnly(value: string, fieldName: string): Date {
   const trimmed = value.trim();
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
   if (!match) {
@@ -72,7 +69,9 @@ export function assertValidDateRange(
       'validUntil deve ser igual ou posterior a startsOn.',
       {
         fieldErrors: {
-          validUntil: ['A data final deve ser igual ou posterior à data inicial'],
+          validUntil: [
+            'A data final deve ser igual ou posterior à data inicial',
+          ],
         },
       },
     );

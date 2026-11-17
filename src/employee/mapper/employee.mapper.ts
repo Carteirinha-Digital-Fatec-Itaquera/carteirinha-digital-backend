@@ -20,7 +20,9 @@ import type {
 export class EmployeeMapper {
   constructor(private readonly eligibility: EmployeeEligibilityService) {}
 
-  getDisplayName(employee: Pick<EmployeeEntity, 'name' | 'socialName'>): string {
+  getDisplayName(
+    employee: Pick<EmployeeEntity, 'name' | 'socialName'>,
+  ): string {
     const social = employee.socialName?.trim();
     return social && social.length > 0 ? social : employee.name;
   }
@@ -35,9 +37,14 @@ export class EmployeeMapper {
       startsOn: dbDateToIsoDate(assignment.startsOn),
       validUntil: dbDateToIsoDate(assignment.validUntil),
       active: assignment.active,
-      effectiveStatus: this.eligibility.getAssignmentEffectiveStatus(assignment, now),
+      effectiveStatus: this.eligibility.getAssignmentEffectiveStatus(
+        assignment,
+        now,
+      ),
       endedAt: assignment.endedAt ? assignment.endedAt.toISOString() : null,
-      archivedAt: assignment.archivedAt ? assignment.archivedAt.toISOString() : null,
+      archivedAt: assignment.archivedAt
+        ? assignment.archivedAt.toISOString()
+        : null,
     };
   }
 
@@ -54,7 +61,8 @@ export class EmployeeMapper {
     const latestRejected =
       !approved && !pending
         ? photos.find(
-            (p) => p.reviewStatus === 'REJECTED' && p.processingState === 'READY',
+            (p) =>
+              p.reviewStatus === 'REJECTED' && p.processingState === 'READY',
           )
         : undefined;
 
@@ -68,7 +76,8 @@ export class EmployeeMapper {
           : latestRejected
             ? 'REJECTED'
             : null,
-      reviewReason: pending?.reviewReason ?? latestRejected?.reviewReason ?? null,
+      reviewReason:
+        pending?.reviewReason ?? latestRejected?.reviewReason ?? null,
     };
   }
 
@@ -124,7 +133,12 @@ export class EmployeeMapper {
   ): EmployeeListItemView {
     const assignments = employee.assignments ?? [];
     const photos = employee.photos ?? [];
-    const evaluation = this.eligibility.evaluate(employee, assignments, photos, now);
+    const evaluation = this.eligibility.evaluate(
+      employee,
+      assignments,
+      photos,
+      now,
+    );
 
     return {
       id: employee.id,
@@ -147,7 +161,9 @@ export class EmployeeMapper {
         checkedAt: evaluation.checkedAt,
       },
       photo: this.toPhotoSummary(photos),
-      archivedAt: employee.archivedAt ? employee.archivedAt.toISOString() : null,
+      archivedAt: employee.archivedAt
+        ? employee.archivedAt.toISOString()
+        : null,
     };
   }
 }

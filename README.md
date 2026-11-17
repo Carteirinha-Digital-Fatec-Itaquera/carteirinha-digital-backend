@@ -118,4 +118,24 @@ Para testar upgrade, criar outro banco local vazio e executar `npm run test:publ
 
 Para o ensaio de navegador, iniciar Aluno em `5187` com `EVENT_API_TARGET=http://127.0.0.1:5309` e Secretaria em `5188` com `VITE_BASE_URL=http://127.0.0.1:5309`. Definir `PUBLIC_EVENTS_BROWSER=1` e, se necessário, `PUBLIC_EVENTS_BROWSER_EXECUTABLE` com o navegador instalado antes de rodar a integração. A API de teste usa somente o banco local e os provedores substitutos; o GPS do ensaio é simulado.
 
+## Portal dos Funcionários (Contrato V1)
+
+Os tipos de transporte sem dependências de runtime estão em `src/contracts/v1-employees.types.ts`, a especificação OpenAPI JSON em `src/contracts/v1-employees.openapi.json` e as fixtures fictícias em `src/contracts/fixtures/employees.fixture.json`.
+
+Variáveis de ambiente adicionais para publicação:
+
+- `EMPLOYEE_APP_URL`: origem HTTPS oficial do Portal dos Funcionários (obrigatória para links de ativação/recuperação, e-mails de certificado, CORS e validação de `Origin` em presença offline).
+- `INSTITUTION_ADDRESS`, `INSTITUTION_CITY`, `INSTITUTION_STATE`, `INSTITUTION_POSTAL_CODE`, `INSTITUTION_PHONE`, `INSTITUTION_EMAIL`, `INSTITUTION_WEBSITE`: dados opcionais exibidos por `GET /public/institution` (campos ausentes retornam `null`).
+
+Validação local descartável (exige `127.0.0.1` e banco com prefixo `disposable_employee_`):
+
+```powershell
+$env:EMPLOYEE_MIGRATION_TEST_DATABASE_URL='postgresql://postgres@127.0.0.1:55439/disposable_employee_migtest'
+npm run test:employees:migration
+
+$env:EMPLOYEE_TEST_DATABASE_URL='postgresql://postgres@127.0.0.1:55439/disposable_employee_test'
+npm run test:employees:integration
+```
+
+
 Liberação: backup/restauração verificados, migration aditiva, backend, interfaces compatíveis, assinaturas autorizadas e piloto com aparelhos reais no auditório. Rollback desabilita novas inscrições/atividades públicas e retorna o código; não remove tabelas nem certificados emitidos.

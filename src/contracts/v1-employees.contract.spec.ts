@@ -34,20 +34,30 @@ describe('Contrato V1 de funcionários', () => {
   it('valida fixtures de sem matrícula, múltiplas funções, vencimento, foto pendente e conta bloqueada', () => {
     expect(fixtures.withoutRegistration.registrationNumber).toBeNull();
     expect(fixtures.withoutRegistration.credential.valid).toBe(true);
-    expect(fixtures.withoutRegistration.credential.validityKind).toBe('INDETERMINATE');
+    expect(fixtures.withoutRegistration.credential.validityKind).toBe(
+      'INDETERMINATE',
+    );
 
     expect(fixtures.multipleAssignmentsWithExpiry.assignments).toHaveLength(2);
-    expect(fixtures.multipleAssignmentsWithExpiry.credential.validUntil).toBe('2026-12-31');
-    expect(fixtures.multipleAssignmentsWithExpiry.displayName).toBe('Nome Social Demonstracao');
+    expect(fixtures.multipleAssignmentsWithExpiry.credential.validUntil).toBe(
+      '2026-12-31',
+    );
+    expect(fixtures.multipleAssignmentsWithExpiry.displayName).toBe(
+      'Nome Social Demonstracao',
+    );
 
     expect(fixtures.pendingPhoto.credential.valid).toBe(false);
     expect(fixtures.pendingPhoto.credential.reasonCode).toBe('PHOTO_PENDING');
 
     expect(fixtures.expiredAssignments.credential.valid).toBe(false);
-    expect(fixtures.expiredAssignments.credential.reasonCode).toBe('NO_ACTIVE_ASSIGNMENT');
+    expect(fixtures.expiredAssignments.credential.reasonCode).toBe(
+      'NO_ACTIVE_ASSIGNMENT',
+    );
 
     expect(fixtures.blockedAccount.accountStatus).toBe('BLOCKED');
-    expect(fixtures.blockedAccount.credential.reasonCode).toBe('ACCOUNT_BLOCKED');
+    expect(fixtures.blockedAccount.credential.reasonCode).toBe(
+      'ACCOUNT_BLOCKED',
+    );
   });
 
   it('garante ausência de senha, passwordHash ou tokenHash nos DTOs e projeção pública mínima', () => {
@@ -58,7 +68,9 @@ describe('Contrato V1 de funcionários', () => {
     expect(fixtures.publicVerificationValid).not.toHaveProperty('rg');
     expect(fixtures.publicVerificationValid).not.toHaveProperty('email');
     expect(fixtures.publicVerificationBlocked.valid).toBe(false);
-    expect(fixtures.publicVerificationBlocked).not.toHaveProperty('displayName');
+    expect(fixtures.publicVerificationBlocked).not.toHaveProperty(
+      'displayName',
+    );
   });
 
   it('valida conflito 409, lote parcial e recibo offline perdido', () => {

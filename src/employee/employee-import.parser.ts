@@ -74,6 +74,13 @@ function detectDelimiter(headerLine: string): ',' | ';' {
   return semiCount > commaCount ? ';' : ',';
 }
 
+function cellToString(val: unknown): string {
+  if (typeof val === 'string') return val;
+  if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+  if (val instanceof Date) return val.toISOString();
+  return '';
+}
+
 function parseCellDateValue(raw: unknown, fieldName: string): string | null {
   if (raw === undefined || raw === null) return null;
   if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
@@ -104,7 +111,8 @@ function parseActiveFlag(raw: unknown): {
   value: boolean | null;
   defaulted: boolean;
 } {
-  if (raw === undefined || raw === null) return { value: null, defaulted: false };
+  if (raw === undefined || raw === null)
+    return { value: null, defaulted: false };
   const text = String(raw).trim().toUpperCase();
   if (!text) return { value: null, defaulted: false };
   if (text === 'SIM' || text === 'TRUE' || text === '1') {
@@ -113,7 +121,9 @@ function parseActiveFlag(raw: unknown): {
   if (text === 'NAO' || text === 'NÃO' || text === 'FALSE' || text === '0') {
     return { value: false, defaulted: false };
   }
-  throw new Error(`Valor inválido para funcao_ativa: "${text}". Use SIM ou NAO.`);
+  throw new Error(
+    `Valor inválido para funcao_ativa: "${text}". Use SIM ou NAO.`,
+  );
 }
 
 function validateHeaders(headers: string[]): void {
@@ -146,7 +156,7 @@ function normalizeRecord(
   const readStr = (key: string): string | null => {
     const val = rawMap[key];
     if (val === undefined || val === null) return null;
-    const s = String(val).trim();
+    const s = cellToString(val).trim();
     return s.length > 0 ? s : null;
   };
 
@@ -186,7 +196,10 @@ function normalizeRecord(
       'data_admissao',
     );
     const rawTitle = readStr('funcao');
-    const startsOn = parseCellDateValue(rawMap['inicio_funcao'], 'inicio_funcao');
+    const startsOn = parseCellDateValue(
+      rawMap['inicio_funcao'],
+      'inicio_funcao',
+    );
     const validUntil = parseCellDateValue(rawMap['fim_funcao'], 'fim_funcao');
 
     if (startsOn && validUntil) {
@@ -229,7 +242,9 @@ function normalizeRecord(
       funcaoId: readStr('funcao_id'),
       name: null,
       socialName: null,
-      email: readStr('email') ? normalizeEmail(readStr('email') as string) : null,
+      email: readStr('email')
+        ? normalizeEmail(readStr('email') as string)
+        : null,
       registrationNumber: readStr('matricula_funcional'),
       rg: null,
       admissionDate: null,
@@ -323,7 +338,7 @@ function parseCsvImport(buffer: Buffer): ParsedEmployeeImportRow[] {
       skip_empty_lines: true,
       trim: true,
       to: EMPLOYEE_IMPORT_MAX_ROWS + 1,
-    }) as Array<Record<string, string>>;
+    });
   } catch (err) {
     if (err instanceof Error && 'getStatus' in err) throw err;
     throwEmployeeError(
@@ -437,7 +452,11 @@ function parseXlsxImport(buffer: Buffer): ParsedEmployeeImportRow[] {
     );
   }
 
-  const headers = (rows[0] ?? []).map((h) => String(h ?? '').trim().toLowerCase());
+  const headers = (rows[0] ?? []).map((h) =>
+    String(h ?? '')
+      .trim()
+      .toLowerCase(),
+  );
   validateHeaders(headers);
 
   const parsed: ParsedEmployeeImportRow[] = [];

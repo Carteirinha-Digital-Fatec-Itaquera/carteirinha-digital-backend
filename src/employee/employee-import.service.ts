@@ -161,8 +161,7 @@ export class EmployeeImportService {
         errorMessage = firstError.rowErrorMessage;
       } else if (mode === 'CREATE_ONLY') {
         const missing = groupRows.find(
-          (r) =>
-            !r.name || !r.email || !r.admissionDate || !r.assignmentTitle,
+          (r) => !r.name || !r.email || !r.admissionDate || !r.assignmentTitle,
         );
         const hasIds = groupRows.find((r) => r.funcionarioId || r.funcaoId);
         if (hasIds) {
@@ -206,7 +205,8 @@ export class EmployeeImportService {
             errorCode = byEmail
               ? 'EMAIL_ALREADY_EXISTS'
               : 'REGISTRATION_ALREADY_EXISTS';
-            errorMessage = 'Funcionário já cadastrado; modo CREATE_ONLY não sobrescreve.';
+            errorMessage =
+              'Funcionário já cadastrado; modo CREATE_ONLY não sobrescreve.';
           }
         }
       } else {
@@ -314,7 +314,7 @@ export class EmployeeImportService {
             validUntil: r.validUntil,
             active: effectiveActive,
             activeDefaulted: mode === 'CREATE_ONLY' && r.active === null,
-          } as Prisma.InputJsonValue,
+          },
           decision,
           state:
             decision === 'READY_CREATE' || decision === 'READY_UPDATE'
@@ -432,7 +432,8 @@ export class EmployeeImportService {
             name: (raw.name as string | null) ?? null,
             socialName: (raw.socialName as string | null) ?? null,
             email: (raw.email as string | null) ?? null,
-            registrationNumber: (raw.registrationNumber as string | null) ?? null,
+            registrationNumber:
+              (raw.registrationNumber as string | null) ?? null,
             hasRg: Boolean(raw.hasRg),
             admissionDate: (raw.admissionDate as string | null) ?? null,
             assignmentTitle: (raw.assignmentTitle as string | null) ?? null,
@@ -715,7 +716,10 @@ export class EmployeeImportService {
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
       XLSX.utils.book_append_sheet(wb, ws, 'Relatorio');
-      const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+      const buffer = XLSX.write(wb, {
+        type: 'buffer',
+        bookType: 'xlsx',
+      }) as Buffer;
       return {
         buffer,
         contentType:

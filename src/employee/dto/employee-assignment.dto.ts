@@ -28,12 +28,16 @@ export class CreateAssignmentDto {
 
   @IsOptional()
   @IsString()
-  @Matches(ISO_DATE_REGEX, { message: 'startsOn deve estar no formato YYYY-MM-DD' })
+  @Matches(ISO_DATE_REGEX, {
+    message: 'startsOn deve estar no formato YYYY-MM-DD',
+  })
   startsOn?: string | null;
 
   @IsOptional()
   @IsString()
-  @Matches(ISO_DATE_REGEX, { message: 'validUntil deve estar no formato YYYY-MM-DD' })
+  @Matches(ISO_DATE_REGEX, {
+    message: 'validUntil deve estar no formato YYYY-MM-DD',
+  })
   validUntil?: string | null;
 
   @IsOptional()
@@ -59,12 +63,16 @@ export class UpdateAssignmentDto {
 
   @IsOptional()
   @IsString()
-  @Matches(ISO_DATE_REGEX, { message: 'startsOn deve estar no formato YYYY-MM-DD' })
+  @Matches(ISO_DATE_REGEX, {
+    message: 'startsOn deve estar no formato YYYY-MM-DD',
+  })
   startsOn?: string | null;
 
   @IsOptional()
   @IsString()
-  @Matches(ISO_DATE_REGEX, { message: 'validUntil deve estar no formato YYYY-MM-DD' })
+  @Matches(ISO_DATE_REGEX, {
+    message: 'validUntil deve estar no formato YYYY-MM-DD',
+  })
   validUntil?: string | null;
 
   @IsOptional()

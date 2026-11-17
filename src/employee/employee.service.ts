@@ -52,9 +52,7 @@ export class EmployeeService {
   ) {}
 
   private getEmployeeAppBaseUrl(): string {
-    return (
-      process.env.EMPLOYEE_APP_URL?.trim().replace(/\/+$/, '') || ''
-    );
+    return process.env.EMPLOYEE_APP_URL?.trim().replace(/\/+$/, '') || '';
   }
 
   buildVerificationUrl(qrcode: string): string {
@@ -183,7 +181,9 @@ export class EmployeeService {
     const admissionDate = parseIsoDateOnly(dto.admissionDate, 'admissionDate');
 
     const parsedAssignments = dto.assignments.map((a) => {
-      const startsOn = a.startsOn ? parseIsoDateOnly(a.startsOn, 'startsOn') : null;
+      const startsOn = a.startsOn
+        ? parseIsoDateOnly(a.startsOn, 'startsOn')
+        : null;
       const validUntil = a.validUntil
         ? parseIsoDateOnly(a.validUntil, 'validUntil')
         : null;
@@ -263,7 +263,9 @@ export class EmployeeService {
             HttpStatus.CONFLICT,
             'REGISTRATION_ALREADY_EXISTS',
             'Já existe um funcionário cadastrado com esta matrícula funcional.',
-            { fieldErrors: { registrationNumber: ['Matrícula já cadastrada'] } },
+            {
+              fieldErrors: { registrationNumber: ['Matrícula já cadastrada'] },
+            },
           );
         }
       }
@@ -365,10 +367,7 @@ export class EmployeeService {
         }
       }
 
-      if (
-        nextRegistration &&
-        nextRegistration !== current.registrationNumber
-      ) {
+      if (nextRegistration && nextRegistration !== current.registrationNumber) {
         const regConflict = await this.repository.findByRegistrationNumber(
           nextRegistration,
           tx,
@@ -378,7 +377,9 @@ export class EmployeeService {
             HttpStatus.CONFLICT,
             'REGISTRATION_ALREADY_EXISTS',
             'Já existe um funcionário cadastrado com esta matrícula funcional.',
-            { fieldErrors: { registrationNumber: ['Matrícula já cadastrada'] } },
+            {
+              fieldErrors: { registrationNumber: ['Matrícula já cadastrada'] },
+            },
           );
         }
       }
@@ -414,7 +415,8 @@ export class EmployeeService {
 
       const changedFields: Record<string, unknown> = {};
       if (nextName !== current.name) changedFields.name = true;
-      if (nextSocialName !== current.socialName) changedFields.socialName = true;
+      if (nextSocialName !== current.socialName)
+        changedFields.socialName = true;
       if (emailChanged) changedFields.email = nextEmail;
       if (nextRegistration !== current.registrationNumber)
         changedFields.registrationNumber = nextRegistration;
@@ -475,7 +477,9 @@ export class EmployeeService {
       }
 
       const authVersionBump =
-        dto.status === 'BLOCKED' ? current.authVersion + 1 : current.authVersion;
+        dto.status === 'BLOCKED'
+          ? current.authVersion + 1
+          : current.authVersion;
 
       const updated = await this.repository.updateAggregate(
         id,
@@ -500,7 +504,9 @@ export class EmployeeService {
           actorRole: 'secretary',
           actorId: String(secretaryId),
           action:
-            dto.status === 'BLOCKED' ? 'EMPLOYEE_BLOCKED' : 'EMPLOYEE_ACTIVATED',
+            dto.status === 'BLOCKED'
+              ? 'EMPLOYEE_BLOCKED'
+              : 'EMPLOYEE_ACTIVATED',
           requestId: `status-${id}-${updated.version}`,
           reason: normalizeDisplayText(dto.reason),
           changedFields: {
@@ -873,7 +879,7 @@ export class EmployeeService {
           ? assignment.endedAt
           : dto.active
             ? null
-            : assignment.endedAt ?? new Date();
+            : (assignment.endedAt ?? new Date());
 
       const savedAssignment = await tx.employeeAssignment.update({
         where: { id: assignmentId },
