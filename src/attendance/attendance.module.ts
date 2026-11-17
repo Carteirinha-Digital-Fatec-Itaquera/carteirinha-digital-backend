@@ -1,5 +1,7 @@
 import { OfflineAttendanceController } from './offline-attendance.controller';
 import { OfflineAttendanceService } from './offline-attendance.service';
+import { EmployeeOfflineAttendanceController } from './employee-offline-attendance.controller';
+import { EmployeeOfflineAttendanceService } from './employee-offline-attendance.service';
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { DatabaseModule } from '../database/database.module';
@@ -21,11 +23,13 @@ import { ActiveEventAccountGuard } from '../auth/active-event-account.guard';
     AttendanceController,
     EventAttendanceController,
     OfflineAttendanceController,
+    EmployeeOfflineAttendanceController,
   ],
   providers: [
     ActiveEventAccountGuard,
     AttendanceService,
     OfflineAttendanceService,
+    EmployeeOfflineAttendanceService,
     AttendanceQrReferenceService,
     AttendanceQrCleanupService,
   ],

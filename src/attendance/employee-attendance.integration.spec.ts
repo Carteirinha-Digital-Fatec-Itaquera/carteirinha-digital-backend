@@ -276,4 +276,137 @@ describe('Employee Events, Attendance & Certificates Integration (HTTP + Postgre
       .send({ qrToken: qrRes.body.qrToken })
       .expect(403);
   });
+
+  it('suporta sessão offline restrita, recibo idempotente após fechamento, GPS fail-closed e revogação', async () => {
+    const empRes = await request(app.getHttpServer())
+      .post('/funcionarios')
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .send({
+        requestId: '44444444-4444-4444-8444-444444444403',
+        name: 'Offline Employee',
+        email: 'offline.emp@example.test',
+        admissionDate: '2024-02-01',
+        assignments: [{ title: 'Docente' }],
+      })
+      .expect(201);
+
+    const empToken = await jwtService.signAsync({
+      sub: empRes.body.id,
+      accountId: empRes.body.accountId,
+      role: 'employee',
+      authVersion: 1,
+    });
+
+    const evRes = await request(app.getHttpServer())
+      .post('/events')
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .send({
+        title: 'Evento Offline Funcionario',
+        speaker: 'Palestrante',
+        location: 'Sala 2',
+        startsAt: new Date(Date.now() - 3600_000).toISOString(),
+        endsAt: new Date(Date.now() + 3600_000).toISOString(),
+        workloadMinutes: 60,
+        visitorsAllowed: false,
+        locationEnabled: false,
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/events/${evRes.body.id}/checkpoints/check-out/open`)
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .expect(200);
+
+    const linkRes = await request(app.getHttpServer())
+      .get(`/events/${evRes.body.id}/attendance-link`)
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .expect(200);
+
+    const reference = new URL(linkRes.body.qrUrl as string).pathname
+      .split('/')
+      .pop() as string;
+
+    // Origin mismatch -> 403
+    await request(app.getHttpServer())
+      .post('/attendances/employee-offline/session')
+      .set('Authorization', `Bearer ${empToken}`)
+      .set('Origin', 'https://evil.example.test')
+      .expect(403);
+
+    // Valid session
+    const sessRes = await request(app.getHttpServer())
+      .post('/attendances/employee-offline/session')
+      .set('Authorization', `Bearer ${empToken}`)
+      .set('Origin', 'https://funcionarios.example.test')
+      .expect(200);
+
+    const setCookie = sessRes.headers['set-cookie'] as string[];
+    const cookieHeader = setCookie[0].split(';')[0];
+    expect(setCookie[0]).toContain('event_employee_offline=');
+    expect(setCookie[0]).toContain('Path=/api/attendances/employee-offline');
+    expect(setCookie[0]).toContain('HttpOnly');
+
+    const reqId = '44444444-4444-4444-8444-444444444404';
+    const scannedAt = new Date().toISOString();
+
+    const submitRes = await request(app.getHttpServer())
+      .post('/attendances/employee-offline/submit')
+      .set('Origin', 'https://funcionarios.example.test')
+      .set('Cookie', cookieHeader)
+      .send({
+        requestId: reqId,
+        accountId: empRes.body.accountId,
+        reference,
+        scannedAt,
+      })
+      .expect(200);
+
+    expect(submitRes.body.status).toBe('confirmed');
+
+    // Close checkpoint -> replay with same requestId STILL returns receipt
+    await request(app.getHttpServer())
+      .post(`/events/${evRes.body.id}/checkpoints/check-out/close`)
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .expect(200);
+
+    const replayRes = await request(app.getHttpServer())
+      .post('/attendances/employee-offline/submit')
+      .set('Origin', 'https://funcionarios.example.test')
+      .set('Cookie', cookieHeader)
+      .send({
+        requestId: reqId,
+        accountId: empRes.body.accountId,
+        reference,
+        scannedAt,
+      })
+      .expect(200);
+    expect(replayRes.body.requestId).toBe(reqId);
+
+    // Same requestId with different payload -> 409
+    await request(app.getHttpServer())
+      .post('/attendances/employee-offline/submit')
+      .set('Origin', 'https://funcionarios.example.test')
+      .set('Cookie', cookieHeader)
+      .send({
+        requestId: reqId,
+        accountId: empRes.body.accountId,
+        reference: 'outro_ref_ficticio_123',
+        scannedAt,
+      })
+      .expect(409);
+
+    // Revoke session -> subsequent submit returns 401
+    await request(app.getHttpServer())
+      .post('/attendances/employee-offline/revoke')
+      .set('Origin', 'https://funcionarios.example.test')
+      .set('Cookie', cookieHeader)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .post('/attendances/employee-offline/status')
+      .set('Origin', 'https://funcionarios.example.test')
+      .set('Cookie', cookieHeader)
+      .send({ accountId: empRes.body.accountId, requestIds: [reqId] })
+      .expect(401);
+  });
 });
