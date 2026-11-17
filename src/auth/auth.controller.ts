@@ -74,18 +74,21 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Post('reset-password')
   async resetPassword(
-    @Request()req:any,
-    @Body() passwordDTO: PasswordDTO
-  ): Promise <void>{
-    const userId = req.user.sub
-    const userType = req.user.role as 'student' |'secretary'
-    // console.log(`\n\n\nesse é seu id: ${userId} \n\n\n${userType}`)
+    @Request() req: { user: TokenPayload },
+    @Body() passwordDTO: PasswordDTO,
+  ): Promise<void> {
+    const userId = req.user.sub;
+    const userType = req.user.role;
+    if (userType !== 'student' && userType !== 'secretary') {
+      throw new BadRequestException(
+        'Perfil deve utilizar a rota específica de alteração de senha.',
+      );
+    }
     await this.authService.changePassword(
       passwordDTO.newPassword,
       userId,
-      userType
-    )
-
+      userType,
+    );
   } 
 
 

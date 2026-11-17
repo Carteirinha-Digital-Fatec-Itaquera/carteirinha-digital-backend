@@ -5,19 +5,29 @@ import { ValidationPipe } from '@nestjs/common';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  app.enableCors({
-  origin: [
+  const allowedOrigins: (string | RegExp)[] = [
     'http://localhost:5173',
     'http://localhost:5174',
     'http://localhost:4173',
     'http://localhost:4174',
     /^http:\/\/localhost:\d+$/,
     'https://carteirinha-digital-front-end-secre-topaz.vercel.app',
-    'https://carteirinha-digital-front-end-aluno.vercel.app'
-  ],
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-  credentials: true,
-});
+    'https://carteirinha-digital-front-end-aluno.vercel.app',
+  ];
+  const employeeOrigin = process.env.EMPLOYEE_APP_URL?.trim();
+  if (employeeOrigin) {
+    allowedOrigins.push(employeeOrigin);
+  }
+  const studentOrigin = process.env.STUDENT_APP_URL?.trim();
+  if (studentOrigin && !allowedOrigins.includes(studentOrigin)) {
+    allowedOrigins.push(studentOrigin);
+  }
+
+  app.enableCors({
+    origin: allowedOrigins,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    credentials: true,
+  });
 
   app.useGlobalPipes(new ValidationPipe());
 

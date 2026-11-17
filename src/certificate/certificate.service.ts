@@ -86,7 +86,10 @@ export class CertificateService {
       });
       if (existingByAttendance) {
         if (
-          existingByAttendance.studentAccountId !== attendance.studentAccountId
+          existingByAttendance.studentAccountId !==
+            attendance.studentAccountId ||
+          (attendance.participantId &&
+            existingByAttendance.participantId !== attendance.participantId)
         )
           throw new ConflictException('Conflito de identidade de certificado');
         return existingByAttendance;
@@ -139,6 +142,27 @@ export class CertificateService {
 
       if (studentRefRa && currentStudent?.socialName)
         snapshot.studentName = currentStudent.socialName;
+
+      if (attendance.participantId) {
+        const empParticipant = await client.eventParticipant.findUnique({
+          where: { id: attendance.participantId },
+          include: { employee: true },
+        });
+        if (empParticipant?.employeeAccountId && empParticipant.employee) {
+          const displayName =
+            empParticipant.employee.socialName?.trim() ||
+            empParticipant.employee.name;
+          snapshot.studentName = displayName;
+          snapshot.studentRa = '';
+          snapshot.course = '';
+          snapshot.recipient = {
+            type: 'EMPLOYEE',
+            displayName,
+            registrationNumber:
+              empParticipant.employee.registrationNumber ?? null,
+          };
+        }
+      }
 
       if (snapshot.version === 2) {
         // ON CONFLICT evita abortar a transação de presença durante uma colisão.
@@ -560,6 +584,31 @@ export class CertificateService {
     user: TokenPayload,
   ): Promise<CertificateListItem[]> {
     return this.prisma.$transaction(async (tx) => {
+      if (user.role === 'employee') {
+        const employee = await this.activeEmployee(tx, user);
+        const rows = await tx.certificate.findMany({
+          where: {
+            participant: { employeeAccountId: employee.accountId },
+            revokedAt: null,
+            activeAttendanceId: { not: null },
+          },
+          orderBy: [{ issuedAt: 'desc' }, { id: 'asc' }],
+        });
+        return rows.map((row) => {
+          const snapshot = row.payloadSnapshot as unknown as CertificateSnapshot;
+          return {
+            id: row.id,
+            eventId: row.eventId,
+            verificationCode: row.verificationCode,
+            eventTitle: snapshot.eventTitle,
+            eventDate: snapshot.eventDate,
+            workload: snapshot.workload,
+            issuedAt: row.issuedAt.toISOString(),
+            revokedAt: row.revokedAt ? row.revokedAt.toISOString() : null,
+          };
+        });
+      }
+
       const student = await this.activeStudent(tx, user);
 
       const rows = await tx.certificate.findMany({
@@ -597,6 +646,34 @@ export class CertificateService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      if (user.role === 'employee') {
+        const employee = await this.activeEmployee(tx, user);
+        const row = await tx.certificate.findUnique({
+          where: { id },
+          include: {
+            participant: { select: { employeeAccountId: true } },
+          },
+        });
+        if (
+          !row ||
+          row.revokedAt ||
+          !row.activeAttendanceId ||
+          row.participant?.employeeAccountId !== employee.accountId
+        ) {
+          throw new NotFoundException('Certificado não encontrado');
+        }
+        const snapshot = row.payloadSnapshot as unknown as CertificateSnapshot;
+        return {
+          id: row.id,
+          eventId: row.eventId,
+          attendanceId: row.attendanceId,
+          verificationCode: row.verificationCode,
+          payloadSnapshot: snapshot,
+          issuedAt: row.issuedAt.toISOString(),
+          revokedAt: null,
+        };
+      }
+
       const student = await this.activeStudent(tx, user);
 
       const row = await tx.certificate.findUnique({
@@ -666,6 +743,12 @@ export class CertificateService {
       valid: true,
       code: cert.verificationCode,
       studentName: snapshot.studentName,
+      ...(snapshot.recipient?.type === 'EMPLOYEE'
+        ? {
+            recipientType: 'EMPLOYEE' as const,
+            displayName: snapshot.recipient.displayName,
+          }
+        : {}),
       eventTitle: snapshot.eventTitle,
       eventDate: snapshot.eventDate,
       workload: snapshot.workload,
@@ -732,5 +815,50 @@ export class CertificateService {
     }
 
     return student;
+  }
+
+  private async activeEmployee(
+    tx: Prisma.TransactionClient,
+    user: TokenPayload,
+  ): Promise<{ id: string; accountId: string }> {
+    if (user.role !== 'employee') {
+      throw new ForbiddenException(
+        'Apenas funcionários podem consultar certificados',
+      );
+    }
+    if (typeof user.sub !== 'string' || !user.accountId) {
+      throw new UnauthorizedException('Identidade de funcionário inválida');
+    }
+
+    const rows = await tx.$queryRaw<
+      Array<{
+        id: string;
+        accountId: string;
+        accountStatus: string;
+        archivedAt: Date | null;
+        authVersion: number;
+      }>
+    >`
+      SELECT "id", "accountId", "accountStatus"::text AS "accountStatus", "archivedAt", "authVersion"
+      FROM "Employee"
+      WHERE "id" = ${user.sub}
+      FOR SHARE
+    `;
+    const employee = rows[0];
+    if (
+      !employee ||
+      employee.accountId !== user.accountId ||
+      employee.archivedAt !== null ||
+      employee.accountStatus !== 'ACTIVE'
+    ) {
+      throw new ForbiddenException('Conta de funcionário bloqueada ou inativa');
+    }
+    if (
+      typeof user.authVersion === 'number' &&
+      employee.authVersion !== user.authVersion
+    ) {
+      throw new UnauthorizedException('Sessão revogada');
+    }
+    return { id: employee.id, accountId: employee.accountId };
   }
 }

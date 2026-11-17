@@ -35,7 +35,7 @@ const validation = new ValidationPipe({
 
 @Controller('support/tickets')
 @UseGuards(AuthGuard, RolesGuard)
-@Roles('student')
+@Roles('student', 'employee')
 @UsePipes(validation)
 @UseInterceptors(NoStoreInterceptor)
 export class SupportController {

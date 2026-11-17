@@ -35,11 +35,25 @@ const summarySelect = {
   closeReason: true,
   eventId: true,
   certificateId: true,
+  ownerAccountId: true,
+  ownerEmployeeAccountId: true,
   owner: { select: { ra: true, name: true, socialName: true, course: true } },
+  employeeOwner: {
+    select: {
+      id: true,
+      name: true,
+      socialName: true,
+      registrationNumber: true,
+    },
+  },
   assignee: { select: { id: true, name: true, dueDate: true } },
 } satisfies Prisma.SupportTicketSelect;
 type Summary = Prisma.SupportTicketGetPayload<{ select: typeof summarySelect }>;
-type Actor = { role: 'STUDENT' | 'SECRETARY'; id: string };
+type Actor = {
+  role: 'STUDENT' | 'EMPLOYEE' | 'SECRETARY';
+  id: string;
+  accountId: string;
+};
 type Action =
   | 'MESSAGE'
   | 'CLAIM'
@@ -90,7 +104,39 @@ export class SupportService {
         throw new UnauthorizedException(
           'Conta original indisponível. Entre novamente ou procure a instituição.',
         );
-      return { role: 'STUDENT', id: user.accountId };
+      return { role: 'STUDENT', id: user.accountId, accountId: user.accountId };
+    }
+    if (
+      user.role === 'employee' &&
+      typeof user.sub === 'string' &&
+      user.accountId
+    ) {
+      const rows = await tx.$queryRaw<
+        {
+          accountId: string;
+          accountStatus: string;
+          archivedAt: Date | null;
+          authVersion: number;
+        }[]
+      >`SELECT "accountId", "accountStatus"::text AS "accountStatus", "archivedAt", "authVersion" FROM "Employee" WHERE "id" = ${user.sub} FOR SHARE`;
+      const emp = rows[0];
+      if (
+        !emp ||
+        emp.accountId !== user.accountId ||
+        emp.archivedAt !== null ||
+        emp.accountStatus !== 'ACTIVE' ||
+        (typeof user.authVersion === 'number' &&
+          emp.authVersion !== user.authVersion)
+      ) {
+        throw new ForbiddenException(
+          'Conta de funcionário indisponível ou bloqueada.',
+        );
+      }
+      return {
+        role: 'EMPLOYEE',
+        id: `employee:${user.accountId}`,
+        accountId: user.accountId,
+      };
     }
     if (user.role === 'secretary' && typeof user.sub === 'number') {
       const rows = await tx.$queryRaw<
@@ -100,35 +146,59 @@ export class SupportService {
         throw new ForbiddenException(
           'Conta da Secretaria indisponível ou com renovação pendente.',
         );
-      return { role: 'SECRETARY', id: String(user.sub) };
+      return {
+        role: 'SECRETARY',
+        id: String(user.sub),
+        accountId: String(user.sub),
+      };
     }
     throw new UnauthorizedException('Sessão inválida.');
   }
 
   private scope(actor: Actor): Prisma.SupportTicketWhereInput {
-    return actor.role === 'STUDENT'
-      ? { ownerIdentity: actor.id, ownerAccountId: actor.id }
-      : {};
+    if (actor.role === 'STUDENT') {
+      return { ownerIdentity: actor.id, ownerAccountId: actor.accountId };
+    }
+    if (actor.role === 'EMPLOYEE') {
+      return {
+        ownerIdentity: actor.id,
+        ownerEmployeeAccountId: actor.accountId,
+      };
+    }
+    return {};
   }
   private present(ticket: Summary, actor: Actor) {
     const {
       owner,
+      employeeOwner,
+      ownerAccountId,
+      ownerEmployeeAccountId,
       assignee,
       studentReadVersion,
       secretaryReadVersion,
       ...rest
     } = ticket;
+    const isTitular = actor.role === 'STUDENT' || actor.role === 'EMPLOYEE';
+    const ownerType = ownerEmployeeAccountId ? 'EMPLOYEE' : 'STUDENT';
     return {
       ...rest,
+      ownerType,
       unread:
-        (actor.role === 'STUDENT' ? studentReadVersion : secretaryReadVersion) <
+        (isTitular ? studentReadVersion : secretaryReadVersion) <
         ticket.version,
       ...(actor.role === 'SECRETARY'
         ? {
             studentRa: owner?.ra ?? null,
             studentName:
-              owner?.socialName || owner?.name || 'Conta indisponível',
+              ownerType === 'EMPLOYEE'
+                ? employeeOwner?.socialName?.trim() ||
+                  employeeOwner?.name ||
+                  'Funcionário indisponível'
+                : owner?.socialName || owner?.name || 'Conta indisponível',
             studentCourse: owner?.course ?? null,
+            employeeId: employeeOwner?.id ?? null,
+            employeeRegistrationNumber:
+              employeeOwner?.registrationNumber ?? null,
             assigneeName: assignee?.name ?? null,
             assigneeAvailable: Boolean(
               assignee && assignee.dueDate >= new Date(),
@@ -141,9 +211,9 @@ export class SupportService {
   async create(user: TokenPayload, dto: SupportCreateDto) {
     return this.prisma.$transaction(async (tx) => {
       const actor = await this.actor(tx, user);
-      if (actor.role !== 'STUDENT')
+      if (actor.role !== 'STUDENT' && actor.role !== 'EMPLOYEE')
         throw new ForbiddenException(
-          'Abertura disponível ao aluno autenticado.',
+          'Abertura disponível ao titular autenticado.',
         );
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`support-create:${actor.id}`}, 0))::text`;
       const subject = text(dto.subject, 5, 120),
@@ -188,7 +258,13 @@ export class SupportService {
       let eventId = dto.eventId;
       if (dto.certificateId) {
         const certificate = await tx.certificate.findFirst({
-          where: { id: dto.certificateId, studentAccountId: actor.id },
+          where:
+            actor.role === 'EMPLOYEE'
+              ? {
+                  id: dto.certificateId,
+                  participant: { employeeAccountId: actor.accountId },
+                }
+              : { id: dto.certificateId, studentAccountId: actor.accountId },
           select: { eventId: true },
         });
         if (!certificate || (eventId && eventId !== certificate.eventId))
@@ -206,7 +282,13 @@ export class SupportService {
           !event ||
           (event.status === 'CANCELLED' &&
             !(await tx.attendance.count({
-              where: { eventId, studentAccountId: actor.id },
+              where:
+                actor.role === 'EMPLOYEE'
+                  ? {
+                      eventId,
+                      participant: { employeeAccountId: actor.accountId },
+                    }
+                  : { eventId, studentAccountId: actor.accountId },
             })))
         )
           throw new BadRequestException(
@@ -228,7 +310,11 @@ export class SupportService {
               requestId: dto.requestId,
               requestHash: fingerprint,
               ownerIdentity: actor.id,
-              ownerAccountId: actor.id,
+              ownerAccountId:
+                actor.role === 'STUDENT' ? actor.accountId : null,
+              ownerEmployeeAccountId:
+                actor.role === 'EMPLOYEE' ? actor.accountId : null,
+              lastActorRole: actor.role,
               category: dto.category as SupportCategory,
               subject,
               requestedField: dto.requestedField,
@@ -290,6 +376,10 @@ export class SupportService {
         where.assignedSecretaryId = Number(actor.id);
       if (admin && query.assignee === 'unassigned')
         where.assignedSecretaryId = null;
+      if (admin && query.ownerType === 'EMPLOYEE')
+        where.ownerEmployeeAccountId = { not: null };
+      if (admin && query.ownerType === 'STUDENT')
+        where.ownerAccountId = { not: null };
       if (query.q)
         where.OR = [
           { protocol: { contains: query.q, mode: 'insensitive' } },
@@ -420,10 +510,26 @@ export class SupportService {
   async summary(user: TokenPayload) {
     return this.prisma.$transaction(async (tx) => {
       await this.actor(tx, user, true);
-      const pending = await tx.supportTicket.count({
-        where: { deletedAt: null, status: { in: ['OPEN', 'IN_PROGRESS'] } },
-      });
-      return { pending };
+      const [pending, student, employee] = await Promise.all([
+        tx.supportTicket.count({
+          where: { deletedAt: null, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+        }),
+        tx.supportTicket.count({
+          where: {
+            deletedAt: null,
+            status: { in: ['OPEN', 'IN_PROGRESS'] },
+            ownerAccountId: { not: null },
+          },
+        }),
+        tx.supportTicket.count({
+          where: {
+            deletedAt: null,
+            status: { in: ['OPEN', 'IN_PROGRESS'] },
+            ownerEmployeeAccountId: { not: null },
+          },
+        }),
+      ]);
+      return { pending, byOwnerType: { student, employee } };
     });
   }
   async assignees(user: TokenPayload) {
@@ -470,7 +576,7 @@ export class SupportService {
       });
       if (!ticket) throw new NotFoundException('Solicitação não encontrada.');
       const seen = Math.min(version, ticket.version);
-      if (actor.role === 'STUDENT')
+      if (actor.role === 'STUDENT' || actor.role === 'EMPLOYEE')
         await tx.supportTicket.updateMany({
           where: { id, studentReadVersion: { lt: seen } },
           data: { studentReadVersion: seen },
@@ -551,7 +657,10 @@ export class SupportService {
             throw new ConflictException(
               'Assuma o atendimento antes de responder.',
             );
-          if (actor.role === 'STUDENT' && status === 'WAITING_STUDENT')
+          if (
+            (actor.role === 'STUDENT' || actor.role === 'EMPLOYEE') &&
+            status === 'WAITING_STUDENT'
+          )
             status = assigneeId ? 'IN_PROGRESS' : 'OPEN';
         } else if (action === 'CLAIM') {
           if (actor.role !== 'SECRETARY' || terminal || assigneeId !== null)
@@ -613,7 +722,7 @@ export class SupportService {
           if (action === 'DELETE') data.deletedAt = new Date();
         } else if (action === 'CLOSE') {
           if (
-            actor.role !== 'STUDENT' ||
+            (actor.role !== 'STUDENT' && actor.role !== 'EMPLOYEE') ||
             !['OPEN', 'RESOLVED'].includes(status) ||
             (status === 'OPEN' && assigneeId !== null)
           )
@@ -668,7 +777,10 @@ export class SupportService {
               createdAt: { gte: new Date(Date.now() - 3600000) },
             },
           });
-          if (count >= (actor.role === 'STUDENT' ? 30 : 300))
+          if (
+            count >=
+            (actor.role === 'STUDENT' || actor.role === 'EMPLOYEE' ? 30 : 300)
+          )
             throw new HttpException(
               'Limite de mensagens por hora atingido. Aguarde e tente novamente.',
               429,
@@ -691,7 +803,7 @@ export class SupportService {
             assignedSecretaryId: assigneeId,
             version: { increment: 1 },
             lastActorRole: actor.role,
-            ...(actor.role === 'STUDENT'
+            ...(actor.role === 'STUDENT' || actor.role === 'EMPLOYEE'
               ? { studentReadVersion: ticket.version + 1 }
               : { secretaryReadVersion: ticket.version + 1 }),
           },

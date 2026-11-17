@@ -4,12 +4,15 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
   Attendance,
   CheckpointType,
+  Employee,
+  EmployeeAssignment,
   Event,
   EventCheckpoint,
   Prisma,
@@ -19,6 +22,7 @@ import { isUUID } from 'class-validator';
 import { loadAuthSecrets } from '../auth/auth.config';
 import type { TokenPayload } from '../auth/dto/payload.dto';
 import { PrismaService } from '../database/prisma.service';
+import { EmployeeEligibilityService } from '../employee/employee-eligibility.service';
 import type {
   AttendanceScanResponse,
   AttendanceSummary,
@@ -36,6 +40,29 @@ type ActiveStudent = Pick<
   Student,
   'ra' | 'accountId' | 'name' | 'course' | 'status'
 >;
+
+type ResolvedScanActor =
+  | {
+      kind: 'visitor';
+      ra: null;
+      accountId: null;
+      name: string;
+      course: string;
+    }
+  | {
+      kind: 'student';
+      ra: string;
+      accountId: string;
+      name: string;
+      course: string;
+    }
+  | {
+      kind: 'employee';
+      ra: null;
+      accountId: string;
+      name: string;
+      course: string;
+    };
 interface QrClaims {
   eventId: string;
   checkpoint: CheckpointType;
@@ -61,6 +88,7 @@ export class AttendanceService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly certificateService: CertificateService,
+    @Optional() private readonly employeeEligibility?: EmployeeEligibilityService,
   ) {
     this.qrSecret = loadAuthSecrets().attendanceQrSecret;
   }
@@ -89,17 +117,28 @@ export class AttendanceService {
         throw new ForbiddenException('Participação inválida');
       if (!participant && !user)
         throw new UnauthorizedException('Identidade obrigatória.');
-      const student = participant
+      const actor: ResolvedScanActor = participant
         ? {
+            kind: 'visitor',
             ra: null,
             accountId: null,
             name: participant.name,
             course: participant.course || 'Participante/ouvinte',
           }
-        : await this.activeStudent(tx, user!);
+        : user!.role === 'employee'
+          ? await this.activeEmployee(tx, user!, { requireAssignment: true })
+          : {
+              kind: 'student',
+              ...(await this.activeStudent(tx, user!)),
+            };
       // Serializa o par mesmo antes de existir a linha. A chave única permanece no banco.
       // Colisão de hash apenas serializa pares extras; não altera a identidade consultada.
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify([claims.eventId, participant?.id || student.ra])}, 0))::text`;
+      const lockActorKey =
+        participant?.id ||
+        (actor.kind === 'employee'
+          ? `employee:${actor.accountId}`
+          : actor.ra);
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify([claims.eventId, lockActorKey])}, 0))::text`;
       // Mesma ordem de escrita da #25: checkpoint antes de evento. FOR SHARE impede
       // fechamento/reabertura enquanto validamos e gravamos a presença.
       const checkpoints = await tx.$queryRaw<EventCheckpoint[]>`
@@ -180,21 +219,37 @@ export class AttendanceService {
           : assertGeoPolicy(event.geoPolicy);
       const identityParticipant =
         participant ||
-        (await tx.eventParticipant.upsert({
-          where: {
-            eventId_accountId: {
-              eventId: event.id,
-              accountId: student.accountId!,
-            },
-          },
-          create: {
-            eventId: event.id,
-            accountId: student.accountId,
-            name: student.name,
-            course: student.course,
-          },
-          update: {},
-        }));
+        (actor.kind === 'employee'
+          ? await tx.eventParticipant.upsert({
+              where: {
+                eventId_employeeAccountId: {
+                  eventId: event.id,
+                  employeeAccountId: actor.accountId,
+                },
+              },
+              create: {
+                eventId: event.id,
+                employeeAccountId: actor.accountId,
+                name: actor.name,
+                course: null,
+              },
+              update: {},
+            })
+          : await tx.eventParticipant.upsert({
+              where: {
+                eventId_accountId: {
+                  eventId: event.id,
+                  accountId: actor.accountId!,
+                },
+              },
+              create: {
+                eventId: event.id,
+                accountId: actor.accountId,
+                name: actor.name,
+                course: actor.course,
+              },
+              update: {},
+            }));
       let evidence: Prisma.InputJsonValue | undefined;
       if (geoPolicy) {
         if (!position?.challengeId)
@@ -206,7 +261,7 @@ export class AttendanceService {
           where: {
             id: position.challengeId,
             eventId: event.id,
-            identity: participant?.id || student.accountId!,
+            identity: participant?.id || actor.accountId!,
             checkpoint: claims.checkpoint,
             checkpointVersion: checkpoint.version,
             expiresAt: { gt: now },
@@ -223,17 +278,18 @@ export class AttendanceService {
       // Uma requisição pode esperar por locks e vencer durante a espera.
       if (claims.exp !== undefined && claims.exp * 1000 <= now.getTime())
         this.expiredQr();
-      const where = participant
-        ? { participantId: participant.id }
-        : {
-            eventId_studentRa: { eventId: event.id, studentRa: student.ra! },
-          };
+      const where =
+        participant || actor.kind === 'employee'
+          ? { participantId: identityParticipant.id }
+          : {
+              eventId_studentRa: { eventId: event.id, studentRa: actor.ra! },
+            };
       const previous = await tx.attendance.findUnique({ where });
       if (
         previous &&
-        !participant &&
-        (previous.studentAccountId !== student.accountId ||
-          previous.studentRefRa !== student.ra)
+        actor.kind === 'student' &&
+        (previous.studentAccountId !== actor.accountId ||
+          previous.studentRefRa !== actor.ra)
       ) {
         throw new ConflictException({
           statusCode: 409,
@@ -246,11 +302,11 @@ export class AttendanceService {
         if (previous?.checkInAt)
           return this.duplicate('ALREADY_CHECKED_IN', now);
         const data = {
-          studentRa: student.ra,
-          studentRefRa: student.ra,
-          studentAccountId: student.accountId,
-          studentName: student.name,
-          studentCourse: student.course,
+          studentRa: actor.ra,
+          studentRefRa: actor.ra,
+          studentAccountId: actor.kind === 'student' ? actor.accountId : null,
+          studentName: actor.name,
+          studentCourse: actor.course,
           ...(identityParticipant
             ? { participantId: identityParticipant.id }
             : {}),
@@ -287,11 +343,12 @@ export class AttendanceService {
               data: {
                 ...data,
                 eventId: event.id,
-                studentRa: student.ra,
-                studentRefRa: student.ra,
-                studentAccountId: student.accountId,
-                studentName: student.name,
-                studentCourse: student.course,
+                studentRa: actor.ra,
+                studentRefRa: actor.ra,
+                studentAccountId:
+                  actor.kind === 'student' ? actor.accountId : null,
+                studentName: actor.name,
+                studentCourse: actor.course,
               },
             });
         if (event.certificateEnabled)
@@ -351,6 +408,22 @@ export class AttendanceService {
 
   async findMine(user: TokenPayload): Promise<MyAttendanceView[]> {
     return this.prisma.$transaction(async (tx) => {
+      if (user.role === 'employee') {
+        const employee = await this.activeEmployee(tx, user, {
+          requireAssignment: false,
+        });
+        const rows = await tx.attendance.findMany({
+          where: {
+            participant: {
+              employeeAccountId: employee.accountId,
+            },
+          },
+          select: attendanceSelect,
+          orderBy: [{ checkInAt: 'desc' }, { id: 'asc' }],
+        });
+        return rows.map((row) => this.toView(row));
+      }
+
       const student = await this.activeStudent(tx, user);
       const rows = await tx.attendance.findMany({
         where: {
@@ -426,6 +499,82 @@ export class AttendanceService {
       );
     }
     return student;
+  }
+
+  private async activeEmployee(
+    tx: Prisma.TransactionClient,
+    user: TokenPayload,
+    options: { requireAssignment: boolean },
+  ): Promise<{
+    kind: 'employee';
+    ra: null;
+    accountId: string;
+    name: string;
+    course: string;
+  }> {
+    if (user.role !== 'employee') {
+      throw new ForbiddenException('Perfil inválido para operação de funcionário');
+    }
+    if (typeof user.sub !== 'string' || !user.accountId) {
+      throw new UnauthorizedException('Identidade de funcionário inválida');
+    }
+
+    const employees = await tx.$queryRaw<Employee[]>`
+      SELECT * FROM "Employee" WHERE "id" = ${user.sub} FOR SHARE`;
+    const employee = employees[0];
+    if (
+      !employee ||
+      employee.accountId !== user.accountId ||
+      employee.archivedAt !== null ||
+      employee.accountStatus !== 'ACTIVE'
+    ) {
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: 'ACCOUNT_BLOCKED',
+        message: 'Conta de funcionário bloqueada ou arquivada.',
+      });
+    }
+
+    if (
+      typeof user.authVersion === 'number' &&
+      employee.authVersion !== user.authVersion
+    ) {
+      throw new UnauthorizedException({
+        statusCode: 401,
+        code: 'SESSION_REVOKED',
+        message: 'Sessão revogada. Faça login novamente.',
+      });
+    }
+
+    if (options.requireAssignment) {
+      const assignments = await tx.$queryRaw<EmployeeAssignment[]>`
+        SELECT * FROM "EmployeeAssignment" WHERE "employeeId" = ${employee.id} FOR SHARE`;
+      const eligibility =
+        this.employeeEligibility ?? new EmployeeEligibilityService();
+      const evaluation = eligibility.evaluate(
+        employee,
+        assignments,
+        [],
+        new Date(),
+      );
+      if (!evaluation.employmentEligible) {
+        throw new ForbiddenException({
+          statusCode: 403,
+          code: 'NO_ACTIVE_ASSIGNMENT',
+          message:
+            'Vínculo funcional inativo ou expirado para registrar presença.',
+        });
+      }
+    }
+
+    const displayName = employee.socialName?.trim() || employee.name;
+    return {
+      kind: 'employee',
+      ra: null,
+      accountId: employee.accountId,
+      name: displayName,
+      course: '',
+    };
   }
 
   async verifyQr(token: string): Promise<QrClaims> {

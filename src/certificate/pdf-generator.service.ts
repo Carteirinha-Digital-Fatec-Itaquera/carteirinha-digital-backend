@@ -399,29 +399,36 @@ export class PdfGeneratorService {
         .stroke();
 
       /*
-       * RA + curso.
+       * RA + curso (ou matrícula funcional quando funcionário).
        */
 
-      const studentInfo = `RA ${snapshot.studentRa}  •  ${snapshot.course}`;
+      const studentInfo =
+        snapshot.recipient?.type === 'EMPLOYEE'
+          ? snapshot.recipient.registrationNumber
+            ? `Matrícula funcional: ${snapshot.recipient.registrationNumber}`
+            : ''
+          : `RA ${snapshot.studentRa}  •  ${snapshot.course}`;
 
-      const studentInfoSize = this.fitFontSize(doc, studentInfo, {
-        width: contentWidth - 120,
-        maxHeight: 23,
-        maxSize: 10,
-        minSize: 8,
-        font: 'Helvetica',
-        align: 'center',
-      });
-
-      doc
-        .font('Helvetica')
-        .fontSize(studentInfoSize)
-        .fillColor(TEXT_SECONDARY)
-        .text(studentInfo, contentX + 60, 271, {
+      if (studentInfo) {
+        const studentInfoSize = this.fitFontSize(doc, studentInfo, {
           width: contentWidth - 120,
-          height: 23,
+          maxHeight: 23,
+          maxSize: 10,
+          minSize: 8,
+          font: 'Helvetica',
           align: 'center',
         });
+
+        doc
+          .font('Helvetica')
+          .fontSize(studentInfoSize)
+          .fillColor(TEXT_SECONDARY)
+          .text(studentInfo, contentX + 60, 271, {
+            width: contentWidth - 120,
+            height: 23,
+            align: 'center',
+          });
+      }
 
       /*
        * ==========================================================

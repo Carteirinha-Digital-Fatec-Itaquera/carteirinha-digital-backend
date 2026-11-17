@@ -1,5 +1,7 @@
 import { OfflineAttendanceController } from './offline-attendance.controller';
 import { OfflineAttendanceService } from './offline-attendance.service';
+import { EmployeeOfflineAttendanceController } from './employee-offline-attendance.controller';
+import { EmployeeOfflineAttendanceService } from './employee-offline-attendance.service';
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { DatabaseModule } from '../database/database.module';
@@ -10,21 +12,24 @@ import {
 import { AttendanceService } from './attendance.service';
 
 import { CertificateModule } from '../certificate/certificate.module';
+import { EmployeeDataModule } from '../employee/employee-data.module';
 import { AttendanceQrReferenceService } from './attendance-qr-reference.service';
 import { AttendanceQrCleanupService } from './attendance-qr-cleanup.service';
 import { ActiveEventAccountGuard } from '../auth/active-event-account.guard';
 
 @Module({
-  imports: [DatabaseModule, AuthModule, CertificateModule],
+  imports: [DatabaseModule, AuthModule, CertificateModule, EmployeeDataModule],
   controllers: [
     AttendanceController,
     EventAttendanceController,
     OfflineAttendanceController,
+    EmployeeOfflineAttendanceController,
   ],
   providers: [
     ActiveEventAccountGuard,
     AttendanceService,
     OfflineAttendanceService,
+    EmployeeOfflineAttendanceService,
     AttendanceQrReferenceService,
     AttendanceQrCleanupService,
   ],

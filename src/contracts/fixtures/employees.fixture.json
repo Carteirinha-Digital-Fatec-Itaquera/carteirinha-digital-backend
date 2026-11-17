@@ -1,0 +1,254 @@
+{
+  "withoutRegistration": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "accountId": "22222222-2222-4222-8222-222222222222",
+    "profileType": "EMPLOYEE",
+    "name": "Pessoa Sem Matricula",
+    "socialName": null,
+    "displayName": "Pessoa Sem Matricula",
+    "email": "sem.matricula@example.test",
+    "registrationNumber": null,
+    "rg": null,
+    "admissionDate": "2024-02-01",
+    "accountStatus": "ACTIVE",
+    "version": 1,
+    "assignments": [
+      {
+        "id": "33333333-3333-4333-8333-333333333333",
+        "title": "Docente",
+        "startsOn": null,
+        "validUntil": null,
+        "active": true,
+        "effectiveStatus": "ACTIVE"
+      }
+    ],
+    "credential": {
+      "valid": true,
+      "validityKind": "INDETERMINATE",
+      "validUntil": null,
+      "reasonCode": null,
+      "checkedAt": "2026-11-17T15:00:00.000Z"
+    },
+    "photo": {
+      "approvedPhotoId": "55555555-5555-4555-8555-555555555555",
+      "pendingPhotoId": null,
+      "reviewStatus": "APPROVED"
+    }
+  },
+  "multipleAssignmentsWithExpiry": {
+    "id": "11111111-1111-4111-8111-111111111112",
+    "accountId": "22222222-2222-4222-8222-222222222223",
+    "profileType": "EMPLOYEE",
+    "name": "Pessoa Multiplas Funcoes",
+    "socialName": "Nome Social Demonstracao",
+    "displayName": "Nome Social Demonstracao",
+    "email": "multiplas@example.test",
+    "registrationNumber": "004512-A",
+    "rg": "123456789",
+    "admissionDate": "2023-08-01",
+    "accountStatus": "ACTIVE",
+    "version": 4,
+    "assignments": [
+      {
+        "id": "33333333-3333-4333-8333-333333333334",
+        "title": "Docente",
+        "startsOn": "2023-08-01",
+        "validUntil": "2026-12-20",
+        "active": true,
+        "effectiveStatus": "ACTIVE"
+      },
+      {
+        "id": "33333333-3333-4333-8333-333333333335",
+        "title": "Coordenador de DSM",
+        "startsOn": "2026-01-01",
+        "validUntil": "2026-12-31",
+        "active": true,
+        "effectiveStatus": "ACTIVE"
+      }
+    ],
+    "credential": {
+      "valid": true,
+      "validityKind": "UNTIL_DATE",
+      "validUntil": "2026-12-31",
+      "reasonCode": null,
+      "checkedAt": "2026-11-17T15:00:00.000Z"
+    },
+    "photo": {
+      "approvedPhotoId": "55555555-5555-4555-8555-555555555556",
+      "pendingPhotoId": null,
+      "reviewStatus": "APPROVED"
+    }
+  },
+  "pendingPhoto": {
+    "id": "11111111-1111-4111-8111-111111111113",
+    "accountId": "22222222-2222-4222-8222-222222222224",
+    "profileType": "EMPLOYEE",
+    "name": "Pessoa Foto Pendente",
+    "socialName": null,
+    "displayName": "Pessoa Foto Pendente",
+    "email": "foto.pendente@example.test",
+    "registrationNumber": "001001",
+    "rg": null,
+    "admissionDate": "2026-01-10",
+    "accountStatus": "ACTIVE",
+    "version": 2,
+    "assignments": [
+      {
+        "id": "33333333-3333-4333-8333-333333333336",
+        "title": "Auxiliar Administrativo",
+        "startsOn": "2026-01-10",
+        "validUntil": null,
+        "active": true,
+        "effectiveStatus": "ACTIVE"
+      }
+    ],
+    "credential": {
+      "valid": false,
+      "validityKind": "INDETERMINATE",
+      "validUntil": null,
+      "reasonCode": "PHOTO_PENDING",
+      "checkedAt": "2026-11-17T15:00:00.000Z"
+    },
+    "photo": {
+      "approvedPhotoId": null,
+      "pendingPhotoId": "55555555-5555-4555-8555-555555555557",
+      "reviewStatus": "PENDING"
+    }
+  },
+  "expiredAssignments": {
+    "id": "11111111-1111-4111-8111-111111111114",
+    "accountId": "22222222-2222-4222-8222-222222222225",
+    "profileType": "EMPLOYEE",
+    "name": "Pessoa Vinculo Vencido",
+    "socialName": null,
+    "displayName": "Pessoa Vinculo Vencido",
+    "email": "vencido@example.test",
+    "registrationNumber": null,
+    "rg": null,
+    "admissionDate": "2022-03-01",
+    "accountStatus": "ACTIVE",
+    "version": 3,
+    "assignments": [
+      {
+        "id": "33333333-3333-4333-8333-333333333337",
+        "title": "Professor Substituto",
+        "startsOn": "2022-03-01",
+        "validUntil": "2025-12-31",
+        "active": true,
+        "effectiveStatus": "EXPIRED"
+      }
+    ],
+    "credential": {
+      "valid": false,
+      "validityKind": "NO_ACTIVE_ASSIGNMENT",
+      "validUntil": null,
+      "reasonCode": "NO_ACTIVE_ASSIGNMENT",
+      "checkedAt": "2026-11-17T15:00:00.000Z"
+    },
+    "photo": {
+      "approvedPhotoId": "55555555-5555-4555-8555-555555555558",
+      "pendingPhotoId": null,
+      "reviewStatus": "APPROVED"
+    }
+  },
+  "blockedAccount": {
+    "id": "11111111-1111-4111-8111-111111111115",
+    "accountId": "22222222-2222-4222-8222-222222222226",
+    "profileType": "EMPLOYEE",
+    "name": "Pessoa Bloqueada",
+    "socialName": null,
+    "displayName": "Pessoa Bloqueada",
+    "email": "bloqueada@example.test",
+    "registrationNumber": "009999",
+    "rg": null,
+    "admissionDate": "2023-02-01",
+    "accountStatus": "BLOCKED",
+    "version": 5,
+    "assignments": [
+      {
+        "id": "33333333-3333-4333-8333-333333333338",
+        "title": "Docente",
+        "startsOn": null,
+        "validUntil": null,
+        "active": true,
+        "effectiveStatus": "ACTIVE"
+      }
+    ],
+    "credential": {
+      "valid": false,
+      "validityKind": "NO_ACTIVE_ASSIGNMENT",
+      "validUntil": null,
+      "reasonCode": "ACCOUNT_BLOCKED",
+      "checkedAt": "2026-11-17T15:00:00.000Z"
+    },
+    "photo": {
+      "approvedPhotoId": null,
+      "pendingPhotoId": null,
+      "reviewStatus": null
+    }
+  },
+  "publicVerificationValid": {
+    "valid": true,
+    "profileType": "EMPLOYEE",
+    "displayName": "Nome Social Demonstracao",
+    "activeAssignments": [
+      { "title": "Docente" },
+      { "title": "Coordenador de DSM" }
+    ],
+    "validityKind": "UNTIL_DATE",
+    "validUntil": "2026-12-31",
+    "photoUrl": "/funcionarios/verificar/qr-ficticio-128bits-0001/foto",
+    "checkedAt": "2026-11-17T15:00:00.000Z"
+  },
+  "publicVerificationBlocked": {
+    "valid": false,
+    "profileType": "EMPLOYEE",
+    "reasonCode": "ACCOUNT_BLOCKED",
+    "checkedAt": "2026-11-17T15:00:00.000Z"
+  },
+  "versionConflictError": {
+    "statusCode": 409,
+    "code": "VERSION_CONFLICT",
+    "message": "O cadastro foi atualizado por outra operação. Recarregue os dados antes de tentar novamente.",
+    "currentVersion": 4
+  },
+  "partialImportBatch": {
+    "batchId": "66666666-6666-4666-8666-666666666661",
+    "schemaVersion": "1.0",
+    "mode": "CREATE_ONLY",
+    "state": "PARTIAL",
+    "revision": 1,
+    "reviewDigest": "digest-ficticio-sha256",
+    "counts": {
+      "totalRows": 3,
+      "totalGroups": 2,
+      "readyCreate": 1,
+      "readyUpdate": 0,
+      "exists": 0,
+      "invalid": 1,
+      "ambiguous": 0,
+      "succeeded": 2,
+      "failed": 1,
+      "stale": 0,
+      "cancelled": 0
+    },
+    "expiresAt": "2026-11-19T15:00:00.000Z",
+    "confirmedAt": "2026-11-17T15:05:00.000Z",
+    "finishedAt": "2026-11-17T15:05:10.000Z",
+    "createdAt": "2026-11-17T15:00:00.000Z"
+  },
+  "lostOfflineReceipt": {
+    "requestId": "77777777-7777-4777-8777-777777777771",
+    "reference": "ref-evento-ficticio-01",
+    "scannedAt": "2026-11-17T14:50:00.000Z",
+    "receivedAt": "2026-11-17T14:50:05.000Z",
+    "result": {
+      "success": true,
+      "type": "CHECK_OUT",
+      "eventTitle": "Semana de Tecnologia Fatec Itaquera",
+      "timestamp": "2026-11-17T14:50:05.000Z",
+      "status": "CONFIRMED",
+      "message": "Presença registrada com sucesso."
+    }
+  }
+}

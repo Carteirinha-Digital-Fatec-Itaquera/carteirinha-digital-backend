@@ -66,13 +66,15 @@ export class MailService {
     recipientName: string;
     eventTitle: string;
     accessUrl: string;
-    profile: 'ALUNO' | 'VISITANTE';
+    profile: 'ALUNO' | 'VISITANTE' | 'FUNCIONARIO';
   }) {
     const subject = `Seu certificado está disponível: ${params.eventTitle} - Fatec Itaquera`;
     const instructions =
       params.profile === 'ALUNO'
         ? 'Acesse a área de certificados na Carteirinha Digital para visualizar ou baixar seu certificado oficial.'
-        : 'Acesse a área de visitantes com seu CPF cadastrado para visualizar ou baixar seu certificado durante o período de retenção da edição.';
+        : params.profile === 'FUNCIONARIO'
+          ? 'Acesse a área de certificados do Portal dos Funcionários para visualizar ou baixar seu certificado oficial.'
+          : 'Acesse a área de visitantes com seu CPF cadastrado para visualizar ou baixar seu certificado durante o período de retenção da edição.';
 
     const safeRecipientName = escapeHtml(params.recipientName);
     const safeEventTitle = escapeHtml(params.eventTitle);
@@ -201,5 +203,52 @@ export class MailService {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(`Não foi possível enviar o email: ${message}`);
     }
+  }
+
+  async sendEmployeeAccessEmail(params: {
+    email: string;
+    recipientName: string;
+    actionUrl: string;
+    purpose: 'ACTIVATE' | 'RESET_PASSWORD';
+  }) {
+    const isActivate = params.purpose === 'ACTIVATE';
+    const subject = isActivate
+      ? 'Ative seu acesso — Carteirinha Digital Fatec Itaquera'
+      : 'Redefinição de senha — Carteirinha Digital Fatec Itaquera';
+    const safeName = escapeHtml(params.recipientName);
+    const safeUrl = sanitizeUrl(params.actionUrl);
+    const buttonText = isActivate ? 'Ativar Meu Acesso' : 'Redefinir Minha Senha';
+    const ttlText = isActivate ? '24 horas' : '30 minutos';
+
+    return await this.client.transactionalEmails.sendTransacEmail({
+      subject,
+      to: [{ email: params.email, name: params.recipientName }],
+      sender: {
+        name: 'Carteirinha Digital - Fatec Itaquera',
+        email:
+          process.env.EVENT_MAIL_SENDER ||
+          'carteirinha.digital.fatec@gmail.com',
+      },
+      htmlContent: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden;">
+          <div style="background-color: #CC092F; padding: 20px; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 20px;">Portal dos Funcionários — Fatec Itaquera</h1>
+          </div>
+          <div style="background: white; padding: 28px;">
+            <p style="font-size: 16px; color: #333;">Olá, <strong>${safeName}</strong>!</p>
+            <p style="font-size: 14px; color: #555; line-height: 1.6;">
+              ${isActivate ? 'Seu cadastro como funcionário na Carteirinha Digital está pronto para ativação.' : 'Recebemos uma solicitação para redefinir a sua senha no Portal dos Funcionários.'}
+            </p>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${escapeHtml(safeUrl)}" style="background-color: #CC092F; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
+                ${buttonText}
+              </a>
+            </div>
+            <p style="font-size: 12px; color: #777;">
+              Este link é de uso único e válido por ${ttlText}. Se você não solicitou, ignore este e-mail.
+            </p>
+          </div>
+        </div>`,
+    });
   }
 }

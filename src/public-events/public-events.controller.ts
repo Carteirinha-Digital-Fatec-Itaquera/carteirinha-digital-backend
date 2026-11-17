@@ -447,7 +447,7 @@ export class VisitorController {
 
 @Controller('attendances')
 @UseGuards(AuthGuard, RolesGuard)
-@Roles('student')
+@Roles('student', 'employee')
 export class StudentLocationController {
   constructor(
     private readonly refs: AttendanceQrReferenceService,
@@ -465,6 +465,31 @@ export class StudentLocationController {
       !row && dto.qrToken ? await this.attendance.verifyQr(dto.qrToken) : null;
     const eventId = row?.eventId || claims?.eventId;
     if (!eventId) throw new BadRequestException('QR obrigatório.');
+
+    if (req.user.role === 'employee') {
+      const employee = await this.prisma.employee.findFirst({
+        where: {
+          id: String(req.user.sub),
+          accountId: req.user.accountId,
+          accountStatus: 'ACTIVE',
+          archivedAt: null,
+        },
+      });
+      if (!employee || !req.user.accountId) {
+        throw new BadRequestException('Conta de funcionário inválida.');
+      }
+      const challenge = await this.prisma.presenceChallenge.create({
+        data: {
+          identity: req.user.accountId,
+          eventId,
+          checkpoint: row?.type || claims!.checkpoint,
+          checkpointVersion: row?.version || claims!.checkpointVersion,
+          expiresAt: new Date(Date.now() + 60000),
+        },
+      });
+      return { challengeId: challenge.id };
+    }
+
     const student = await this.prisma.student.findFirst({
       where: { ra: String(req.user.sub), accountId: req.user.accountId },
     });
@@ -511,6 +536,14 @@ export class EventManagementController {
   }
   @Get('students/:ra/history') studentHistory(@Param('ra') ra: string) {
     return this.operations.studentHistory(ra);
+  }
+  @Get('employees/search') searchEmployees(@Query('q') query: string) {
+    return this.operations.searchEmployees(query);
+  }
+  @Get('employees/:id/history') employeeHistory(
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.operations.employeeHistory(id);
   }
   @Get('catalog') async catalogData() {
     await this.catalog.ensureDefaultTemplates();

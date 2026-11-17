@@ -24,7 +24,7 @@ import { ScanReferenceDto } from './dto/scan-reference.dto';
 
 @Controller('attendances')
 @UseGuards(AuthGuard, RolesGuard)
-@Roles('student')
+@Roles('student', 'employee')
 export class AttendanceController {
   constructor(
     private readonly attendance: AttendanceService,

@@ -20,6 +20,11 @@ export interface CertificateSnapshot {
     speakerAction?: string;
   };
   signers?: { id: string; name: string; title: string; assetId: string }[];
+  recipient?: {
+    type: 'EMPLOYEE';
+    displayName: string;
+    registrationNumber: string | null;
+  };
   studentName: string;
   studentRa: string;
   course: string;

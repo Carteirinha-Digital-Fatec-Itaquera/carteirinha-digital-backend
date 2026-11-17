@@ -11,7 +11,7 @@ export type EventStatus =
   | 'CANCELLED';
 export type CheckpointType = 'CHECK_IN' | 'CHECK_OUT';
 export type AttendanceStatus = 'CHECKED_IN' | 'CONFIRMED';
-export type ApiRole = 'student' | 'secretary';
+export type ApiRole = 'student' | 'secretary' | 'employee';
 export type IsoDateTime = string;
 export type Uuid = string;
 

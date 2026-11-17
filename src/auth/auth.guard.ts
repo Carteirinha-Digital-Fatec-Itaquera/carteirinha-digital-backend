@@ -55,6 +55,18 @@ export class AuthGuard implements CanActivate {
       );
     }
 
+    if (candidate.role === 'employee') {
+      return (
+        typeof candidate.sub === 'string' &&
+        candidate.sub.trim().length > 0 &&
+        typeof candidate.accountId === 'string' &&
+        candidate.accountId.trim().length > 0 &&
+        typeof candidate.authVersion === 'number' &&
+        Number.isInteger(candidate.authVersion) &&
+        candidate.authVersion >= 1
+      );
+    }
+
     return (
       candidate.role === 'secretary' &&
       typeof candidate.sub === 'number' &&
