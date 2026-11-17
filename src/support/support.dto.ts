@@ -64,6 +64,7 @@ export class SupportQueryDto {
   @IsOptional() @IsIn(SUPPORT_STATUSES) status?: string;
   @IsOptional() @IsIn(SUPPORT_CATEGORIES) category?: string;
   @IsOptional() @IsIn(['mine', 'unassigned', 'all']) assignee?: string;
+  @IsOptional() @IsIn(['STUDENT', 'EMPLOYEE']) ownerType?: 'STUDENT' | 'EMPLOYEE';
   @IsOptional() @Transform(trim) @IsString() @MaxLength(120) q?: string;
   @IsOptional() @IsUUID() cursor?: string;
   @IsOptional()

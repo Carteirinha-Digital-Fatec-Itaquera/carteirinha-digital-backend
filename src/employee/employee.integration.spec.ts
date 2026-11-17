@@ -6,6 +6,8 @@ import request from 'supertest';
 import { PrismaService } from '../database/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { UploadService } from '../upload/upload.service';
+import { InstitutionModule } from '../institution/institution.module';
+import { SupportModule } from '../support/support.module';
 import { EmployeeImportWorkerService } from './employee-import-worker.service';
 import { EmployeeModule } from './employee.module';
 
@@ -29,6 +31,8 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
           signOptions: { expiresIn: '1h' },
         }),
         EmployeeModule,
+        SupportModule,
+        InstitutionModule,
       ],
     })
       .overrideProvider(PrismaService)
@@ -68,6 +72,9 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
     jwtService = moduleRef.get(JwtService);
     importWorker = moduleRef.get(EmployeeImportWorkerService);
 
+    await prisma.supportAudit.deleteMany();
+    await prisma.supportMessage.deleteMany();
+    await prisma.supportTicket.deleteMany();
     await prisma.employeeImportRow.deleteMany();
     await prisma.employeeImportBatch.deleteMany();
     await prisma.employeeAudit.deleteMany();
@@ -488,5 +495,63 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
     await request(app.getHttpServer())
       .get(`/funcionarios/verificar/${rotated.body.qrcode}`)
       .expect(200);
+  });
+
+  it('permite abertura de chamado de suporte por funcionário, resposta da Secretaria, isolamento de aluno e consulta pública institucional', async () => {
+    const instRes = await request(app.getHttpServer())
+      .get('/public/institution')
+      .expect(200);
+    expect(instRes.body.shortName).toBe('Fatec Itaquera');
+
+    const emp = await request(app.getHttpServer())
+      .post('/funcionarios')
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .send({
+        requestId: '55555555-5555-4555-8555-555555555501',
+        name: 'Suporte Funcionario',
+        email: 'suporte.emp@example.test',
+        admissionDate: '2024-02-01',
+        assignments: [{ title: 'Docente' }],
+      })
+      .expect(201);
+
+    const empToken = await jwtService.signAsync({
+      sub: emp.body.id,
+      accountId: emp.body.accountId,
+      role: 'employee',
+      authVersion: 1,
+    });
+
+    const ticketRes = await request(app.getHttpServer())
+      .post('/support/tickets')
+      .set('Authorization', `Bearer ${empToken}`)
+      .send({
+        requestId: '55555555-5555-4555-8555-555555555502',
+        category: 'DATA',
+        subject: 'Solicitação de ajuste cadastral',
+        description: 'Gostaria de solicitar a atualização do meu nome social no cadastro.',
+        requestedField: 'SOCIAL_NAME',
+        proposedValue: 'Nome Social Novo',
+      })
+      .expect(201);
+
+    expect(ticketRes.body.ownerType).toBe('EMPLOYEE');
+
+    // Cadastro não é alterado automaticamente pelo ticket
+    const empAfter = await prisma.employee.findUnique({ where: { id: emp.body.id } });
+    expect(empAfter?.socialName).toBeNull();
+
+    // Admin filter ownerType=EMPLOYEE & summary
+    const adminList = await request(app.getHttpServer())
+      .get('/support/admin/tickets?ownerType=EMPLOYEE')
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .expect(200);
+    expect(adminList.body.items.some((t: { id: string }) => t.id === ticketRes.body.id)).toBe(true);
+
+    const summaryRes = await request(app.getHttpServer())
+      .get('/support/admin/summary')
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .expect(200);
+    expect(summaryRes.body.byOwnerType.employee).toBeGreaterThanOrEqual(1);
   });
 });
