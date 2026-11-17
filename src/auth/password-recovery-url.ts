@@ -29,3 +29,34 @@ export function buildPasswordRecoveryUrl(
     );
   }
 }
+
+export function buildEmployeeActionUrl(
+  purpose: 'ACTIVATE' | 'RESET_PASSWORD',
+  token: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const base = env.EMPLOYEE_APP_URL?.trim();
+  if (!base) {
+    throw new InternalServerErrorException(
+      'EMPLOYEE_APP_URL deve estar configurada para links de acesso de funcionários.',
+    );
+  }
+  try {
+    const path =
+      purpose === 'ACTIVATE' ? '/ativar-acesso' : '/redefinir-senha';
+    const url = new URL(path, base);
+    if (
+      !['http:', 'https:'].includes(url.protocol) ||
+      url.username ||
+      url.password
+    ) {
+      throw new Error('Invalid employee frontend URL');
+    }
+    url.search = new URLSearchParams({ token }).toString();
+    return url.toString();
+  } catch {
+    throw new InternalServerErrorException(
+      'Endereço de acesso de funcionários indisponível.',
+    );
+  }
+}

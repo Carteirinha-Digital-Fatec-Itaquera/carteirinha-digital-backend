@@ -24,13 +24,11 @@ import {
   UpdateAssignmentDto,
 } from './dto/employee-assignment.dto';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
-import {
-  EmployeeReasonMutationDto,
-  RenewEmployeeQrDto,
-  UpdateEmployeeStatusDto,
-} from './dto/employee-mutation.dto';
+import { EmployeeReasonMutationDto, RenewEmployeeQrDto, UpdateEmployeeStatusDto } from './dto/employee-mutation.dto';
+import { EmployeeInviteDto } from './dto/employee-access.dto';
 import { EmployeeQueryDto } from './dto/employee-query.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
+import { EmployeeAuthService } from './employee-auth.service';
 import { EmployeeService } from './employee.service';
 
 const STRICT_PIPE = new ValidationPipe({
@@ -47,7 +45,10 @@ interface SecretaryRequest {
 @UseGuards(AuthGuard, SecretaryActiveGuard)
 @UsePipes(STRICT_PIPE)
 export class EmployeeController {
-  constructor(private readonly employeeService: EmployeeService) {}
+  constructor(
+    private readonly employeeService: EmployeeService,
+    private readonly employeeAuthService: EmployeeAuthService,
+  ) {}
 
   @Get()
   @Header('Cache-Control', 'no-store')
@@ -131,6 +132,22 @@ export class EmployeeController {
     @Req() req: SecretaryRequest,
   ) {
     return this.employeeService.renewQr(id, dto, req.secretary.id);
+  }
+
+  @Post(':id/convite')
+  @Header('Cache-Control', 'no-store')
+  sendInvite(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: EmployeeInviteDto,
+    @Req() req: SecretaryRequest,
+  ) {
+    return this.employeeAuthService.sendInvite(id, dto, req.secretary.id);
+  }
+
+  @Get(':id/acesso')
+  @Header('Cache-Control', 'no-store')
+  getAccessStatus(@Param('id', ParseUUIDPipe) id: string) {
+    return this.employeeAuthService.getAccessStatus(id);
   }
 
   @Get(':id/funcoes')

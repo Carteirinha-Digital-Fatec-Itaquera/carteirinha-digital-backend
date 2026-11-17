@@ -105,7 +105,7 @@ export class AuthService {
           this.studentService.updateStudentPassword(String(valuesSearch), hashedPassword),
           this.studentService.updateLastLoginStudent(String(valuesSearch)),
         ]);
-      } else {
+      } else if (userType === 'secretary') {
         const idNumeric = Number(valuesSearch);
         if (isNaN(idNumeric)) {
           throw new Error('ID de secretária inválido para conversão numérica');
@@ -115,6 +115,8 @@ export class AuthService {
           this.secretaryService.updateLastLogin(idNumeric),
           this.secretaryService.updateDueDate(idNumeric),
         ]);
+      } else {
+        throw new BadRequestException('Perfil não suportado nesta rota.');
       }
     } catch (error) {
       console.error('Erro ao trocar senha', error);

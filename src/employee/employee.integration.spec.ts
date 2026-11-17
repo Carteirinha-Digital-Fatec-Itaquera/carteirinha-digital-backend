@@ -2,17 +2,22 @@ import { INestApplication } from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import { AuthController } from '../auth/auth.controller';
+import { AuthService } from '../auth/auth.service';
 import { PrismaService } from '../database/prisma.service';
+import { MailService } from '../mail/mail.service';
 import { EmployeeModule } from './employee.module';
 
-describe('Employee CRUD & Assignments Integration (HTTP + PostgreSQL)', () => {
+describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let jwtService: JwtService;
   let secretaryToken: string;
+  const sentEmails: Array<{ email: string; actionUrl: string; purpose: string }> = [];
 
   beforeAll(async () => {
     process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-employee-only';
+    process.env.EMPLOYEE_APP_URL = 'https://funcionarios.example.test';
 
     const moduleRef = await Test.createTestingModule({
       imports: [
@@ -25,6 +30,17 @@ describe('Employee CRUD & Assignments Integration (HTTP + PostgreSQL)', () => {
     })
       .overrideProvider(PrismaService)
       .useValue(new PrismaService())
+      .overrideProvider(MailService)
+      .useValue({
+        sendEmployeeAccessEmail: async (params: {
+          email: string;
+          actionUrl: string;
+          purpose: string;
+        }) => {
+          sentEmails.push(params);
+          return { messageId: 'mock-msg-id' };
+        },
+      })
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -188,5 +204,97 @@ describe('Employee CRUD & Assignments Integration (HTTP + PostgreSQL)', () => {
       .set('Authorization', `Bearer ${secretaryToken}`)
       .send({ expectedVersion: 2, reason: 'Tentativa cruzada', active: false })
       .expect(404);
+  });
+
+  it('ativa primeiro acesso com consumo único concorrente, autentica e invalida sessão antiga ao bloquear ou resetar senha', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/funcionarios')
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .send({
+        requestId: '11111111-1111-4111-8111-111111111105',
+        name: 'Carlos Acesso',
+        email: 'carlos.acesso@example.test',
+        admissionDate: '2024-02-01',
+        assignments: [{ title: 'Docente' }],
+      })
+      .expect(201);
+
+    // Login before setting password fails
+    await request(app.getHttpServer())
+      .post('/autenticacao/funcionarios/login')
+      .send({ email: 'carlos.acesso@example.test', password: 'SenhaForte123!' })
+      .expect(401);
+
+    // Secretary sends invite
+    const inviteRes = await request(app.getHttpServer())
+      .post(`/funcionarios/${created.body.id}/convite`)
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .send({
+        requestId: '11111111-1111-4111-8111-111111111106',
+        expectedVersion: 1,
+      })
+      .expect(201);
+    expect(inviteRes.body.deliveryState).toBe('ACCEPTED');
+
+    const lastEmail = sentEmails[sentEmails.length - 1];
+    const token = new URL(lastEmail.actionUrl).searchParams.get('token') as string;
+    expect(token).toBeTruthy();
+
+    // Concurrent activation: only 1 succeeds
+    const [a1, a2] = await Promise.all([
+      request(app.getHttpServer())
+        .post('/autenticacao/funcionarios/ativar')
+        .send({ token, newPassword: 'SenhaForte123!' }),
+      request(app.getHttpServer())
+        .post('/autenticacao/funcionarios/ativar')
+        .send({ token, newPassword: 'SenhaForte123!' }),
+    ]);
+    expect([a1.status, a2.status].sort()).toEqual([200, 400]);
+
+    // Login succeeds
+    const loginRes = await request(app.getHttpServer())
+      .post('/autenticacao/funcionarios/login')
+      .send({ email: 'carlos.acesso@example.test', password: 'SenhaForte123!' })
+      .expect(200);
+
+    expect(loginRes.body.profileType).toBe('employee');
+    const empToken = loginRes.body.token as string;
+
+    // GET /funcionarios/me succeeds
+    const meRes = await request(app.getHttpServer())
+      .get('/funcionarios/me')
+      .set('Authorization', `Bearer ${empToken}`)
+      .expect(200);
+    expect(meRes.body.email).toBe('carlos.acesso@example.test');
+
+    // Employee cannot access secretary route
+    await request(app.getHttpServer())
+      .get('/funcionarios')
+      .set('Authorization', `Bearer ${empToken}`)
+      .expect(403);
+
+    // Block employee -> existing JWT immediately rejected
+    await request(app.getHttpServer())
+      .post(`/funcionarios/${created.body.id}/status`)
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .send({ expectedVersion: 2, reason: 'Suspensao teste', status: 'BLOCKED' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .get('/funcionarios/me')
+      .set('Authorization', `Bearer ${empToken}`)
+      .expect(403);
+
+    // Unblock employee -> old JWT still revoked due to authVersion bump
+    await request(app.getHttpServer())
+      .post(`/funcionarios/${created.body.id}/status`)
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .send({ expectedVersion: 3, reason: 'Reativacao teste', status: 'ACTIVE' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .get('/funcionarios/me')
+      .set('Authorization', `Bearer ${empToken}`)
+      .expect(401);
   });
 });
