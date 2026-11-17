@@ -6,12 +6,14 @@ import { AuthController } from '../auth/auth.controller';
 import { AuthService } from '../auth/auth.service';
 import { PrismaService } from '../database/prisma.service';
 import { MailService } from '../mail/mail.service';
+import { EmployeeImportWorkerService } from './employee-import-worker.service';
 import { EmployeeModule } from './employee.module';
 
 describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let jwtService: JwtService;
+  let importWorker: EmployeeImportWorkerService;
   let secretaryToken: string;
   const sentEmails: Array<{ email: string; actionUrl: string; purpose: string }> = [];
 
@@ -49,7 +51,10 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
     prisma = moduleRef.get(PrismaService);
     await prisma.$connect();
     jwtService = moduleRef.get(JwtService);
+    importWorker = moduleRef.get(EmployeeImportWorkerService);
 
+    await prisma.employeeImportRow.deleteMany();
+    await prisma.employeeImportBatch.deleteMany();
     await prisma.employeeAudit.deleteMany();
     await prisma.employeeAccessToken.deleteMany();
     await prisma.employeeAssignment.deleteMany();
@@ -296,5 +301,79 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
       .get('/funcionarios/me')
       .set('Authorization', `Bearer ${empToken}`)
       .expect(401);
+  });
+
+  it('analisa CSV multi-função sem cadastrar, confirma com digest e processa idempotentemente com falha parcial isolada', async () => {
+    const csv =
+      'nome_completo,nome_social,email,matricula_funcional,rg,data_admissao,funcao,inicio_funcao,fim_funcao,funcao_ativa\n' +
+      'Importado Um,,importado1@example.test,00771,,2024-02-01,Docente,,,SIM\n' +
+      'Importado Um,,importado1@example.test,00771,,2024-02-01,Coordenador de DSM,2026-01-01,2026-12-20,SIM\n' +
+      'Invalido Data,,invalido@example.test,,,01/02/2024,Docente,,,SIM\n';
+
+    const analyzeRes = await request(app.getHttpServer())
+      .post('/funcionarios/importacoes/analisar')
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .attach('file', Buffer.from(csv, 'utf8'), 'lote.csv')
+      .expect(201);
+
+    expect(analyzeRes.body.state).toBe('ANALYZED');
+    expect(analyzeRes.body.counts.readyCreate).toBe(1);
+    expect(analyzeRes.body.counts.invalid).toBe(1);
+
+    // Analysis must NOT create employee or send emails
+    const beforeConfirm = await prisma.employee.findUnique({
+      where: { email: 'importado1@example.test' },
+    });
+    expect(beforeConfirm).toBeNull();
+
+    const rowsRes = await request(app.getHttpServer())
+      .get(`/funcionarios/importacoes/${analyzeRes.body.batchId}/linhas`)
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .expect(200);
+
+    const readyGroupId = rowsRes.body.items.find(
+      (r: { decision: string }) => r.decision === 'READY_CREATE',
+    ).groupId as string;
+
+    const confirmPayload = {
+      requestId: '22222222-2222-4222-8222-222222222201',
+      revision: analyzeRes.body.revision,
+      reviewDigest: analyzeRes.body.reviewDigest,
+      selectedGroupIds: [readyGroupId],
+    };
+
+    const confirm1 = await request(app.getHttpServer())
+      .post(`/funcionarios/importacoes/${analyzeRes.body.batchId}/confirmar`)
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .send(confirmPayload)
+      .expect(202);
+
+    // Double confirmation with same requestId is idempotent
+    const confirm2 = await request(app.getHttpServer())
+      .post(`/funcionarios/importacoes/${analyzeRes.body.batchId}/confirmar`)
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .send(confirmPayload)
+      .expect(202);
+    expect(confirm2.body.batchId).toBe(confirm1.body.batchId);
+
+    // Run worker deterministically
+    await importWorker.processNextBatch(analyzeRes.body.batchId);
+
+    const afterBatch = await request(app.getHttpServer())
+      .get(`/funcionarios/importacoes/${analyzeRes.body.batchId}`)
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .expect(200);
+
+    expect(afterBatch.body.state).toBe('PARTIAL');
+    expect(afterBatch.body.counts.succeeded).toBe(2);
+    expect(afterBatch.body.counts.failed).toBe(1);
+
+    const createdEmp = await prisma.employee.findUnique({
+      where: { email: 'importado1@example.test' },
+      include: { assignments: true },
+    });
+    expect(createdEmp).not.toBeNull();
+    expect(createdEmp?.registrationNumber).toBe('00771');
+    expect(createdEmp?.assignments).toHaveLength(2);
   });
 });
