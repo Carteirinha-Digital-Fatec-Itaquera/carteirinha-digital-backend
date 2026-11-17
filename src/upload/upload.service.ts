@@ -44,4 +44,55 @@ export class UploadService {
 
   await cloudinary.uploader.destroy(publicId);
 }
+
+  async uploadPrivateEmployeePhoto(
+    buffer: Buffer,
+    storageKey: string,
+  ): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      cloudinary.uploader
+        .upload_stream(
+          {
+            public_id: storageKey,
+            type: 'authenticated',
+            resource_type: 'image',
+            overwrite: false,
+          },
+          (error) => {
+            if (error) {
+              reject(new Error('Erro ao fazer upload da foto privada'));
+            } else {
+              resolve();
+            }
+          },
+        )
+        .end(buffer);
+    });
+  }
+
+  async getPrivateEmployeePhotoBuffer(
+    storageKey: string,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    const signedUrl = cloudinary.url(storageKey, {
+      type: 'authenticated',
+      sign_url: true,
+      resource_type: 'image',
+      secure: true,
+    });
+    const response = await fetch(signedUrl);
+    if (!response.ok) {
+      throw new Error(`Falha ao baixar foto privada (${response.status})`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    return { buffer: Buffer.from(arrayBuffer), contentType };
+  }
+
+  async deletePrivateEmployeePhoto(storageKey: string): Promise<void> {
+    await cloudinary.uploader.destroy(storageKey, {
+      type: 'authenticated',
+      resource_type: 'image',
+      invalidate: true,
+    });
+  }
 }

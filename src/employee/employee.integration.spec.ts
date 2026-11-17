@@ -1,11 +1,11 @@
 import { INestApplication } from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
+import sharp from 'sharp';
 import request from 'supertest';
-import { AuthController } from '../auth/auth.controller';
-import { AuthService } from '../auth/auth.service';
 import { PrismaService } from '../database/prisma.service';
 import { MailService } from '../mail/mail.service';
+import { UploadService } from '../upload/upload.service';
 import { EmployeeImportWorkerService } from './employee-import-worker.service';
 import { EmployeeModule } from './employee.module';
 
@@ -16,6 +16,7 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
   let importWorker: EmployeeImportWorkerService;
   let secretaryToken: string;
   const sentEmails: Array<{ email: string; actionUrl: string; purpose: string }> = [];
+  const storedPhotos = new Map<string, Buffer>();
 
   beforeAll(async () => {
     process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-employee-only';
@@ -41,6 +42,20 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
         }) => {
           sentEmails.push(params);
           return { messageId: 'mock-msg-id' };
+        },
+      })
+      .overrideProvider(UploadService)
+      .useValue({
+        uploadPrivateEmployeePhoto: async (buffer: Buffer, storageKey: string) => {
+          storedPhotos.set(storageKey, buffer);
+        },
+        getPrivateEmployeePhotoBuffer: async (storageKey: string) => {
+          const buf = storedPhotos.get(storageKey);
+          if (!buf) throw new Error('Not found');
+          return { buffer: buf, contentType: 'image/png' };
+        },
+        deletePrivateEmployeePhoto: async (storageKey: string) => {
+          storedPhotos.delete(storageKey);
         },
       })
       .compile();
@@ -375,5 +390,103 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
     expect(createdEmp).not.toBeNull();
     expect(createdEmp?.registrationNumber).toBe('00771');
     expect(createdEmp?.assignments).toHaveLength(2);
+  });
+
+  it('valida upload de foto real, rejeita bytes falsos, aprova via CAS e rotaciona QR público', async () => {
+    const emp = await request(app.getHttpServer())
+      .post('/funcionarios')
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .send({
+        requestId: '33333333-3333-4333-8333-333333333301',
+        name: 'Foto Teste',
+        email: 'foto.teste@example.test',
+        rg: '99887766',
+        admissionDate: '2024-02-01',
+        assignments: [{ title: 'Docente' }],
+      })
+      .expect(201);
+
+    // Fake bytes -> 415
+    await request(app.getHttpServer())
+      .post(`/funcionarios/${emp.body.id}/foto`)
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .field('requestId', '33333333-3333-4333-8333-333333333302')
+      .field('expectedVersion', '1')
+      .attach('file', Buffer.from('not-an-image'), 'fake.png')
+      .expect(415);
+
+    const pngBuffer = await sharp({
+      create: {
+        width: 64,
+        height: 64,
+        channels: 3,
+        background: { r: 200, g: 20, b: 40 },
+      },
+    })
+      .png()
+      .toBuffer();
+
+    const uploadRes = await request(app.getHttpServer())
+      .post(`/funcionarios/${emp.body.id}/foto`)
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .field('requestId', '33333333-3333-4333-8333-333333333303')
+      .field('expectedVersion', '1')
+      .attach('file', pngBuffer, 'foto.png')
+      .expect(201);
+
+    expect(uploadRes.body.reviewStatus).toBe('PENDING');
+    expect(uploadRes.body.version).toBe(2);
+
+    const dbEmpBefore = await prisma.employee.findUnique({
+      where: { id: emp.body.id },
+    });
+    const qrOld = dbEmpBefore!.qrcode;
+
+    // Before approval: public verification returns valid=false (PHOTO_PENDING)
+    const verifyPending = await request(app.getHttpServer())
+      .get(`/funcionarios/verificar/${qrOld}`)
+      .expect(200);
+    expect(verifyPending.body.valid).toBe(false);
+    expect(verifyPending.body.reasonCode).toBe('PHOTO_PENDING');
+    expect(verifyPending.body).not.toHaveProperty('rg');
+
+    // Approve photo
+    await request(app.getHttpServer())
+      .patch(`/funcionarios/${emp.body.id}/fotos/${uploadRes.body.photoId}/avaliacao`)
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .send({ expectedVersion: 2, approved: true })
+      .expect(200);
+
+    const verifyValid = await request(app.getHttpServer())
+      .get(`/funcionarios/verificar/${qrOld}`)
+      .expect(200);
+    expect(verifyValid.body.valid).toBe(true);
+    expect(verifyValid.body.displayName).toBe('Foto Teste');
+    expect(verifyValid.body).not.toHaveProperty('rg');
+    expect(verifyValid.body).not.toHaveProperty('email');
+
+    // Public photo streams
+    await request(app.getHttpServer())
+      .get(`/funcionarios/verificar/${qrOld}/foto`)
+      .expect(200);
+
+    // Rotate QR -> old QR returns 404
+    const rotated = await request(app.getHttpServer())
+      .post(`/funcionarios/${emp.body.id}/qrcode/renovar`)
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .send({
+        requestId: '33333333-3333-4333-8333-333333333304',
+        expectedVersion: 3,
+        reason: 'Perda do crachá',
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .get(`/funcionarios/verificar/${qrOld}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .get(`/funcionarios/verificar/${rotated.body.qrcode}`)
+      .expect(200);
   });
 });
