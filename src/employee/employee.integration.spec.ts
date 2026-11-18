@@ -338,51 +338,44 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
     const email = 'carlos.acesso@example.test';
     const originalDeliveries = sentEmails.length;
     const api = app.getHttpServer();
-    const incorrect = await request(api)
-      .post('/autenticacao/funcionarios/solicitar-acesso')
-      .send({ email, registrationNumber: 'INCORRETA' })
-      .expect(202);
-    const unknown = await request(api)
-      .post('/autenticacao/funcionarios/solicitar-acesso')
-      .send({
-        email: 'inexistente@example.test',
-        registrationNumber: 'FUN-006',
-      })
-      .expect(202);
-    expect(incorrect.body).toEqual(unknown.body);
+    const login = (email: string, password: string) =>
+      request(api)
+        .post('/autenticacao/funcionarios/login')
+        .send({ email, password });
+    const wrong = await login(email, 'INCORRETA').expect(401);
+    const unknown = await login('inexistente@example.test', 'FUN-006').expect(
+      401,
+    );
+    expect(wrong.body).toEqual(unknown.body);
+
+    const pending = await login(email, 'FUN-006').expect(200);
+    expect(pending.body.mustChangePassword).toBe(true);
+    expect(pending.body).not.toHaveProperty('token');
     expect(sentEmails).toHaveLength(originalDeliveries);
-    const pending = await request(api)
-      .post('/autenticacao/funcionarios/solicitar-acesso')
-      .send({ email, registrationNumber: 'FUN-006' })
-      .expect(202);
-    expect(pending.body).toEqual(incorrect.body);
-    expect(sentEmails).toHaveLength(originalDeliveries + 1);
     await request(api).get('/funcionarios/me').expect(401);
 
-    const expiredEmail = sentEmails[sentEmails.length - 1];
-    const expiredToken = new URL(expiredEmail.actionUrl).searchParams.get(
-      'token',
-    );
     await prisma.employeeAccessToken.updateMany({
       where: { employeeId: created.body.id },
       data: { expiresAt: new Date(0) },
     });
     await request(api)
       .post('/autenticacao/funcionarios/ativar')
-      .send({ token: expiredToken, newPassword: 'SenhaForte123!' })
+      .send({
+        token: pending.body.firstAccessToken,
+        newPassword: 'SenhaForte123!',
+      })
       .expect(400);
+    const second = await login(email, 'FUN-006').expect(200);
+    const token = second.body.firstAccessToken as string;
     await request(api)
       .post('/autenticacao/funcionarios/solicitar-acesso')
-      .send({ email, registrationNumber: 'FUN-006' })
-      .expect(202);
+      .send({ email })
+      .expect(410);
     await request(api)
-      .post('/autenticacao/funcionarios/solicitar-acesso')
-      .send({ email, registrationNumber: 'FUN-006' })
-      .expect(429);
-    const lastEmail = sentEmails[sentEmails.length - 1];
-    const token = new URL(lastEmail.actionUrl).searchParams.get(
-      'token',
-    ) as string;
+      .post(`/funcionarios/${created.body.id}/convite`)
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .expect(410);
+    expect(sentEmails).toHaveLength(originalDeliveries);
     expect(token).toBeTruthy();
 
     await request(api)

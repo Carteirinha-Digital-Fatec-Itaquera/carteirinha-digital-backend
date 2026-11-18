@@ -11,39 +11,99 @@
         "summary": "Login de funcionário",
         "tags": [
           "Autenticação"
-        ]
-      }
-    },
-    "/autenticacao/funcionarios/solicitar-acesso": {
-      "post": {
-        "summary": "Solicitar link de primeiro acesso",
-        "tags": [
-          "Autenticação"
         ],
-        "description": "Confere dados sem informar se a conta existe. Emite autorização opaca de ativação para o e-mail cadastrado quando elegível. Não retorna JWT.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EmployeeFirstAccessRequest"
-              }
-            }
-          }
-        },
+        "description": "Primeiro acesso: envie o e-mail cadastrado e a matrícula em password. Uma conta ativa sem senha recebe somente autorização de uso único válida por 10 minutos. Após definir senha pessoal, o login emite uma sessão e rejeita a matrícula.",
         "responses": {
-          "202": {
-            "description": "Resposta genérica",
+          "200": {
+            "description": "Sessão de funcionário ou autorização de primeiro acesso",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EmployeeGenericAcceptedResponse"
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "mustChangePassword",
+                        "token",
+                        "profileType",
+                        "expiresAt"
+                      ],
+                      "properties": {
+                        "mustChangePassword": {
+                          "type": "boolean",
+                          "enum": [
+                            false
+                          ]
+                        },
+                        "token": {
+                          "type": "string"
+                        },
+                        "profileType": {
+                          "type": "string",
+                          "enum": [
+                            "employee"
+                          ]
+                        },
+                        "expiresAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "mustChangePassword",
+                        "firstAccessToken",
+                        "profileType",
+                        "expiresAt"
+                      ],
+                      "properties": {
+                        "mustChangePassword": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        },
+                        "firstAccessToken": {
+                          "type": "string"
+                        },
+                        "profileType": {
+                          "type": "string",
+                          "enum": [
+                            "employee"
+                          ]
+                        },
+                        "expiresAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
           },
+          "401": {
+            "description": "E-mail ou senha inválidos"
+          },
           "429": {
             "description": "Limite de tentativas"
+          }
+        }
+      }
+    },
+    "/autenticacao/funcionarios/solicitar-acesso": {
+      "post": {
+        "summary": "Fluxo de convite descontinuado",
+        "tags": [
+          "Autenticação"
+        ],
+        "deprecated": true,
+        "responses": {
+          "410": {
+            "description": "O primeiro acesso usa matrícula na tela de login"
           }
         }
       }
@@ -82,10 +142,16 @@
     },
     "/funcionarios/{id}/convite": {
       "post": {
-        "summary": "Enviar convite individual de primeiro acesso",
+        "summary": "Fluxo de convite descontinuado",
         "tags": [
           "Gestão de Pessoas"
-        ]
+        ],
+        "deprecated": true,
+        "responses": {
+          "410": {
+            "description": "O primeiro acesso usa matrícula na tela de login"
+          }
+        }
       }
     },
     "/funcionarios/{id}/acesso": {
@@ -436,26 +502,6 @@
   },
   "components": {
     "schemas": {
-      "EmployeeFirstAccessRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "email"
-        ],
-        "properties": {
-          "email": {
-            "type": "string",
-            "format": "email",
-            "maxLength": 254
-          },
-          "registrationNumber": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 40,
-            "description": "Obrigatória para contas com matrícula. Ausente apenas no fluxo legado sem matrícula."
-          }
-        }
-      },
       "EmployeeGenericAcceptedResponse": {
         "type": "object",
         "required": [
