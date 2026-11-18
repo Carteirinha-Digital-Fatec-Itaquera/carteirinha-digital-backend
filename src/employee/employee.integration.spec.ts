@@ -202,20 +202,40 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
 
   it('exige matrícula no cadastro manual e diferencia duplicidade de e-mail ou matrícula', async () => {
     const api = app.getHttpServer();
-    const endpoint = () => request(api).post('/funcionarios').set('Authorization', `Bearer ${secretaryToken}`);
-    const data = { requestId: '99999999-9999-4999-8999-999999999991', name: 'Pessoa Fixture',
-      email: 'fixture.matricula@example.test', admissionDate: '2026-01-01', assignments: [{ title: 'Docente' }] };
+    const endpoint = () =>
+      request(api)
+        .post('/funcionarios')
+        .set('Authorization', `Bearer ${secretaryToken}`);
+    const data = {
+      requestId: '99999999-9999-4999-8999-999999999991',
+      name: 'Pessoa Fixture',
+      email: 'fixture.matricula@example.test',
+      admissionDate: '2026-01-01',
+      assignments: [{ title: 'Docente' }],
+    };
     await endpoint().send(data).expect(400);
-    await endpoint().send({ ...data, registrationNumber: '   ' }).expect(400);
-    await endpoint().send({ ...data, registrationNumber: 'UNICA-001' }).expect(201);
-    const duplicateEmail = await endpoint().send({
-      ...data, requestId: '99999999-9999-4999-8999-999999999992', registrationNumber: 'UNICA-002',
-    }).expect(409);
+    await endpoint()
+      .send({ ...data, registrationNumber: '   ' })
+      .expect(400);
+    await endpoint()
+      .send({ ...data, registrationNumber: 'UNICA-001' })
+      .expect(201);
+    const duplicateEmail = await endpoint()
+      .send({
+        ...data,
+        requestId: '99999999-9999-4999-8999-999999999992',
+        registrationNumber: 'UNICA-002',
+      })
+      .expect(409);
     expect(duplicateEmail.body.code).toBe('EMAIL_ALREADY_EXISTS');
-    const duplicateRegistration = await endpoint().send({
-      ...data, requestId: '99999999-9999-4999-8999-999999999993', registrationNumber: 'UNICA-001',
-      email: 'fixture.outra@example.test',
-    }).expect(409);
+    const duplicateRegistration = await endpoint()
+      .send({
+        ...data,
+        requestId: '99999999-9999-4999-8999-999999999993',
+        registrationNumber: 'UNICA-001',
+        email: 'fixture.outra@example.test',
+      })
+      .expect(409);
     expect(duplicateRegistration.body.code).toBe('REGISTRATION_ALREADY_EXISTS');
   });
 
@@ -317,38 +337,61 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
     const email = 'carlos.acesso@example.test';
     const originalDeliveries = sentEmails.length;
     const api = app.getHttpServer();
-    const incorrect = await request(api).post('/autenticacao/funcionarios/solicitar-acesso')
-      .send({ email, registrationNumber: 'INCORRETA' }).expect(202);
-    const unknown = await request(api).post('/autenticacao/funcionarios/solicitar-acesso')
-      .send({ email: 'inexistente@example.test', registrationNumber: 'FUN-006' }).expect(202);
+    const incorrect = await request(api)
+      .post('/autenticacao/funcionarios/solicitar-acesso')
+      .send({ email, registrationNumber: 'INCORRETA' })
+      .expect(202);
+    const unknown = await request(api)
+      .post('/autenticacao/funcionarios/solicitar-acesso')
+      .send({
+        email: 'inexistente@example.test',
+        registrationNumber: 'FUN-006',
+      })
+      .expect(202);
     expect(incorrect.body).toEqual(unknown.body);
     expect(sentEmails).toHaveLength(originalDeliveries);
-    const pending = await request(api).post('/autenticacao/funcionarios/solicitar-acesso')
-      .send({ email, registrationNumber: 'FUN-006' }).expect(202);
+    const pending = await request(api)
+      .post('/autenticacao/funcionarios/solicitar-acesso')
+      .send({ email, registrationNumber: 'FUN-006' })
+      .expect(202);
     expect(pending.body).toEqual(incorrect.body);
     expect(sentEmails).toHaveLength(originalDeliveries + 1);
     await request(api).get('/funcionarios/me').expect(401);
 
     const expiredEmail = sentEmails[sentEmails.length - 1];
-    const expiredToken = new URL(expiredEmail.actionUrl).searchParams.get('token');
+    const expiredToken = new URL(expiredEmail.actionUrl).searchParams.get(
+      'token',
+    );
     await prisma.employeeAccessToken.updateMany({
-      where: { employeeId: created.body.id }, data: { expiresAt: new Date(0) },
+      where: { employeeId: created.body.id },
+      data: { expiresAt: new Date(0) },
     });
-    await request(api).post('/autenticacao/funcionarios/ativar')
-      .send({ token: expiredToken, newPassword: 'SenhaForte123!' }).expect(400);
-    await request(api).post('/autenticacao/funcionarios/solicitar-acesso')
-      .send({ email, registrationNumber: 'FUN-006' }).expect(202);
-    await request(api).post('/autenticacao/funcionarios/solicitar-acesso')
-      .send({ email, registrationNumber: 'FUN-006' }).expect(429);
+    await request(api)
+      .post('/autenticacao/funcionarios/ativar')
+      .send({ token: expiredToken, newPassword: 'SenhaForte123!' })
+      .expect(400);
+    await request(api)
+      .post('/autenticacao/funcionarios/solicitar-acesso')
+      .send({ email, registrationNumber: 'FUN-006' })
+      .expect(202);
+    await request(api)
+      .post('/autenticacao/funcionarios/solicitar-acesso')
+      .send({ email, registrationNumber: 'FUN-006' })
+      .expect(429);
     const lastEmail = sentEmails[sentEmails.length - 1];
     const token = new URL(lastEmail.actionUrl).searchParams.get(
       'token',
     ) as string;
     expect(token).toBeTruthy();
 
-    await request(api).post('/autenticacao/funcionarios/ativar')
-      .send({ token, newPassword: 'FUN-006  ' }).expect(400);
-    await request(api).get('/funcionarios/me').set('Authorization', `Bearer ${token}`).expect(401);
+    await request(api)
+      .post('/autenticacao/funcionarios/ativar')
+      .send({ token, newPassword: 'FUN-006  ' })
+      .expect(400);
+    await request(api)
+      .get('/funcionarios/me')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(401);
 
     // Concurrent activation: only 1 succeeds
     const [a1, a2] = await Promise.all([
@@ -361,8 +404,10 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
     ]);
     expect([a1.status, a2.status].sort()).toEqual([200, 400]);
 
-    await request(api).post('/autenticacao/funcionarios/login')
-      .send({ email, password: 'FUN-006' }).expect(401);
+    await request(api)
+      .post('/autenticacao/funcionarios/login')
+      .send({ email, password: 'FUN-006' })
+      .expect(401);
 
     // Login succeeds
     const loginRes = await request(app.getHttpServer())
@@ -418,19 +463,29 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
       .set('Authorization', `Bearer ${empToken}`)
       .expect(401);
 
-    const renewed = await request(api).post('/autenticacao/funcionarios/login')
-      .send({ email, password: 'SenhaForte123!' }).expect(200);
-    const archived = await request(api).delete(`/funcionarios/${created.body.id}`)
+    const renewed = await request(api)
+      .post('/autenticacao/funcionarios/login')
+      .send({ email, password: 'SenhaForte123!' })
+      .expect(200);
+    const archived = await request(api)
+      .delete(`/funcionarios/${created.body.id}`)
       .set('Authorization', `Bearer ${secretaryToken}`)
-      .send({ expectedVersion: 4, reason: 'Arquivamento de teste' }).expect(200);
+      .send({ expectedVersion: 4, reason: 'Arquivamento de teste' })
+      .expect(200);
     expect(archived.body.accountStatus).toBe('ARCHIVED');
-    await request(api).post('/autenticacao/funcionarios/login')
-      .send({ email, password: 'SenhaForte123!' }).expect(401);
-    await request(api).post(`/funcionarios/${created.body.id}/restaurar`)
+    await request(api)
+      .post('/autenticacao/funcionarios/login')
+      .send({ email, password: 'SenhaForte123!' })
+      .expect(401);
+    await request(api)
+      .post(`/funcionarios/${created.body.id}/restaurar`)
       .set('Authorization', `Bearer ${secretaryToken}`)
-      .send({ expectedVersion: 5, reason: 'Restauracao de teste' }).expect(201);
-    await request(api).get('/funcionarios/me')
-      .set('Authorization', `Bearer ${renewed.body.token}`).expect(401);
+      .send({ expectedVersion: 5, reason: 'Restauracao de teste' })
+      .expect(201);
+    await request(api)
+      .get('/funcionarios/me')
+      .set('Authorization', `Bearer ${renewed.body.token}`)
+      .expect(401);
   });
 
   it('analisa CSV multi-função sem cadastrar, confirma com digest e processa idempotentemente com falha parcial isolada', async () => {

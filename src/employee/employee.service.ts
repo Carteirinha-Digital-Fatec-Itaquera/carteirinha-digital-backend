@@ -178,9 +178,16 @@ export class EmployeeService {
     const email = normalizeEmail(dto.email);
     const registrationNumber = normalizeOptionalCode(dto.registrationNumber);
     if (!registrationNumber) {
-      throwEmployeeError(HttpStatus.BAD_REQUEST, 'VALIDATION_ERROR', 'Informe a matrícula funcional.', {
-        fieldErrors: { registrationNumber: ['A matrícula funcional é obrigatória.'] },
-      });
+      throwEmployeeError(
+        HttpStatus.BAD_REQUEST,
+        'VALIDATION_ERROR',
+        'Informe a matrícula funcional.',
+        {
+          fieldErrors: {
+            registrationNumber: ['A matrícula funcional é obrigatória.'],
+          },
+        },
+      );
     }
     const rg = normalizeOptionalCode(dto.rg);
     const admissionDate = parseIsoDateOnly(dto.admissionDate, 'admissionDate');
@@ -406,7 +413,8 @@ export class EmployeeService {
           rg: nextRg,
           admissionDate: nextAdmission,
           ...(emailChanged || nextRegistration !== current.registrationNumber
-            ? { authVersion: current.authVersion + 1 } : {}),
+            ? { authVersion: current.authVersion + 1 }
+            : {}),
         },
         tx,
       );

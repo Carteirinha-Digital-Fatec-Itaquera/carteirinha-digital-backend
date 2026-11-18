@@ -29,7 +29,11 @@ import {
   EmployeeLoginDto,
   EmployeeTokenPasswordDto,
 } from './dto/employee-access.dto';
-import { normalizeEmail, normalizeOptionalCode, throwEmployeeError } from './employee.errors';
+import {
+  normalizeEmail,
+  normalizeOptionalCode,
+  throwEmployeeError,
+} from './employee.errors';
 import { EmployeeService } from './employee.service';
 import type { EmployeeEntity } from './entities/employee.entity';
 import { EmployeeMapper } from './mapper/employee.mapper';
@@ -44,14 +48,26 @@ function sha256Hex(raw: string): string {
   return createHash('sha256').update(raw).digest('hex');
 }
 
-function matchesRegistration(value: string, registrationNumber: string | null): boolean {
-  return registrationNumber !== null && normalizeOptionalCode(value) === registrationNumber;
+function matchesRegistration(
+  value: string,
+  registrationNumber: string | null,
+): boolean {
+  return (
+    registrationNumber !== null &&
+    normalizeOptionalCode(value) === registrationNumber
+  );
 }
 
-function assertPersonalPassword(value: string, registrationNumber: string | null): void {
+function assertPersonalPassword(
+  value: string,
+  registrationNumber: string | null,
+): void {
   if (matchesRegistration(value, registrationNumber)) {
-    throwEmployeeError(HttpStatus.BAD_REQUEST, 'VALIDATION_ERROR',
-      'A senha pessoal precisa ser diferente da matrícula funcional.');
+    throwEmployeeError(
+      HttpStatus.BAD_REQUEST,
+      'VALIDATION_ERROR',
+      'A senha pessoal precisa ser diferente da matrícula funcional.',
+    );
   }
 }
 
@@ -83,10 +99,15 @@ export class EmployeeAuthService {
     }
 
     const employee = await this.employeeRepository.findByEmail(email);
-    const valid = employee?.accountStatus === 'ACTIVE' && employee.archivedAt === null &&
+    const valid =
+      employee?.accountStatus === 'ACTIVE' &&
+      employee.archivedAt === null &&
       Boolean(employee.passwordHash) &&
       !matchesRegistration(dto.password, employee.registrationNumber) &&
-      await this.hashService.compareHash(employee.passwordHash!, dto.password);
+      (await this.hashService.compareHash(
+        employee.passwordHash!,
+        dto.password,
+      ));
     if (!valid) {
       await consumeSqlRateLimit(this.prisma, rateKey, 10, FIFTEEN_MIN_MS);
       throwEmployeeError(
@@ -231,7 +252,11 @@ export class EmployeeAuthService {
       employee.archivedAt === null &&
       !employee.passwordHash &&
       (employee.registrationNumber
-        ? dto.registrationNumber !== undefined && matchesRegistration(dto.registrationNumber, employee.registrationNumber)
+        ? dto.registrationNumber !== undefined &&
+          matchesRegistration(
+            dto.registrationNumber,
+            employee.registrationNumber,
+          )
         : dto.registrationNumber === undefined)
     ) {
       await this.createAndSendActionToken({
@@ -320,7 +345,9 @@ export class EmployeeAuthService {
         employee.archivedAt !== null ||
         employee.accountStatus !== 'ACTIVE' ||
         employee.authVersion !== tokenRecord.authVersion ||
-        (purpose === 'ACTIVATE' ? employee.passwordHash !== null : !employee.passwordHash)
+        (purpose === 'ACTIVATE'
+          ? employee.passwordHash !== null
+          : !employee.passwordHash)
       ) {
         throwEmployeeError(
           HttpStatus.BAD_REQUEST,
@@ -422,9 +449,17 @@ export class EmployeeAuthService {
     await this.prisma.$transaction(async (tx) => {
       await this.employeeService.lockEmployeeRow(tx, employee.id);
       const current = await this.employeeRepository.findById(employee.id, tx);
-      if (!current || current.authVersion !== employee.authVersion ||
-        current.archivedAt !== null || current.accountStatus !== 'ACTIVE') {
-        throwEmployeeError(HttpStatus.UNAUTHORIZED, 'SESSION_REVOKED', 'Sessão expirada.');
+      if (
+        !current ||
+        current.authVersion !== employee.authVersion ||
+        current.archivedAt !== null ||
+        current.accountStatus !== 'ACTIVE'
+      ) {
+        throwEmployeeError(
+          HttpStatus.UNAUTHORIZED,
+          'SESSION_REVOKED',
+          'Sessão expirada.',
+        );
       }
       assertPersonalPassword(dto.newPassword, current.registrationNumber);
       await tx.employee.update({
@@ -519,7 +554,11 @@ export class EmployeeAuthService {
 
     return {
       passwordDefined: Boolean(employee.passwordHash),
-      firstAccessMethod: employee.passwordHash ? null : employee.registrationNumber ? 'REGISTRATION_EMAIL' : 'EMAIL_ONLY',
+      firstAccessMethod: employee.passwordHash
+        ? null
+        : employee.registrationNumber
+          ? 'REGISTRATION_EMAIL'
+          : 'EMAIL_ONLY',
       lastLoginAt: employee.lastLoginAt?.toISOString() ?? null,
       lastAccessRequestAt: latestToken?.createdAt.toISOString() ?? null,
       lastDeliveryState: latestToken?.deliveryState ?? null,
