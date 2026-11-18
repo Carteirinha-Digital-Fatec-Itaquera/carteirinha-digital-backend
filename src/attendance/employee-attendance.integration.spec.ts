@@ -17,7 +17,8 @@ describe('Employee Events, Attendance & Certificates Integration (HTTP + Postgre
   let secretaryToken: string;
 
   beforeAll(async () => {
-    process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-employee-only';
+    process.env.JWT_SECRET =
+      process.env.JWT_SECRET || 'test-jwt-secret-employee-only';
     process.env.ATTENDANCE_QR_SECRET =
       process.env.ATTENDANCE_QR_SECRET || 'test-qr-secret-employee-only';
     process.env.EMPLOYEE_APP_URL = 'https://funcionarios.example.test';
@@ -126,11 +127,17 @@ describe('Employee Events, Attendance & Certificates Integration (HTTP + Postgre
         name: 'Ana Homonima',
         socialName: 'Ana Social',
         email: 'ana.homonima@example.test',
-        registrationNumber: null,
+        registrationNumber: 'PRESENCA-001',
         admissionDate: '2024-02-01',
         assignments: [{ title: 'Docente' }],
       })
       .expect(201);
+
+    // A preparação do banco descartável representa um cadastro legado.
+    await prisma.employee.update({
+      where: { id: empRes.body.id as string },
+      data: { registrationNumber: null },
+    });
 
     const empToken = await jwtService.signAsync({
       sub: empRes.body.id,
@@ -233,6 +240,7 @@ describe('Employee Events, Attendance & Certificates Integration (HTTP + Postgre
         requestId: '44444444-4444-4444-8444-444444444402',
         name: 'Vinculo Encerrado',
         email: 'encerrado@example.test',
+        registrationNumber: 'PRESENCA-002',
         admissionDate: '2024-02-01',
         assignments: [{ title: 'Docente', active: false }],
       })
@@ -285,6 +293,7 @@ describe('Employee Events, Attendance & Certificates Integration (HTTP + Postgre
         requestId: '44444444-4444-4444-8444-444444444403',
         name: 'Offline Employee',
         email: 'offline.emp@example.test',
+        registrationNumber: 'PRESENCA-003',
         admissionDate: '2024-02-01',
         assignments: [{ title: 'Docente' }],
       })

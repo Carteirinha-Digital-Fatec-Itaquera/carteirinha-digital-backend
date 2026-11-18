@@ -49,17 +49,14 @@ export class EmployeeAuthController {
   @HttpCode(HttpStatus.OK)
   @Header('Cache-Control', 'no-store')
   login(@Body() dto: EmployeeLoginDto, @Req() req: RequestWithIp) {
-    return this.authService.login(dto, resolveClientIp(req));
+    return this.authService.login(dto, req.ip || '127.0.0.1');
   }
 
   @Post('solicitar-acesso')
   @HttpCode(HttpStatus.ACCEPTED)
   @Header('Cache-Control', 'no-store')
-  requestAccess(
-    @Body() dto: EmployeeEmailRequestDto,
-    @Req() req: RequestWithIp,
-  ) {
-    return this.authService.requestAccess(dto, resolveClientIp(req));
+  requestAccess() {
+    return this.authService.requestAccess();
   }
 
   @Post('ativar')

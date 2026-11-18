@@ -7,144 +7,516 @@
   },
   "paths": {
     "/autenticacao/funcionarios/login": {
-      "post": { "summary": "Login de funcionário", "tags": ["Autenticação"] }
+      "post": {
+        "summary": "Login de funcionário",
+        "tags": [
+          "Autenticação"
+        ],
+        "description": "Primeiro acesso: envie o e-mail cadastrado e a matrícula em password. Uma conta ativa sem senha recebe somente autorização de uso único válida por 10 minutos. Após definir senha pessoal, o login emite uma sessão e rejeita a matrícula.",
+        "responses": {
+          "200": {
+            "description": "Sessão de funcionário ou autorização de primeiro acesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "mustChangePassword",
+                        "token",
+                        "profileType",
+                        "expiresAt"
+                      ],
+                      "properties": {
+                        "mustChangePassword": {
+                          "type": "boolean",
+                          "enum": [
+                            false
+                          ]
+                        },
+                        "token": {
+                          "type": "string"
+                        },
+                        "profileType": {
+                          "type": "string",
+                          "enum": [
+                            "employee"
+                          ]
+                        },
+                        "expiresAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "mustChangePassword",
+                        "firstAccessToken",
+                        "profileType",
+                        "expiresAt"
+                      ],
+                      "properties": {
+                        "mustChangePassword": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        },
+                        "firstAccessToken": {
+                          "type": "string"
+                        },
+                        "profileType": {
+                          "type": "string",
+                          "enum": [
+                            "employee"
+                          ]
+                        },
+                        "expiresAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "E-mail ou senha inválidos"
+          },
+          "429": {
+            "description": "Limite de tentativas"
+          }
+        }
+      }
     },
     "/autenticacao/funcionarios/solicitar-acesso": {
-      "post": { "summary": "Solicitar link de primeiro acesso", "tags": ["Autenticação"] }
+      "post": {
+        "summary": "Fluxo de convite descontinuado",
+        "tags": [
+          "Autenticação"
+        ],
+        "deprecated": true,
+        "responses": {
+          "410": {
+            "description": "O primeiro acesso usa matrícula na tela de login"
+          }
+        }
+      }
     },
     "/autenticacao/funcionarios/ativar": {
-      "post": { "summary": "Ativar conta com token e definir senha", "tags": ["Autenticação"] }
+      "post": {
+        "summary": "Ativar conta com token e definir senha",
+        "tags": [
+          "Autenticação"
+        ]
+      }
     },
     "/autenticacao/funcionarios/forgot-password": {
-      "post": { "summary": "Solicitar recuperação de senha", "tags": ["Autenticação"] }
+      "post": {
+        "summary": "Solicitar recuperação de senha",
+        "tags": [
+          "Autenticação"
+        ]
+      }
     },
     "/autenticacao/funcionarios/reset": {
-      "post": { "summary": "Redefinir senha com token", "tags": ["Autenticação"] }
+      "post": {
+        "summary": "Redefinir senha com token",
+        "tags": [
+          "Autenticação"
+        ]
+      }
     },
     "/autenticacao/funcionarios/alterar-senha": {
-      "post": { "summary": "Alterar senha autenticado", "tags": ["Autenticação"] }
+      "post": {
+        "summary": "Alterar senha autenticado",
+        "tags": [
+          "Autenticação"
+        ]
+      }
     },
     "/funcionarios/{id}/convite": {
-      "post": { "summary": "Enviar convite individual de primeiro acesso", "tags": ["Gestão de Pessoas"] }
+      "post": {
+        "summary": "Fluxo de convite descontinuado",
+        "tags": [
+          "Gestão de Pessoas"
+        ],
+        "deprecated": true,
+        "responses": {
+          "410": {
+            "description": "O primeiro acesso usa matrícula na tela de login"
+          }
+        }
+      }
     },
     "/funcionarios/{id}/acesso": {
-      "get": { "summary": "Consultar estado de acesso do funcionário", "tags": ["Gestão de Pessoas"] }
+      "get": {
+        "summary": "Consultar estado de acesso do funcionário",
+        "tags": [
+          "Gestão de Pessoas"
+        ]
+      }
     },
     "/funcionarios/me": {
-      "get": { "summary": "Perfil do funcionário autenticado", "tags": ["Funcionário"] }
+      "get": {
+        "summary": "Perfil do funcionário autenticado",
+        "tags": [
+          "Funcionário"
+        ]
+      }
     },
     "/funcionarios/me/carteirinha": {
-      "get": { "summary": "Projeção da carteirinha do funcionário", "tags": ["Funcionário"] }
+      "get": {
+        "summary": "Projeção da carteirinha do funcionário",
+        "tags": [
+          "Funcionário"
+        ]
+      }
     },
     "/funcionarios/me/foto": {
-      "get": { "summary": "Situação da foto atual e pendente", "tags": ["Fotos"] },
-      "post": { "summary": "Upload de foto do funcionário", "tags": ["Fotos"] },
-      "delete": { "summary": "Remover foto do funcionário", "tags": ["Fotos"] }
+      "get": {
+        "summary": "Situação da foto atual e pendente",
+        "tags": [
+          "Fotos"
+        ]
+      },
+      "post": {
+        "summary": "Upload de foto do funcionário",
+        "tags": [
+          "Fotos"
+        ]
+      },
+      "delete": {
+        "summary": "Remover foto do funcionário",
+        "tags": [
+          "Fotos"
+        ]
+      }
     },
     "/funcionarios/me/fotos/{photoId}/conteudo": {
-      "get": { "summary": "Conteúdo da foto própria autorizada", "tags": ["Fotos"] }
+      "get": {
+        "summary": "Conteúdo da foto própria autorizada",
+        "tags": [
+          "Fotos"
+        ]
+      }
     },
     "/funcionarios": {
-      "get": { "summary": "Listar funcionários (Secretaria)", "tags": ["Gestão de Pessoas"] },
-      "post": { "summary": "Cadastrar funcionário e funções", "tags": ["Gestão de Pessoas"] }
+      "get": {
+        "summary": "Listar funcionários (Secretaria)",
+        "tags": [
+          "Gestão de Pessoas"
+        ]
+      },
+      "post": {
+        "summary": "Cadastrar funcionário e funções",
+        "tags": [
+          "Gestão de Pessoas"
+        ],
+        "description": "Cadastro manual requer matrícula funcional de 1 a 40 caracteres após retirar espaços nas extremidades. Registros legados não são alterados."
+      }
     },
     "/funcionarios/{id}": {
-      "get": { "summary": "Detalhe do funcionário", "tags": ["Gestão de Pessoas"] },
-      "patch": { "summary": "Atualizar cadastro do funcionário", "tags": ["Gestão de Pessoas"] },
-      "delete": { "summary": "Arquivar funcionário", "tags": ["Gestão de Pessoas"] }
+      "get": {
+        "summary": "Detalhe do funcionário",
+        "tags": [
+          "Gestão de Pessoas"
+        ]
+      },
+      "patch": {
+        "summary": "Atualizar cadastro do funcionário",
+        "tags": [
+          "Gestão de Pessoas"
+        ]
+      },
+      "delete": {
+        "summary": "Arquivar funcionário",
+        "tags": [
+          "Gestão de Pessoas"
+        ]
+      }
     },
     "/funcionarios/{id}/status": {
-      "post": { "summary": "Bloquear ou ativar conta de funcionário", "tags": ["Gestão de Pessoas"] }
+      "post": {
+        "summary": "Bloquear ou ativar conta de funcionário",
+        "tags": [
+          "Gestão de Pessoas"
+        ]
+      }
     },
     "/funcionarios/{id}/restaurar": {
-      "post": { "summary": "Restaurar funcionário arquivado", "tags": ["Gestão de Pessoas"] }
+      "post": {
+        "summary": "Restaurar funcionário arquivado",
+        "tags": [
+          "Gestão de Pessoas"
+        ]
+      }
     },
     "/funcionarios/{id}/historico": {
-      "get": { "summary": "Histórico de eventos e certificados do funcionário", "tags": ["Gestão de Pessoas"] }
+      "get": {
+        "summary": "Histórico de eventos e certificados do funcionário",
+        "tags": [
+          "Gestão de Pessoas"
+        ]
+      }
     },
     "/funcionarios/{id}/auditoria": {
-      "get": { "summary": "Auditoria paginada do funcionário", "tags": ["Gestão de Pessoas"] }
+      "get": {
+        "summary": "Auditoria paginada do funcionário",
+        "tags": [
+          "Gestão de Pessoas"
+        ]
+      }
     },
     "/funcionarios/{id}/qrcode/renovar": {
-      "post": { "summary": "Renovar QR público do funcionário", "tags": ["Gestão de Pessoas"] }
+      "post": {
+        "summary": "Renovar QR público do funcionário",
+        "tags": [
+          "Gestão de Pessoas"
+        ]
+      }
     },
     "/funcionarios/{id}/funcoes": {
-      "get": { "summary": "Listar funções do funcionário", "tags": ["Funções"] },
-      "post": { "summary": "Adicionar função ao funcionário", "tags": ["Funções"] }
+      "get": {
+        "summary": "Listar funções do funcionário",
+        "tags": [
+          "Funções"
+        ]
+      },
+      "post": {
+        "summary": "Adicionar função ao funcionário",
+        "tags": [
+          "Funções"
+        ]
+      }
     },
     "/funcionarios/{id}/funcoes/{assignmentId}": {
-      "patch": { "summary": "Editar ou encerrar função", "tags": ["Funções"] },
-      "delete": { "summary": "Arquivar função", "tags": ["Funções"] }
+      "patch": {
+        "summary": "Editar ou encerrar função",
+        "tags": [
+          "Funções"
+        ]
+      },
+      "delete": {
+        "summary": "Arquivar função",
+        "tags": [
+          "Funções"
+        ]
+      }
     },
     "/funcionarios/{id}/funcoes/{assignmentId}/restaurar": {
-      "post": { "summary": "Restaurar função arquivada como inativa", "tags": ["Funções"] }
+      "post": {
+        "summary": "Restaurar função arquivada como inativa",
+        "tags": [
+          "Funções"
+        ]
+      }
     },
     "/funcionarios/fotos/pendentes": {
-      "get": { "summary": "Fila de fotos pendentes", "tags": ["Fotos"] }
+      "get": {
+        "summary": "Fila de fotos pendentes",
+        "tags": [
+          "Fotos"
+        ]
+      }
     },
     "/funcionarios/fotos/resumo": {
-      "get": { "summary": "Contagem de fotos pendentes", "tags": ["Fotos"] }
+      "get": {
+        "summary": "Contagem de fotos pendentes",
+        "tags": [
+          "Fotos"
+        ]
+      }
     },
     "/funcionarios/{id}/fotos/{photoId}/conteudo": {
-      "get": { "summary": "Conteúdo da foto para análise", "tags": ["Fotos"] }
+      "get": {
+        "summary": "Conteúdo da foto para análise",
+        "tags": [
+          "Fotos"
+        ]
+      }
     },
     "/funcionarios/{id}/foto": {
-      "post": { "summary": "Upload de foto em nome do funcionário", "tags": ["Fotos"] },
-      "delete": { "summary": "Remover fotos do funcionário", "tags": ["Fotos"] }
+      "post": {
+        "summary": "Upload de foto em nome do funcionário",
+        "tags": [
+          "Fotos"
+        ]
+      },
+      "delete": {
+        "summary": "Remover fotos do funcionário",
+        "tags": [
+          "Fotos"
+        ]
+      }
     },
     "/funcionarios/{id}/fotos/{photoId}/avaliacao": {
-      "patch": { "summary": "Aprovar ou rejeitar foto", "tags": ["Fotos"] }
+      "patch": {
+        "summary": "Aprovar ou rejeitar foto",
+        "tags": [
+          "Fotos"
+        ]
+      }
     },
     "/funcionarios/modelo-importacao": {
-      "get": { "summary": "Baixar modelo CSV/XLSX de importação", "tags": ["Importação"] }
+      "get": {
+        "summary": "Baixar modelo CSV/XLSX de importação",
+        "tags": [
+          "Importação"
+        ]
+      }
     },
     "/funcionarios/importacoes/analisar": {
-      "post": { "summary": "Analisar arquivo CSV/XLSX sem cadastrar", "tags": ["Importação"] }
+      "post": {
+        "summary": "Analisar arquivo CSV/XLSX sem cadastrar",
+        "tags": [
+          "Importação"
+        ]
+      }
     },
     "/funcionarios/importacoes/{batchId}": {
-      "get": { "summary": "Consultar lote de importação", "tags": ["Importação"] }
+      "get": {
+        "summary": "Consultar lote de importação",
+        "tags": [
+          "Importação"
+        ]
+      }
     },
     "/funcionarios/importacoes/{batchId}/linhas": {
-      "get": { "summary": "Listar diagnóstico paginado do lote", "tags": ["Importação"] }
+      "get": {
+        "summary": "Listar diagnóstico paginado do lote",
+        "tags": [
+          "Importação"
+        ]
+      }
     },
     "/funcionarios/importacoes/{batchId}/confirmar": {
-      "post": { "summary": "Confirmar processamento de grupos selecionados", "tags": ["Importação"] }
+      "post": {
+        "summary": "Confirmar processamento de grupos selecionados",
+        "tags": [
+          "Importação"
+        ]
+      }
     },
     "/funcionarios/importacoes/{batchId}/cancelar": {
-      "post": { "summary": "Cancelar lote em andamento", "tags": ["Importação"] }
+      "post": {
+        "summary": "Cancelar lote em andamento",
+        "tags": [
+          "Importação"
+        ]
+      }
     },
     "/funcionarios/importacoes/{batchId}/reprocessar": {
-      "post": { "summary": "Reprocessar grupos recuperáveis", "tags": ["Importação"] }
+      "post": {
+        "summary": "Reprocessar grupos recuperáveis",
+        "tags": [
+          "Importação"
+        ]
+      }
     },
     "/funcionarios/importacoes/{batchId}/relatorio": {
-      "get": { "summary": "Exportar relatório do lote CSV/XLSX", "tags": ["Importação"] }
+      "get": {
+        "summary": "Exportar relatório do lote CSV/XLSX",
+        "tags": [
+          "Importação"
+        ]
+      }
     },
     "/funcionarios/verificar/{qrcode}": {
-      "get": { "summary": "Validação pública da carteirinha por QR", "tags": ["Público"] }
+      "get": {
+        "summary": "Validação pública da carteirinha por QR",
+        "tags": [
+          "Público"
+        ]
+      }
     },
     "/funcionarios/verificar/{qrcode}/foto": {
-      "get": { "summary": "Foto pública da carteirinha validada", "tags": ["Público"] }
+      "get": {
+        "summary": "Foto pública da carteirinha validada",
+        "tags": [
+          "Público"
+        ]
+      }
     },
     "/public/institution": {
-      "get": { "summary": "Informações institucionais públicas da Fatec Itaquera", "tags": ["Público"] }
+      "get": {
+        "summary": "Informações institucionais públicas da Fatec Itaquera",
+        "tags": [
+          "Público"
+        ]
+      }
     },
     "/attendances/employee-offline/session": {
-      "post": { "summary": "Iniciar sessão offline restrita de funcionário", "tags": ["Offline"] }
+      "post": {
+        "summary": "Iniciar sessão offline restrita de funcionário",
+        "tags": [
+          "Offline"
+        ]
+      }
     },
     "/attendances/employee-offline/submit": {
-      "post": { "summary": "Submeter presença offline de funcionário", "tags": ["Offline"] }
+      "post": {
+        "summary": "Submeter presença offline de funcionário",
+        "tags": [
+          "Offline"
+        ]
+      }
     },
     "/attendances/employee-offline/status": {
-      "post": { "summary": "Consultar recibos offline de funcionário", "tags": ["Offline"] }
+      "post": {
+        "summary": "Consultar recibos offline de funcionário",
+        "tags": [
+          "Offline"
+        ]
+      }
     },
     "/attendances/employee-offline/revoke": {
-      "post": { "summary": "Revogar sessão offline de funcionário", "tags": ["Offline"] }
+      "post": {
+        "summary": "Revogar sessão offline de funcionário",
+        "tags": [
+          "Offline"
+        ]
+      }
     },
     "/event-management/employees/search": {
-      "get": { "summary": "Buscar funcionários para regularização/emissão manual", "tags": ["Eventos"] }
+      "get": {
+        "summary": "Buscar funcionários para regularização/emissão manual",
+        "tags": [
+          "Eventos"
+        ]
+      }
     },
     "/event-management/employees/{id}/history": {
-      "get": { "summary": "Consultar histórico do funcionário para eventos", "tags": ["Eventos"] }
+      "get": {
+        "summary": "Consultar histórico do funcionário para eventos",
+        "tags": [
+          "Eventos"
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "EmployeeGenericAcceptedResponse": {
+        "type": "object",
+        "required": [
+          "accepted",
+          "message"
+        ],
+        "properties": {
+          "accepted": {
+            "const": true
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
     }
   }
 }

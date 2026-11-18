@@ -210,6 +210,7 @@ export class MailService {
     recipientName: string;
     actionUrl: string;
     purpose: 'ACTIVATE' | 'RESET_PASSWORD';
+    expiresInMinutes?: number;
   }) {
     const isActivate = params.purpose === 'ACTIVATE';
     const subject = isActivate
@@ -217,8 +218,11 @@ export class MailService {
       : 'Redefinição de senha — Carteirinha Digital Fatec Itaquera';
     const safeName = escapeHtml(params.recipientName);
     const safeUrl = sanitizeUrl(params.actionUrl);
-    const buttonText = isActivate ? 'Ativar Meu Acesso' : 'Redefinir Minha Senha';
-    const ttlText = isActivate ? '24 horas' : '30 minutos';
+    const buttonText = isActivate
+      ? 'Ativar Meu Acesso'
+      : 'Redefinir Minha Senha';
+    const ttlText =
+      isActivate && params.expiresInMinutes !== 30 ? '24 horas' : '30 minutos';
 
     return await this.client.transactionalEmails.sendTransacEmail({
       subject,

@@ -80,6 +80,7 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
     jwtService = moduleRef.get(JwtService);
     importWorker = moduleRef.get(EmployeeImportWorkerService);
 
+    await prisma.eventRateLimit.deleteMany();
     await prisma.supportAudit.deleteMany();
     await prisma.supportMessage.deleteMany();
     await prisma.supportTicket.deleteMany();
@@ -120,7 +121,7 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
     await app.close();
   });
 
-  it('cadastra funcionário sem matrícula com e-mail pessoal, nome social e cargo Secretaria sem conceder permissão', async () => {
+  it('cadastra funcionário com matrícula com e-mail pessoal, nome social e cargo Secretaria sem conceder permissão', async () => {
     const reqId = '11111111-1111-4111-8111-111111111101';
     const res = await request(app.getHttpServer())
       .post('/funcionarios')
@@ -130,7 +131,7 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
         name: 'Maria da Silva',
         socialName: 'Maria Silva Social',
         email: 'maria.pessoal@example.test',
-        registrationNumber: null,
+        registrationNumber: 'FUN-001',
         rg: null,
         admissionDate: '2024-02-01',
         assignments: [
@@ -150,7 +151,7 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
       })
       .expect(201);
 
-    expect(res.body.registrationNumber).toBeNull();
+    expect(res.body.registrationNumber).toBe('FUN-001');
     expect(res.body.displayName).toBe('Maria Silva Social');
     expect(res.body.assignments).toHaveLength(2);
     expect(res.body.version).toBe(1);
@@ -164,7 +165,7 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
         name: 'Maria da Silva',
         socialName: 'Maria Silva Social',
         email: 'maria.pessoal@example.test',
-        registrationNumber: null,
+        registrationNumber: 'FUN-001',
         rg: null,
         admissionDate: '2024-02-01',
         assignments: [
@@ -193,10 +194,50 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
         requestId: reqId,
         name: 'Outro Nome',
         email: 'outro@example.test',
+        registrationNumber: 'FUN-002',
         admissionDate: '2024-02-01',
         assignments: [{ title: 'Docente' }],
       })
       .expect(409);
+  });
+
+  it('exige matrícula no cadastro manual e diferencia duplicidade de e-mail ou matrícula', async () => {
+    const api = app.getHttpServer();
+    const endpoint = () =>
+      request(api)
+        .post('/funcionarios')
+        .set('Authorization', `Bearer ${secretaryToken}`);
+    const data = {
+      requestId: '99999999-9999-4999-8999-999999999991',
+      name: 'Pessoa Fixture',
+      email: 'fixture.matricula@example.test',
+      admissionDate: '2026-01-01',
+      assignments: [{ title: 'Docente' }],
+    };
+    await endpoint().send(data).expect(400);
+    await endpoint()
+      .send({ ...data, registrationNumber: '   ' })
+      .expect(400);
+    await endpoint()
+      .send({ ...data, registrationNumber: 'UNICA-001' })
+      .expect(201);
+    const duplicateEmail = await endpoint()
+      .send({
+        ...data,
+        requestId: '99999999-9999-4999-8999-999999999992',
+        registrationNumber: 'UNICA-002',
+      })
+      .expect(409);
+    expect(duplicateEmail.body.code).toBe('EMAIL_ALREADY_EXISTS');
+    const duplicateRegistration = await endpoint()
+      .send({
+        ...data,
+        requestId: '99999999-9999-4999-8999-999999999993',
+        registrationNumber: 'UNICA-001',
+        email: 'fixture.outra@example.test',
+      })
+      .expect(409);
+    expect(duplicateRegistration.body.code).toBe('REGISTRATION_ALREADY_EXISTS');
   });
 
   it('rejeita campos proibidos no corpo (role, accountId, searchText, passwordHash)', async () => {
@@ -207,6 +248,7 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
         requestId: '11111111-1111-4111-8111-111111111102',
         name: 'Teste Proibido',
         email: 'proibido@example.test',
+        registrationNumber: 'FUN-003',
         admissionDate: '2024-02-01',
         role: 'secretary',
         assignments: [{ title: 'Docente' }],
@@ -222,6 +264,7 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
         requestId: '11111111-1111-4111-8111-111111111103',
         name: 'Pessoa Um',
         email: 'pessoa.um@example.test',
+        registrationNumber: 'FUN-004',
         admissionDate: '2024-02-01',
         assignments: [{ title: 'Docente' }],
       })
@@ -234,6 +277,7 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
         requestId: '11111111-1111-4111-8111-111111111104',
         name: 'Pessoa Dois',
         email: 'pessoa.dois@example.test',
+        registrationNumber: 'FUN-005',
         admissionDate: '2024-02-01',
         assignments: [{ title: 'Coordenador' }],
       })
@@ -279,6 +323,7 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
         requestId: '11111111-1111-4111-8111-111111111105',
         name: 'Carlos Acesso',
         email: 'carlos.acesso@example.test',
+        registrationNumber: 'FUN-006',
         admissionDate: '2024-02-01',
         assignments: [{ title: 'Docente' }],
       })
@@ -290,22 +335,57 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
       .send({ email: 'carlos.acesso@example.test', password: 'SenhaForte123!' })
       .expect(401);
 
-    // Secretary sends invite
-    const inviteRes = await request(app.getHttpServer())
+    const email = 'carlos.acesso@example.test';
+    const originalDeliveries = sentEmails.length;
+    const api = app.getHttpServer();
+    const login = (email: string, password: string) =>
+      request(api)
+        .post('/autenticacao/funcionarios/login')
+        .send({ email, password });
+    const wrong = await login(email, 'INCORRETA').expect(401);
+    const unknown = await login('inexistente@example.test', 'FUN-006').expect(
+      401,
+    );
+    expect(wrong.body).toEqual(unknown.body);
+
+    const pending = await login(email, 'FUN-006').expect(200);
+    expect(pending.body.mustChangePassword).toBe(true);
+    expect(pending.body).not.toHaveProperty('token');
+    expect(sentEmails).toHaveLength(originalDeliveries);
+    await request(api).get('/funcionarios/me').expect(401);
+
+    await prisma.employeeAccessToken.updateMany({
+      where: { employeeId: created.body.id },
+      data: { expiresAt: new Date(0) },
+    });
+    await request(api)
+      .post('/autenticacao/funcionarios/ativar')
+      .send({
+        token: pending.body.firstAccessToken,
+        newPassword: 'SenhaForte123!',
+      })
+      .expect(400);
+    const second = await login(email, 'FUN-006').expect(200);
+    const token = second.body.firstAccessToken as string;
+    await request(api)
+      .post('/autenticacao/funcionarios/solicitar-acesso')
+      .send({ email })
+      .expect(410);
+    await request(api)
       .post(`/funcionarios/${created.body.id}/convite`)
       .set('Authorization', `Bearer ${secretaryToken}`)
-      .send({
-        requestId: '11111111-1111-4111-8111-111111111106',
-        expectedVersion: 1,
-      })
-      .expect(201);
-    expect(inviteRes.body.deliveryState).toBe('ACCEPTED');
-
-    const lastEmail = sentEmails[sentEmails.length - 1];
-    const token = new URL(lastEmail.actionUrl).searchParams.get(
-      'token',
-    ) as string;
+      .expect(410);
+    expect(sentEmails).toHaveLength(originalDeliveries);
     expect(token).toBeTruthy();
+
+    await request(api)
+      .post('/autenticacao/funcionarios/ativar')
+      .send({ token, newPassword: 'FUN-006  ' })
+      .expect(400);
+    await request(api)
+      .get('/funcionarios/me')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(401);
 
     // Concurrent activation: only 1 succeeds
     const [a1, a2] = await Promise.all([
@@ -317,6 +397,11 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
         .send({ token, newPassword: 'SenhaForte123!' }),
     ]);
     expect([a1.status, a2.status].sort()).toEqual([200, 400]);
+
+    await request(api)
+      .post('/autenticacao/funcionarios/login')
+      .send({ email, password: 'FUN-006' })
+      .expect(401);
 
     // Login succeeds
     const loginRes = await request(app.getHttpServer())
@@ -371,6 +456,46 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
       .get('/funcionarios/me')
       .set('Authorization', `Bearer ${empToken}`)
       .expect(401);
+
+    const renewed = await request(api)
+      .post('/autenticacao/funcionarios/login')
+      .send({ email, password: 'SenhaForte123!' })
+      .expect(200);
+    const archived = await request(api)
+      .delete(`/funcionarios/${created.body.id}`)
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .send({ expectedVersion: 4, reason: 'Arquivamento de teste' })
+      .expect(200);
+    expect(archived.body.accountStatus).toBe('ARCHIVED');
+    await request(api)
+      .post('/autenticacao/funcionarios/login')
+      .send({ email, password: 'SenhaForte123!' })
+      .expect(401);
+    await request(api)
+      .post(`/funcionarios/${created.body.id}/restaurar`)
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .send({ expectedVersion: 5, reason: 'Restauracao de teste' })
+      .expect(201);
+    await request(api)
+      .get('/funcionarios/me')
+      .set('Authorization', `Bearer ${renewed.body.token}`)
+      .expect(401);
+
+    await request(api)
+      .patch(`/funcionarios/${created.body.id}`)
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .send({
+        expectedVersion: 6,
+        reason: 'Atualização administrativa da matrícula',
+        registrationNumber: 'FUN-006-ATUALIZADA',
+      })
+      .expect(200);
+    await login(email, 'FUN-006-ATUALIZADA').expect(401);
+    const personal = await login(email, 'SenhaForte123!').expect(200);
+    expect(personal.body).toMatchObject({
+      mustChangePassword: false,
+      token: expect.any(String),
+    });
   });
 
   it('analisa CSV multi-função sem cadastrar, confirma com digest e processa idempotentemente com falha parcial isolada', async () => {
@@ -455,6 +580,7 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
         requestId: '33333333-3333-4333-8333-333333333301',
         name: 'Foto Teste',
         email: 'foto.teste@example.test',
+        registrationNumber: 'FUN-007',
         rg: '99887766',
         admissionDate: '2024-02-01',
         assignments: [{ title: 'Docente' }],
@@ -560,6 +686,7 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
         requestId: '55555555-5555-4555-8555-555555555501',
         name: 'Suporte Funcionario',
         email: 'suporte.emp@example.test',
+        registrationNumber: 'FUN-008',
         admissionDate: '2024-02-01',
         assignments: [{ title: 'Docente' }],
       })

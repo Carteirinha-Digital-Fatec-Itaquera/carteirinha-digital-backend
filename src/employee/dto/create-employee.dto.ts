@@ -59,11 +59,10 @@ export class CreateEmployeeDto {
   @MaxLength(254)
   email: string;
 
-  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(40)
-  registrationNumber?: string | null;
+  registrationNumber: string;
 
   @IsOptional()
   @IsString()

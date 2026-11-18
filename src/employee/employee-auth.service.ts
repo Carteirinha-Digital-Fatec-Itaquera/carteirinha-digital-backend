@@ -14,33 +14,57 @@ import { buildEmployeeActionUrl } from '../auth/password-recovery-url';
 import type { TokenPayload } from '../auth/dto/payload.dto';
 import { PrismaService } from '../database/prisma.service';
 import {
-  checkSqlRateLimit,
   consumeSqlRateLimit,
   hashRateLimitKey,
-  resetSqlRateLimit,
 } from '../database/rate-limit.helper';
 import { MailService } from '../mail/mail.service';
 import { HashContentService } from '../utils/hashContentService';
 import {
   EmployeeChangePasswordDto,
   EmployeeEmailRequestDto,
-  EmployeeInviteDto,
   EmployeeLoginDto,
   EmployeeTokenPasswordDto,
 } from './dto/employee-access.dto';
-import { normalizeEmail, throwEmployeeError } from './employee.errors';
+import {
+  normalizeEmail,
+  normalizeOptionalCode,
+  throwEmployeeError,
+} from './employee.errors';
 import { EmployeeService } from './employee.service';
 import type { EmployeeEntity } from './entities/employee.entity';
 import { EmployeeMapper } from './mapper/employee.mapper';
 import { EmployeeRepository } from './repository/employee.repository';
 
 const FIFTEEN_MIN_MS = 15 * 60 * 1000;
-const ACTIVATE_TTL_MS = 24 * 60 * 60 * 1000;
+const FIRST_ACCESS_TTL_MS = 10 * 60 * 1000;
 const RESET_TTL_MS = 30 * 60 * 1000;
 const JWT_THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 function sha256Hex(raw: string): string {
   return createHash('sha256').update(raw).digest('hex');
+}
+
+function matchesRegistration(
+  value: string,
+  registrationNumber: string | null,
+): boolean {
+  return (
+    registrationNumber !== null &&
+    normalizeOptionalCode(value) === registrationNumber
+  );
+}
+
+function assertPersonalPassword(
+  value: string,
+  registrationNumber: string | null,
+): void {
+  if (matchesRegistration(value, registrationNumber)) {
+    throwEmployeeError(
+      HttpStatus.BAD_REQUEST,
+      'VALIDATION_ERROR',
+      'A senha pessoal precisa ser diferente da matrícula funcional.',
+    );
+  }
 }
 
 @Injectable()
@@ -60,53 +84,26 @@ export class EmployeeAuthService {
     clientIp: string,
   ): Promise<EmployeeLoginResponse> {
     const email = normalizeEmail(dto.email);
-    const rateKey = hashRateLimitKey('emp:login', `${clientIp}:${email}`);
-    const check = await checkSqlRateLimit(this.prisma, rateKey, 10);
-    if (!check.allowed) {
-      throwEmployeeError(
-        HttpStatus.TOO_MANY_REQUESTS,
-        'RATE_LIMITED',
-        'Muitas tentativas de login. Tente novamente mais tarde.',
-      );
-    }
-
+    await this.enforcePublicEmailRateLimit(email, clientIp, 'login');
     const employee = await this.employeeRepository.findByEmail(email);
-    if (!employee) {
-      await consumeSqlRateLimit(this.prisma, rateKey, 10, FIFTEEN_MIN_MS);
-      throwEmployeeError(
-        HttpStatus.UNAUTHORIZED,
-        'UNAUTHORIZED',
-        'E-mail ou senha inválidos.',
-      );
-    }
-
     if (
-      employee.archivedAt !== null ||
-      employee.accountStatus === 'ARCHIVED' ||
-      employee.accountStatus === 'BLOCKED'
+      employee?.accountStatus === 'ACTIVE' &&
+      employee.archivedAt === null &&
+      !employee.passwordHash &&
+      matchesRegistration(dto.password, employee.registrationNumber)
     ) {
-      throwEmployeeError(
-        HttpStatus.FORBIDDEN,
-        'ACCOUNT_BLOCKED',
-        'Conta bloqueada ou arquivada.',
-      );
+      return this.issueFirstAccess(employee);
     }
-
-    if (!employee.passwordHash) {
-      await consumeSqlRateLimit(this.prisma, rateKey, 10, FIFTEEN_MIN_MS);
-      throwEmployeeError(
-        HttpStatus.UNAUTHORIZED,
-        'UNAUTHORIZED',
-        'Senha ainda não definida. Realize a ativação de primeiro acesso.',
-      );
-    }
-
-    const valid = await this.hashService.compareHash(
-      employee.passwordHash,
-      dto.password,
-    );
+    const valid =
+      employee?.accountStatus === 'ACTIVE' &&
+      employee.archivedAt === null &&
+      Boolean(employee.passwordHash) &&
+      !matchesRegistration(dto.password, employee.registrationNumber) &&
+      (await this.hashService.compareHash(
+        employee.passwordHash!,
+        dto.password,
+      ));
     if (!valid) {
-      await consumeSqlRateLimit(this.prisma, rateKey, 10, FIFTEEN_MIN_MS);
       throwEmployeeError(
         HttpStatus.UNAUTHORIZED,
         'UNAUTHORIZED',
@@ -114,7 +111,6 @@ export class EmployeeAuthService {
       );
     }
 
-    await resetSqlRateLimit(this.prisma, rateKey);
     await this.prisma.employee.update({
       where: { id: employee.id },
       data: { lastLoginAt: new Date() },
@@ -145,7 +141,7 @@ export class EmployeeAuthService {
     const ipLimit = await consumeSqlRateLimit(
       this.prisma,
       ipKey,
-      20,
+      scope === 'login' ? 50 : 20,
       FIFTEEN_MIN_MS,
     );
     if (!ipLimit.allowed) {
@@ -160,7 +156,7 @@ export class EmployeeAuthService {
     const emailLimit = await consumeSqlRateLimit(
       this.prisma,
       emailKey,
-      3,
+      scope === 'login' ? 10 : 3,
       FIFTEEN_MIN_MS,
     );
     if (!emailLimit.allowed) {
@@ -172,24 +168,52 @@ export class EmployeeAuthService {
     }
   }
 
-  private async createAndSendActionToken(params: {
-    employee: EmployeeEntity;
-    purpose: 'ACTIVATE' | 'RESET_PASSWORD';
-    ttlMs: number;
-    actorRole: 'employee' | 'secretary' | 'system';
-    actorId: string;
-    requestId: string;
-  }): Promise<'ACCEPTED' | 'FAILED'> {
+  private async issueFirstAccess(
+    employee: EmployeeEntity,
+  ): Promise<EmployeeLoginResponse> {
+    const firstAccessToken = randomBytes(32).toString('base64url');
+    const expiresAt = new Date(Date.now() + FIRST_ACCESS_TTL_MS);
+    await this.prisma.$transaction(async (tx) => {
+      const authorization = await tx.employeeAccessToken.create({
+        data: {
+          employeeId: employee.id,
+          tokenHash: sha256Hex('first-login:' + firstAccessToken),
+          purpose: 'ACTIVATE',
+          authVersion: employee.authVersion,
+          expiresAt,
+          deliveryState: 'UNKNOWN',
+        },
+      });
+      await tx.employeeAudit.create({
+        data: {
+          employeeId: employee.id,
+          actorRole: 'employee',
+          actorId: employee.id,
+          action: 'FIRST_ACCESS_AUTHORIZED',
+          changedFields: [],
+          requestId: 'first-login-' + authorization.id,
+        },
+      });
+    });
+    return {
+      profileType: 'employee',
+      mustChangePassword: true,
+      firstAccessToken,
+      expiresAt: expiresAt.toISOString(),
+    };
+  }
+
+  private async sendPasswordReset(employee: EmployeeEntity): Promise<void> {
     const rawToken = randomBytes(32).toString('base64url');
     const tokenHash = sha256Hex(rawToken);
-    const expiresAt = new Date(Date.now() + params.ttlMs);
+    const expiresAt = new Date(Date.now() + RESET_TTL_MS);
 
     const tokenRecord = await this.prisma.employeeAccessToken.create({
       data: {
-        employeeId: params.employee.id,
+        employeeId: employee.id,
         tokenHash,
-        purpose: params.purpose,
-        authVersion: params.employee.authVersion,
+        purpose: 'RESET_PASSWORD',
+        authVersion: employee.authVersion,
         expiresAt,
         deliveryState: 'PENDING',
       },
@@ -197,12 +221,13 @@ export class EmployeeAuthService {
 
     let deliveryState: 'ACCEPTED' | 'FAILED' = 'FAILED';
     try {
-      const actionUrl = buildEmployeeActionUrl(params.purpose, rawToken);
+      const actionUrl = buildEmployeeActionUrl('RESET_PASSWORD', rawToken);
       await this.mailService.sendEmployeeAccessEmail({
-        email: params.employee.email,
-        recipientName: this.mapper.getDisplayName(params.employee),
+        email: employee.email,
+        recipientName: this.mapper.getDisplayName(employee),
         actionUrl,
-        purpose: params.purpose,
+        purpose: 'RESET_PASSWORD',
+        expiresInMinutes: RESET_TTL_MS / 60_000,
       });
       deliveryState = 'ACCEPTED';
     } catch {
@@ -216,53 +241,25 @@ export class EmployeeAuthService {
 
     await this.prisma.employeeAudit.create({
       data: {
-        employeeId: params.employee.id,
-        actorRole: params.actorRole,
-        actorId: params.actorId,
-        action:
-          params.purpose === 'ACTIVATE'
-            ? 'ACCESS_ACTIVATION_REQUESTED'
-            : 'PASSWORD_RESET_REQUESTED',
-        requestId: params.requestId,
+        employeeId: employee.id,
+        actorRole: 'system',
+        actorId: 'public-forgot-password',
+        action: 'PASSWORD_RESET_REQUESTED',
+        requestId: `req-forgot-${randomBytes(8).toString('hex')}`,
         changedFields: {
-          purpose: params.purpose,
+          purpose: 'RESET_PASSWORD',
           deliveryState,
         },
       },
     });
-
-    return deliveryState;
   }
 
-  async requestAccess(
-    dto: EmployeeEmailRequestDto,
-    clientIp: string,
-  ): Promise<EmployeeGenericAcceptedResponse> {
-    const email = normalizeEmail(dto.email);
-    await this.enforcePublicEmailRateLimit(email, clientIp, 'activate');
-
-    const employee = await this.employeeRepository.findByEmail(email);
-    if (
-      employee &&
-      employee.accountStatus === 'ACTIVE' &&
-      employee.archivedAt === null &&
-      !employee.passwordHash
-    ) {
-      await this.createAndSendActionToken({
-        employee,
-        purpose: 'ACTIVATE',
-        ttlMs: ACTIVATE_TTL_MS,
-        actorRole: 'system',
-        actorId: 'public-request-access',
-        requestId: `req-access-${randomBytes(8).toString('hex')}`,
-      });
-    }
-
-    return {
-      accepted: true,
-      message:
-        'Se o e-mail estiver apto para ativação, enviaremos as instruções de primeiro acesso.',
-    };
+  requestAccess(): EmployeeGenericAcceptedResponse {
+    throwEmployeeError(
+      HttpStatus.GONE,
+      'VALIDATION_ERROR',
+      'Inicie o primeiro acesso na tela de login.',
+    );
   }
 
   async forgotPassword(
@@ -276,16 +273,10 @@ export class EmployeeAuthService {
     if (
       employee &&
       employee.accountStatus === 'ACTIVE' &&
-      employee.archivedAt === null
+      employee.archivedAt === null &&
+      employee.passwordHash
     ) {
-      await this.createAndSendActionToken({
-        employee,
-        purpose: 'RESET_PASSWORD',
-        ttlMs: RESET_TTL_MS,
-        actorRole: 'system',
-        actorId: 'public-forgot-password',
-        requestId: `req-forgot-${randomBytes(8).toString('hex')}`,
-      });
+      await this.sendPasswordReset(employee);
     }
 
     return {
@@ -300,7 +291,9 @@ export class EmployeeAuthService {
     newPassword: string,
     purpose: 'ACTIVATE' | 'RESET_PASSWORD',
   ): Promise<void> {
-    const tokenHash = sha256Hex(token.trim());
+    const tokenHash = sha256Hex(
+      (purpose === 'ACTIVATE' ? 'first-login:' : '') + token.trim(),
+    );
     const now = new Date();
     const passwordHash = await this.hashService.hashContent(newPassword);
 
@@ -332,7 +325,10 @@ export class EmployeeAuthService {
         !employee ||
         employee.archivedAt !== null ||
         employee.accountStatus !== 'ACTIVE' ||
-        employee.authVersion !== tokenRecord.authVersion
+        employee.authVersion !== tokenRecord.authVersion ||
+        (purpose === 'ACTIVATE'
+          ? employee.passwordHash !== null
+          : !employee.passwordHash)
       ) {
         throwEmployeeError(
           HttpStatus.BAD_REQUEST,
@@ -340,6 +336,8 @@ export class EmployeeAuthService {
           'Token inválido ou conta indisponível.',
         );
       }
+
+      assertPersonalPassword(newPassword, employee.registrationNumber);
 
       const consumed = await tx.employeeAccessToken.updateMany({
         where: {
@@ -431,6 +429,20 @@ export class EmployeeAuthService {
 
     await this.prisma.$transaction(async (tx) => {
       await this.employeeService.lockEmployeeRow(tx, employee.id);
+      const current = await this.employeeRepository.findById(employee.id, tx);
+      if (
+        !current ||
+        current.authVersion !== employee.authVersion ||
+        current.archivedAt !== null ||
+        current.accountStatus !== 'ACTIVE'
+      ) {
+        throwEmployeeError(
+          HttpStatus.UNAUTHORIZED,
+          'SESSION_REVOKED',
+          'Sessão expirada.',
+        );
+      }
+      assertPersonalPassword(dto.newPassword, current.registrationNumber);
       await tx.employee.update({
         where: { id: employee.id },
         data: {
@@ -455,53 +467,12 @@ export class EmployeeAuthService {
     return { changed: true, reauthenticate: true };
   }
 
-  async sendInvite(
-    employeeId: string,
-    dto: EmployeeInviteDto,
-    secretaryId: number,
-  ): Promise<EmployeeInviteResponse> {
-    const employee = await this.prisma.$transaction(async (tx) => {
-      await this.employeeService.lockEmployeeRow(tx, employeeId);
-      const current = await this.employeeRepository.findById(employeeId, tx);
-      if (!current) {
-        throwEmployeeError(
-          HttpStatus.NOT_FOUND,
-          'EMPLOYEE_NOT_FOUND',
-          'Funcionário não encontrado.',
-        );
-      }
-      if (current.version !== dto.expectedVersion) {
-        throwEmployeeError(
-          HttpStatus.CONFLICT,
-          'VERSION_CONFLICT',
-          'O cadastro foi atualizado por outra operação.',
-          { currentVersion: current.version },
-        );
-      }
-      if (current.archivedAt !== null || current.accountStatus !== 'ACTIVE') {
-        throwEmployeeError(
-          HttpStatus.FORBIDDEN,
-          'ACCOUNT_BLOCKED',
-          'Não é possível enviar convite para conta bloqueada ou arquivada.',
-        );
-      }
-      return current;
-    });
-
-    const deliveryState = await this.createAndSendActionToken({
-      employee,
-      purpose: 'ACTIVATE',
-      ttlMs: ACTIVATE_TTL_MS,
-      actorRole: 'secretary',
-      actorId: String(secretaryId),
-      requestId: dto.requestId,
-    });
-
-    return {
-      requested: true,
-      deliveryState,
-      requestedAt: new Date().toISOString(),
-    };
+  sendInvite(): EmployeeInviteResponse {
+    throwEmployeeError(
+      HttpStatus.GONE,
+      'VALIDATION_ERROR',
+      'Convites de primeiro acesso foram desativados.',
+    );
   }
 
   async getAccessStatus(
@@ -523,6 +494,11 @@ export class EmployeeAuthService {
 
     return {
       passwordDefined: Boolean(employee.passwordHash),
+      firstAccessMethod: employee.passwordHash
+        ? null
+        : employee.registrationNumber
+          ? 'REGISTRATION'
+          : 'REGISTRATION_REQUIRED',
       lastLoginAt: employee.lastLoginAt?.toISOString() ?? null,
       lastAccessRequestAt: latestToken?.createdAt.toISOString() ?? null,
       lastDeliveryState: latestToken?.deliveryState ?? null,
