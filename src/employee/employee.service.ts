@@ -177,6 +177,11 @@ export class EmployeeService {
     const socialName = normalizeOptionalText(dto.socialName);
     const email = normalizeEmail(dto.email);
     const registrationNumber = normalizeOptionalCode(dto.registrationNumber);
+    if (!registrationNumber) {
+      throwEmployeeError(HttpStatus.BAD_REQUEST, 'VALIDATION_ERROR', 'Informe a matrícula funcional.', {
+        fieldErrors: { registrationNumber: ['A matrícula funcional é obrigatória.'] },
+      });
+    }
     const rg = normalizeOptionalCode(dto.rg);
     const admissionDate = parseIsoDateOnly(dto.admissionDate, 'admissionDate');
 
@@ -300,7 +305,7 @@ export class EmployeeService {
           changedFields: {
             requestHash,
             email,
-            registrationNumber,
+            hasRegistrationNumber: true,
             hasRg: Boolean(rg),
             assignmentsCount: parsedAssignments.length,
           },
@@ -400,7 +405,8 @@ export class EmployeeService {
           registrationNumber: nextRegistration,
           rg: nextRg,
           admissionDate: nextAdmission,
-          ...(emailChanged ? { authVersion: current.authVersion + 1 } : {}),
+          ...(emailChanged || nextRegistration !== current.registrationNumber
+            ? { authVersion: current.authVersion + 1 } : {}),
         },
         tx,
       );
@@ -419,7 +425,7 @@ export class EmployeeService {
         changedFields.socialName = true;
       if (emailChanged) changedFields.email = nextEmail;
       if (nextRegistration !== current.registrationNumber)
-        changedFields.registrationNumber = nextRegistration;
+        changedFields.registrationNumber = { changed: true };
       if (nextRg !== current.rg) changedFields.rg = { changed: true };
       if (
         nextAdmission.toISOString().slice(0, 10) !==

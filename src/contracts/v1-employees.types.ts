@@ -128,6 +128,7 @@ export interface EmployeeLoginResponse {
 
 export interface EmployeeRequestAccessRequest {
   email: string;
+  registrationNumber?: string;
 }
 
 export interface EmployeeGenericAcceptedResponse {
@@ -180,6 +181,7 @@ export interface EmployeeInviteResponse {
 
 export interface EmployeeAccessStatusResponse {
   passwordDefined: boolean;
+  firstAccessMethod?: 'REGISTRATION_EMAIL' | 'EMAIL_ONLY' | null;
   lastLoginAt: IsoDateTime | null;
   lastAccessRequestAt: IsoDateTime | null;
   lastDeliveryState: EmployeeTokenDeliveryState | null;
@@ -347,7 +349,7 @@ export interface CreateEmployeeRequest {
   name: string;
   socialName?: string | null;
   email: string;
-  registrationNumber?: string | null;
+  registrationNumber: string;
   rg?: string | null;
   admissionDate: IsoDate;
   assignments: CreateEmployeeAssignmentInput[];
