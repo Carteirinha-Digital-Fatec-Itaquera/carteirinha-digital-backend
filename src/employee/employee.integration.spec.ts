@@ -480,6 +480,22 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
       .get('/funcionarios/me')
       .set('Authorization', `Bearer ${renewed.body.token}`)
       .expect(401);
+
+    await request(api)
+      .patch(`/funcionarios/${created.body.id}`)
+      .set('Authorization', `Bearer ${secretaryToken}`)
+      .send({
+        expectedVersion: 6,
+        reason: 'Atualização administrativa da matrícula',
+        registrationNumber: 'FUN-006-ATUALIZADA',
+      })
+      .expect(200);
+    await login(email, 'FUN-006-ATUALIZADA').expect(401);
+    const personal = await login(email, 'SenhaForte123!').expect(200);
+    expect(personal.body).toMatchObject({
+      mustChangePassword: false,
+      token: expect.any(String),
+    });
   });
 
   it('analisa CSV multi-função sem cadastrar, confirma com digest e processa idempotentemente com falha parcial isolada', async () => {

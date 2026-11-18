@@ -203,24 +203,17 @@ export class EmployeeAuthService {
     };
   }
 
-  private async createAndSendActionToken(params: {
-    employee: EmployeeEntity;
-    purpose: 'ACTIVATE' | 'RESET_PASSWORD';
-    ttlMs: number;
-    actorRole: 'employee' | 'secretary' | 'system';
-    actorId: string;
-    requestId: string;
-  }): Promise<'ACCEPTED' | 'FAILED'> {
+  private async sendPasswordReset(employee: EmployeeEntity): Promise<void> {
     const rawToken = randomBytes(32).toString('base64url');
     const tokenHash = sha256Hex(rawToken);
-    const expiresAt = new Date(Date.now() + params.ttlMs);
+    const expiresAt = new Date(Date.now() + RESET_TTL_MS);
 
     const tokenRecord = await this.prisma.employeeAccessToken.create({
       data: {
-        employeeId: params.employee.id,
+        employeeId: employee.id,
         tokenHash,
-        purpose: params.purpose,
-        authVersion: params.employee.authVersion,
+        purpose: 'RESET_PASSWORD',
+        authVersion: employee.authVersion,
         expiresAt,
         deliveryState: 'PENDING',
       },
@@ -228,13 +221,13 @@ export class EmployeeAuthService {
 
     let deliveryState: 'ACCEPTED' | 'FAILED' = 'FAILED';
     try {
-      const actionUrl = buildEmployeeActionUrl(params.purpose, rawToken);
+      const actionUrl = buildEmployeeActionUrl('RESET_PASSWORD', rawToken);
       await this.mailService.sendEmployeeAccessEmail({
-        email: params.employee.email,
-        recipientName: this.mapper.getDisplayName(params.employee),
+        email: employee.email,
+        recipientName: this.mapper.getDisplayName(employee),
         actionUrl,
-        purpose: params.purpose,
-        expiresInMinutes: params.ttlMs / 60_000,
+        purpose: 'RESET_PASSWORD',
+        expiresInMinutes: RESET_TTL_MS / 60_000,
       });
       deliveryState = 'ACCEPTED';
     } catch {
@@ -248,22 +241,17 @@ export class EmployeeAuthService {
 
     await this.prisma.employeeAudit.create({
       data: {
-        employeeId: params.employee.id,
-        actorRole: params.actorRole,
-        actorId: params.actorId,
-        action:
-          params.purpose === 'ACTIVATE'
-            ? 'ACCESS_ACTIVATION_REQUESTED'
-            : 'PASSWORD_RESET_REQUESTED',
-        requestId: params.requestId,
+        employeeId: employee.id,
+        actorRole: 'system',
+        actorId: 'public-forgot-password',
+        action: 'PASSWORD_RESET_REQUESTED',
+        requestId: `req-forgot-${randomBytes(8).toString('hex')}`,
         changedFields: {
-          purpose: params.purpose,
+          purpose: 'RESET_PASSWORD',
           deliveryState,
         },
       },
     });
-
-    return deliveryState;
   }
 
   requestAccess(): EmployeeGenericAcceptedResponse {
@@ -288,14 +276,7 @@ export class EmployeeAuthService {
       employee.archivedAt === null &&
       employee.passwordHash
     ) {
-      await this.createAndSendActionToken({
-        employee,
-        purpose: 'RESET_PASSWORD',
-        ttlMs: RESET_TTL_MS,
-        actorRole: 'system',
-        actorId: 'public-forgot-password',
-        requestId: `req-forgot-${randomBytes(8).toString('hex')}`,
-      });
+      await this.sendPasswordReset(employee);
     }
 
     return {
