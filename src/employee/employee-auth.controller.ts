@@ -14,6 +14,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import {
   EmployeeChangePasswordDto,
   EmployeeEmailRequestDto,
+  EmployeeFirstAccessDto,
   EmployeeLoginDto,
   EmployeeTokenPasswordDto,
 } from './dto/employee-access.dto';
@@ -56,7 +57,7 @@ export class EmployeeAuthController {
   @HttpCode(HttpStatus.ACCEPTED)
   @Header('Cache-Control', 'no-store')
   requestAccess(
-    @Body() dto: EmployeeEmailRequestDto,
+    @Body() dto: EmployeeFirstAccessDto,
     @Req() req: RequestWithIp,
   ) {
     return this.authService.requestAccess(dto, resolveClientIp(req));

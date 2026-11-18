@@ -1,6 +1,7 @@
 import {
   IsEmail,
   IsInt,
+  IsOptional,
   IsString,
   IsUUID,
   MaxLength,
@@ -23,6 +24,14 @@ export class EmployeeEmailRequestDto {
   @IsEmail({}, { message: 'E-mail inválido' })
   @MaxLength(254)
   email: string;
+}
+
+export class EmployeeFirstAccessDto extends EmployeeEmailRequestDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(40)
+  registrationNumber?: string;
 }
 
 export class EmployeeTokenPasswordDto {

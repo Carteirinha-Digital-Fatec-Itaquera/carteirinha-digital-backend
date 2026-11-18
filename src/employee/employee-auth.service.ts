@@ -24,11 +24,12 @@ import { HashContentService } from '../utils/hashContentService';
 import {
   EmployeeChangePasswordDto,
   EmployeeEmailRequestDto,
+  EmployeeFirstAccessDto,
   EmployeeInviteDto,
   EmployeeLoginDto,
   EmployeeTokenPasswordDto,
 } from './dto/employee-access.dto';
-import { normalizeEmail, throwEmployeeError } from './employee.errors';
+import { normalizeEmail, normalizeOptionalCode, throwEmployeeError } from './employee.errors';
 import { EmployeeService } from './employee.service';
 import type { EmployeeEntity } from './entities/employee.entity';
 import { EmployeeMapper } from './mapper/employee.mapper';
@@ -41,6 +42,17 @@ const JWT_THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 function sha256Hex(raw: string): string {
   return createHash('sha256').update(raw).digest('hex');
+}
+
+function matchesRegistration(value: string, registrationNumber: string | null): boolean {
+  return registrationNumber !== null && normalizeOptionalCode(value) === registrationNumber;
+}
+
+function assertPersonalPassword(value: string, registrationNumber: string | null): void {
+  if (matchesRegistration(value, registrationNumber)) {
+    throwEmployeeError(HttpStatus.BAD_REQUEST, 'VALIDATION_ERROR',
+      'A senha pessoal precisa ser diferente da matrícula funcional.');
+  }
 }
 
 @Injectable()
@@ -71,40 +83,10 @@ export class EmployeeAuthService {
     }
 
     const employee = await this.employeeRepository.findByEmail(email);
-    if (!employee) {
-      await consumeSqlRateLimit(this.prisma, rateKey, 10, FIFTEEN_MIN_MS);
-      throwEmployeeError(
-        HttpStatus.UNAUTHORIZED,
-        'UNAUTHORIZED',
-        'E-mail ou senha inválidos.',
-      );
-    }
-
-    if (
-      employee.archivedAt !== null ||
-      employee.accountStatus === 'ARCHIVED' ||
-      employee.accountStatus === 'BLOCKED'
-    ) {
-      throwEmployeeError(
-        HttpStatus.FORBIDDEN,
-        'ACCOUNT_BLOCKED',
-        'Conta bloqueada ou arquivada.',
-      );
-    }
-
-    if (!employee.passwordHash) {
-      await consumeSqlRateLimit(this.prisma, rateKey, 10, FIFTEEN_MIN_MS);
-      throwEmployeeError(
-        HttpStatus.UNAUTHORIZED,
-        'UNAUTHORIZED',
-        'Senha ainda não definida. Realize a ativação de primeiro acesso.',
-      );
-    }
-
-    const valid = await this.hashService.compareHash(
-      employee.passwordHash,
-      dto.password,
-    );
+    const valid = employee?.accountStatus === 'ACTIVE' && employee.archivedAt === null &&
+      Boolean(employee.passwordHash) &&
+      !matchesRegistration(dto.password, employee.registrationNumber) &&
+      await this.hashService.compareHash(employee.passwordHash!, dto.password);
     if (!valid) {
       await consumeSqlRateLimit(this.prisma, rateKey, 10, FIFTEEN_MIN_MS);
       throwEmployeeError(
@@ -203,6 +185,7 @@ export class EmployeeAuthService {
         recipientName: this.mapper.getDisplayName(params.employee),
         actionUrl,
         purpose: params.purpose,
+        expiresInMinutes: params.ttlMs / 60_000,
       });
       deliveryState = 'ACCEPTED';
     } catch {
@@ -235,7 +218,7 @@ export class EmployeeAuthService {
   }
 
   async requestAccess(
-    dto: EmployeeEmailRequestDto,
+    dto: EmployeeFirstAccessDto,
     clientIp: string,
   ): Promise<EmployeeGenericAcceptedResponse> {
     const email = normalizeEmail(dto.email);
@@ -246,12 +229,15 @@ export class EmployeeAuthService {
       employee &&
       employee.accountStatus === 'ACTIVE' &&
       employee.archivedAt === null &&
-      !employee.passwordHash
+      !employee.passwordHash &&
+      (employee.registrationNumber
+        ? dto.registrationNumber !== undefined && matchesRegistration(dto.registrationNumber, employee.registrationNumber)
+        : dto.registrationNumber === undefined)
     ) {
       await this.createAndSendActionToken({
         employee,
         purpose: 'ACTIVATE',
-        ttlMs: ACTIVATE_TTL_MS,
+        ttlMs: employee.registrationNumber ? RESET_TTL_MS : ACTIVATE_TTL_MS,
         actorRole: 'system',
         actorId: 'public-request-access',
         requestId: `req-access-${randomBytes(8).toString('hex')}`,
@@ -276,7 +262,8 @@ export class EmployeeAuthService {
     if (
       employee &&
       employee.accountStatus === 'ACTIVE' &&
-      employee.archivedAt === null
+      employee.archivedAt === null &&
+      employee.passwordHash
     ) {
       await this.createAndSendActionToken({
         employee,
@@ -332,7 +319,8 @@ export class EmployeeAuthService {
         !employee ||
         employee.archivedAt !== null ||
         employee.accountStatus !== 'ACTIVE' ||
-        employee.authVersion !== tokenRecord.authVersion
+        employee.authVersion !== tokenRecord.authVersion ||
+        (purpose === 'ACTIVATE' ? employee.passwordHash !== null : !employee.passwordHash)
       ) {
         throwEmployeeError(
           HttpStatus.BAD_REQUEST,
@@ -340,6 +328,8 @@ export class EmployeeAuthService {
           'Token inválido ou conta indisponível.',
         );
       }
+
+      assertPersonalPassword(newPassword, employee.registrationNumber);
 
       const consumed = await tx.employeeAccessToken.updateMany({
         where: {
@@ -431,6 +421,12 @@ export class EmployeeAuthService {
 
     await this.prisma.$transaction(async (tx) => {
       await this.employeeService.lockEmployeeRow(tx, employee.id);
+      const current = await this.employeeRepository.findById(employee.id, tx);
+      if (!current || current.authVersion !== employee.authVersion ||
+        current.archivedAt !== null || current.accountStatus !== 'ACTIVE') {
+        throwEmployeeError(HttpStatus.UNAUTHORIZED, 'SESSION_REVOKED', 'Sessão expirada.');
+      }
+      assertPersonalPassword(dto.newPassword, current.registrationNumber);
       await tx.employee.update({
         where: { id: employee.id },
         data: {
@@ -523,6 +519,7 @@ export class EmployeeAuthService {
 
     return {
       passwordDefined: Boolean(employee.passwordHash),
+      firstAccessMethod: employee.passwordHash ? null : employee.registrationNumber ? 'REGISTRATION_EMAIL' : 'EMAIL_ONLY',
       lastLoginAt: employee.lastLoginAt?.toISOString() ?? null,
       lastAccessRequestAt: latestToken?.createdAt.toISOString() ?? null,
       lastDeliveryState: latestToken?.deliveryState ?? null,
