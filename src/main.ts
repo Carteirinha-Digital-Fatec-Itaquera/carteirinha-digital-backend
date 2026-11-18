@@ -12,6 +12,7 @@ async function bootstrap() {
     'http://localhost:4174',
     /^http:\/\/localhost:\d+$/,
     'https://carteirinha-digital-front-end-secre-topaz.vercel.app',
+    'https://carteirinha-digital-front-end-secre.vercel.app',
     'https://carteirinha-digital-front-end-aluno.vercel.app',
   ];
   const employeeOrigin = process.env.EMPLOYEE_APP_URL?.trim();
