@@ -92,6 +92,18 @@ describe('Primeiro acesso com matrícula e confirmação de e-mail', () => {
     }
   });
 
+  it('mantém o primeiro acesso de cadastros antigos sem matrícula', async () => {
+    findByEmail.mockResolvedValue({ ...enrolled, registrationNumber: null });
+    await service.requestAccess({ email: enrolled.email }, '127.0.0.1');
+    expect(createToken).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        purpose: 'ACTIVATE',
+        employeeId: enrolled.id,
+      }),
+    });
+    expect(signAsync).not.toHaveBeenCalled();
+  });
+
   it('não cria token de recuperação para conta que ainda não tem senha', async () => {
     await expect(
       service.forgotPassword({ email: enrolled.email }, '127.0.0.1'),
