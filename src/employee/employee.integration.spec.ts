@@ -80,6 +80,7 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
     jwtService = moduleRef.get(JwtService);
     importWorker = moduleRef.get(EmployeeImportWorkerService);
 
+    await prisma.eventRateLimit.deleteMany();
     await prisma.supportAudit.deleteMany();
     await prisma.supportMessage.deleteMany();
     await prisma.supportTicket.deleteMany();
