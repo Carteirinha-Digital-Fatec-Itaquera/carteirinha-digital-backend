@@ -119,12 +119,19 @@ export interface EmployeeLoginRequest {
   password: string;
 }
 
-export interface EmployeeLoginResponse {
-  token: string;
-  mustChangePassword: false;
-  profileType: 'employee';
-  expiresAt: IsoDateTime;
-}
+export type EmployeeLoginResponse =
+  | {
+      token: string;
+      mustChangePassword: false;
+      profileType: 'employee';
+      expiresAt: IsoDateTime;
+    }
+  | {
+      firstAccessToken: string;
+      mustChangePassword: true;
+      profileType: 'employee';
+      expiresAt: IsoDateTime;
+    };
 
 export interface EmployeeRequestAccessRequest {
   email: string;
@@ -181,7 +188,7 @@ export interface EmployeeInviteResponse {
 
 export interface EmployeeAccessStatusResponse {
   passwordDefined: boolean;
-  firstAccessMethod?: 'REGISTRATION_EMAIL' | 'EMAIL_ONLY' | null;
+  firstAccessMethod?: 'REGISTRATION' | 'REGISTRATION_REQUIRED' | null;
   lastLoginAt: IsoDateTime | null;
   lastAccessRequestAt: IsoDateTime | null;
   lastDeliveryState: EmployeeTokenDeliveryState | null;

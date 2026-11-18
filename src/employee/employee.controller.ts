@@ -29,7 +29,6 @@ import {
   RenewEmployeeQrDto,
   UpdateEmployeeStatusDto,
 } from './dto/employee-mutation.dto';
-import { EmployeeInviteDto } from './dto/employee-access.dto';
 import { EmployeeQueryDto } from './dto/employee-query.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { EmployeeAuthService } from './employee-auth.service';
@@ -140,12 +139,8 @@ export class EmployeeController {
 
   @Post(':id/convite')
   @Header('Cache-Control', 'no-store')
-  sendInvite(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: EmployeeInviteDto,
-    @Req() req: SecretaryRequest,
-  ) {
-    return this.employeeAuthService.sendInvite(id, dto, req.secretary.id);
+  sendInvite() {
+    return this.employeeAuthService.sendInvite();
   }
 
   @Get(':id/acesso')
