@@ -85,6 +85,12 @@ describe('Avaliação de fotos com motivo opcional — HTTP/PostgreSQL descartá
     await app.init();
     http = app.getHttpServer() as Server;
     prisma = module.get(PrismaService);
+    // Prepare duas conexões antes das disputas: o PostgreSQL nativo local inicia cada backend lentamente.
+    // Mantém os limites/transações reais e todas as asserções de concorrência.
+    await Promise.all([
+      prisma.$queryRaw`SELECT 1 AS ready FROM pg_sleep(0.05)`,
+      prisma.$queryRaw`SELECT 1 AS ready FROM pg_sleep(0.05)`,
+    ]);
     jwt = module.get(JwtService);
     const secretary = await prisma.secretary.create({
       data: {

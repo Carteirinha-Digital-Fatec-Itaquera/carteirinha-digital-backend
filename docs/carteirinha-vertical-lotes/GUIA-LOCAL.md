@@ -66,3 +66,20 @@ Abra frente e verso em 320, 375, 390, 430, 768 e 1440 px. No celular há redistr
 Capturas dos novos scripts usam avatar e identidades sintéticas. A foto enviada como referência pelo usuário não foi incorporada ao repositório. A implementação de aluno foi consultada como referência; não foram copiados rotação CSS, código de barras fictício ou persistência offline de fotografias.
 
 Lint global da Secretaria e do backend tem dívida preexistente fora do escopo; o lint dos arquivos novos/alterados foi executado separadamente. O teste legado employee.integration.spec.ts possui alertas históricos de tipagem, sem refatoração ampla nesta entrega. Consulte o relatório para contagens e resultados efetivamente obtidos. A revisão visual e funcional final permanece com o responsável.
+
+### Variáveis efêmeras no terminal PowerShell
+
+Antes dos comandos do backend, ajuste a URL apenas para seu PostgreSQL descartável:
+
+~~~powershell
+$env:EMPLOYEE_TEST_DATABASE_URL='postgresql://usuario:senha-local@127.0.0.1:5432/disposable_employee_fotos?connect_timeout=120'
+$env:DATABASE_URL=$env:EMPLOYEE_TEST_DATABASE_URL
+$env:DIRECT_URL=$env:EMPLOYEE_TEST_DATABASE_URL
+$env:JWT_SECRET=[guid]::NewGuid().ToString('N')+[guid]::NewGuid().ToString('N')
+$env:ATTENDANCE_QR_SECRET=[guid]::NewGuid().ToString('N')+[guid]::NewGuid().ToString('N')
+$env:EMPLOYEE_APP_URL='http://localhost:4297'
+~~~
+
+O connect_timeout ampliado é útil neste ambiente Windows para a primeira conexão nativa. Não altera timeout ou regras de transações da aplicação. As fixtures aquecem duas conexões antes das disputas concorrentes; mantêm as asserções de versão e envio único.
+
+Para as capturas Playwright, defina BATCH_EVIDENCE_DIR com o caminho absoluto de uma pasta local de saída. Os novos scripts criam a pasta e gravam imagens sintéticas.
