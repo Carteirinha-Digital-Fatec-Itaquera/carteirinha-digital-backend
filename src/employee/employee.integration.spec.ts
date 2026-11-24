@@ -689,7 +689,7 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
   });
 
   it('integra envio do titular, fila privada, aprovação, rejeição da substituta e QR real', async () => {
-    const http = app.getHttpServer<import('node:http').Server>();
+    const http = app.getHttpServer() as import('node:http').Server;
     const payload = <T>(response: { body: unknown }): T => response.body as T;
     type Identity = { id: string; accountId: string };
     type Uploaded = { photoId: string };
@@ -720,7 +720,7 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
         assignments: [{ title: 'Docente' }],
       })
       .expect(201);
-    const employeeId = payload<Identity>(created).id as string;
+    const employeeId = payload<Identity>(created).id;
     const employeeToken = jwtService.sign({
       sub: employeeId,
       accountId: payload<Identity>(created).accountId,
@@ -795,7 +795,7 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
     });
 
     const sent = await upload(1, png, failedRequestId).expect(201);
-    const photoId = payload<Uploaded>(sent).photoId as string;
+    const photoId = payload<Uploaded>(sent).photoId;
     const dbPhoto = await prisma.employeePhoto.findUniqueOrThrow({
       where: { id: photoId },
     });
@@ -815,7 +815,7 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
     let cursor: string | null = null;
     let found = false;
     do {
-      const page = await request(http)
+      const page: { body: unknown } = await request(http)
         .get(
           '/funcionarios/fotos/pendentes?limit=1' +
             (cursor ? '&cursor=' + cursor : ''),
@@ -833,7 +833,7 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
           item.employeeId === employeeId &&
           item.employeeVersion === 2,
       );
-      cursor = payload<Page>(page).nextCursor as string | null;
+      cursor = payload<Page>(page).nextCursor;
     } while (cursor);
     expect(found).toBe(true);
     await list().expect(200);
@@ -863,7 +863,7 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
     });
     const validCard = await card().expect(200);
     expect(payload<Card>(validCard).credential.valid).toBe(true);
-    const realQr = payload<Card>(validCard).qrcode as string;
+    const realQr = payload<Card>(validCard).qrcode;
     const verified = await request(http)
       .get('/funcionarios/verificar/' + realQr)
       .expect(200);
