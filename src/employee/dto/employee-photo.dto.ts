@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsInt,
@@ -28,11 +28,14 @@ export class ReviewEmployeePhotoDto {
   @IsBoolean()
   approved: boolean;
 
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() || null : value,
+  )
   @IsOptional()
   @IsString()
   @MinLength(3)
   @MaxLength(500)
-  reason?: string;
+  reason?: string | null;
 }
 
 export class RemoveEmployeePhotoDto {

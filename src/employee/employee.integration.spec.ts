@@ -872,7 +872,9 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
 
     const replacement = await upload(3).expect(201);
     expect(payload<Card>(await card().expect(200)).credential.valid).toBe(true);
-    await review(payload<Uploaded>(replacement).photoId, 4, false).expect(400);
+    await review(payload<Uploaded>(replacement).photoId, 4, false, 'ab').expect(
+      400,
+    );
     await review(
       payload<Uploaded>(replacement).photoId,
       4,

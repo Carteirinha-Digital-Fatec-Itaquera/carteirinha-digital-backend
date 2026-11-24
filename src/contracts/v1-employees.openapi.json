@@ -312,7 +312,34 @@
     "/funcionarios/{id}/fotos/{photoId}/avaliacao": {
       "patch": {
         "summary": "Aprovar ou rejeitar foto",
-        "tags": ["Fotos"]
+        "tags": ["Fotos"],
+        "description": " Motivo opcional. Ausente, null, vazio ou espaços são armazenados como null; quando preenchido, usar 3–500 caracteres após trim e sem controles inválidos. Mantém versão e autorização da Secretaria.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["expectedVersion", "approved"],
+                "properties": {
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "approved": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "Opcional. Ausente, null, vazio ou espaços são normalizados para null. Quando preenchido: 3–500 caracteres após trim, sem caracteres de controle inválidos."
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/funcionarios/modelo-importacao": {

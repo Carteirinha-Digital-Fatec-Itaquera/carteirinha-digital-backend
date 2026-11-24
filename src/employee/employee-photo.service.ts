@@ -334,12 +334,33 @@ export class EmployeePhotoService {
     dto: ReviewEmployeePhotoDto,
     secretaryId: number,
   ): Promise<EmployeeProfileView> {
-    if (!dto.approved && (!dto.reason || dto.reason.trim().length < 3)) {
+    const reason =
+      dto.reason == null
+        ? null
+        : typeof dto.reason === 'string'
+          ? dto.reason.trim() || null
+          : undefined;
+    if (
+      reason === undefined ||
+      (reason !== null &&
+        (reason.length < 3 ||
+          reason.length > 500 ||
+          Array.from(reason).some((character) => {
+            const code = character.charCodeAt(0);
+            return (code < 32 && ![9, 10, 13].includes(code)) || code === 127;
+          })))
+    ) {
       throwEmployeeError(
         HttpStatus.BAD_REQUEST,
         'VALIDATION_ERROR',
-        'Motivo obrigatório ao rejeitar foto.',
-        { fieldErrors: { reason: ['Informe o motivo da rejeição'] } },
+        'Quando informado, o motivo deve conter de 3 a 500 caracteres válidos.',
+        {
+          fieldErrors: {
+            reason: [
+              'Informe de 3 a 500 caracteres, sem caracteres de controle.',
+            ],
+          },
+        },
       );
     }
 
@@ -401,7 +422,7 @@ export class EmployeePhotoService {
             currentApproved: true,
             currentPending: false,
             approvedById: secretaryId,
-            reviewReason: dto.reason?.trim() ?? null,
+            reviewReason: reason,
             reviewedAt: now,
           },
         });
@@ -413,7 +434,7 @@ export class EmployeePhotoService {
             currentApproved: false,
             currentPending: false,
             approvedById: secretaryId,
-            reviewReason: dto.reason!.trim(),
+            reviewReason: reason,
             reviewedAt: now,
             processingState: 'DELETE_PENDING',
             nextCleanupAt: now,
@@ -433,7 +454,7 @@ export class EmployeePhotoService {
           actorId: String(secretaryId),
           action: dto.approved ? 'PHOTO_APPROVED' : 'PHOTO_REJECTED',
           requestId: `photo-review-${photoId}-${current.version + 1}`,
-          reason: dto.reason?.trim() ?? null,
+          reason: reason,
           changedFields: { photoId, approved: dto.approved },
         },
       });
