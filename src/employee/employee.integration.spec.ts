@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import sharp from 'sharp';
@@ -23,6 +24,9 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
     purpose: string;
   }> = [];
   const storedPhotos = new Map<string, Buffer>();
+  let storageUnavailable = false;
+  let storageGate: Promise<void> | undefined;
+  let storageCalls = 0;
 
   beforeAll(async () => {
     process.env.JWT_SECRET =
@@ -59,6 +63,10 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
           buffer: Buffer,
           storageKey: string,
         ) => {
+          storageCalls++;
+          if (storageUnavailable)
+            throw new Error('Armazenamento isolado indisponível');
+          if (storageGate) await storageGate;
           storedPhotos.set(storageKey, buffer);
         },
         getPrivateEmployeePhotoBuffer: async (storageKey: string) => {
@@ -537,6 +545,11 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
       selectedGroupIds: [readyGroupId],
     };
 
+    // HTTP schedules the worker too. Keep that trigger inert while testing
+    // confirmation idempotency, then execute the real worker deterministically.
+    const scheduledWorker = jest
+      .spyOn(importWorker, 'processNextBatch')
+      .mockResolvedValue(false);
     const confirm1 = await request(app.getHttpServer())
       .post(`/funcionarios/importacoes/${analyzeRes.body.batchId}/confirmar`)
       .set('Authorization', `Bearer ${secretaryToken}`)
@@ -551,6 +564,8 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
       .expect(202);
     expect(confirm2.body.batchId).toBe(confirm1.body.batchId);
 
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    scheduledWorker.mockRestore();
     // Run worker deterministically
     await importWorker.processNextBatch(analyzeRes.body.batchId);
 
@@ -671,6 +686,337 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
     await request(app.getHttpServer())
       .get(`/funcionarios/verificar/${rotated.body.qrcode}`)
       .expect(200);
+  });
+
+  it('integra envio do titular, fila privada, aprovação, rejeição da substituta e QR real', async () => {
+    const http = app.getHttpServer() as import('node:http').Server;
+    const payload = <T>(response: { body: unknown }): T => response.body as T;
+    type Identity = { id: string; accountId: string };
+    type Uploaded = { photoId: string };
+    type Card = {
+      qrcode: string;
+      credential: { valid: boolean; reasonCode: string | null };
+    };
+    type PhotoState = {
+      latestAttempt: { reviewStatus: string; reviewReason: string };
+    };
+    type Page = {
+      items: Array<{
+        photoId: string;
+        employeeId: string;
+        employeeVersion: number;
+      }>;
+      nextCursor: string | null;
+    };
+    const created = await request(http)
+      .post('/funcionarios')
+      .auth(secretaryToken, { type: 'bearer' })
+      .send({
+        requestId: randomUUID(),
+        name: 'Pessoa Foto Integrada',
+        email: 'foto-integrada@example.test',
+        registrationNumber: 'FOTO-102',
+        admissionDate: '2024-01-01',
+        assignments: [{ title: 'Docente' }],
+      })
+      .expect(201);
+    const employeeId = payload<Identity>(created).id;
+    const employeeToken = jwtService.sign({
+      sub: employeeId,
+      accountId: payload<Identity>(created).accountId,
+      role: 'employee',
+      authVersion: 1,
+    });
+    const png = await sharp({
+      create: { width: 64, height: 64, channels: 3, background: '#246475' },
+    })
+      .png()
+      .toBuffer();
+    const upload = (version: number, body = png, requestId = randomUUID()) =>
+      request(http)
+        .post('/funcionarios/me/foto')
+        .auth(employeeToken, { type: 'bearer' })
+        .field('expectedVersion', String(version))
+        .field('requestId', requestId)
+        .attach('file', body, 'foto.png');
+    const status = () =>
+      request(http)
+        .get('/funcionarios/me/foto')
+        .auth(employeeToken, { type: 'bearer' });
+    const card = () =>
+      request(http)
+        .get('/funcionarios/me/carteirinha')
+        .auth(employeeToken, { type: 'bearer' });
+    const list = () =>
+      request(http)
+        .get('/funcionarios/fotos/pendentes?limit=1')
+        .auth(secretaryToken, { type: 'bearer' });
+    const review = (
+      id: string,
+      version: number,
+      approved: boolean,
+      reason?: string,
+    ) =>
+      request(http)
+        .patch('/funcionarios/' + employeeId + '/fotos/' + id + '/avaliacao')
+        .auth(secretaryToken, { type: 'bearer' })
+        .send({ expectedVersion: version, approved, reason });
+
+    await request(http).get('/funcionarios/fotos/pendentes').expect(401);
+    await request(http)
+      .get('/funcionarios/fotos/pendentes')
+      .auth(employeeToken, { type: 'bearer' })
+      .expect(403);
+    const expired = jwtService.sign(
+      {
+        sub: employeeId,
+        accountId: payload<Identity>(created).accountId,
+        role: 'employee',
+        authVersion: 1,
+      },
+      { expiresIn: -1 },
+    );
+    await request(http)
+      .get('/funcionarios/me/foto')
+      .auth(expired, { type: 'bearer' })
+      .expect(401);
+    await upload(1, Buffer.from('arquivo inválido')).expect(415);
+    const failedRequestId = randomUUID();
+    storageUnavailable = true;
+    try {
+      await upload(1, png, failedRequestId).expect(503);
+    } finally {
+      storageUnavailable = false;
+    }
+    expect(payload<PhotoState>(await status().expect(200))).toMatchObject({
+      pending: null,
+      approved: null,
+      latestAttempt: null,
+    });
+
+    const sent = await upload(1, png, failedRequestId).expect(201);
+    const photoId = payload<Uploaded>(sent).photoId;
+    const dbPhoto = await prisma.employeePhoto.findUniqueOrThrow({
+      where: { id: photoId },
+    });
+    expect(dbPhoto).toMatchObject({
+      employeeId,
+      reviewStatus: 'PENDING',
+      processingState: 'READY',
+      currentPending: true,
+    });
+    const summary = await request(http)
+      .get('/funcionarios/fotos/resumo')
+      .auth(secretaryToken, { type: 'bearer' })
+      .expect(200);
+    expect(
+      payload<{ pendingCount: number }>(summary).pendingCount,
+    ).toBeGreaterThanOrEqual(1);
+    let cursor: string | null = null;
+    let found = false;
+    do {
+      const page: { body: unknown } = await request(http)
+        .get(
+          '/funcionarios/fotos/pendentes?limit=1' +
+            (cursor ? '&cursor=' + cursor : ''),
+        )
+        .auth(secretaryToken, { type: 'bearer' })
+        .expect(200);
+      expect(payload<Page>(page).items.length).toBeLessThanOrEqual(1);
+      found ||= payload<Page>(page).items.some(
+        (item: {
+          photoId: string;
+          employeeId: string;
+          employeeVersion: number;
+        }) =>
+          item.photoId === photoId &&
+          item.employeeId === employeeId &&
+          item.employeeVersion === 2,
+      );
+      cursor = payload<Page>(page).nextCursor;
+    } while (cursor);
+    expect(found).toBe(true);
+    await list().expect(200);
+    await request(http)
+      .get('/funcionarios/' + employeeId + '/fotos/' + photoId + '/conteudo')
+      .auth(secretaryToken, { type: 'bearer' })
+      .expect(200);
+    await request(http)
+      .get('/funcionarios/' + employeeId + '/fotos/' + photoId + '/conteudo')
+      .expect(401);
+    const before = await card().expect(200);
+    expect(payload<Card>(before).credential).toMatchObject({
+      valid: false,
+      reasonCode: 'PHOTO_PENDING',
+    });
+    expect(payload<Card>(before).qrcode).toBeTruthy();
+    await review(photoId, 1, true).expect(409);
+    const decisions = await Promise.all([
+      review(photoId, 2, true),
+      review(photoId, 2, true),
+    ]);
+    expect(decisions.map((item) => item.status).sort()).toEqual([200, 409]);
+    expect(payload<PhotoState>(await status().expect(200))).toMatchObject({
+      approved: { id: photoId },
+      pending: null,
+      latestAttempt: { photoId, reviewStatus: 'APPROVED' },
+    });
+    const validCard = await card().expect(200);
+    expect(payload<Card>(validCard).credential.valid).toBe(true);
+    const realQr = payload<Card>(validCard).qrcode;
+    const verified = await request(http)
+      .get('/funcionarios/verificar/' + realQr)
+      .expect(200);
+    expect(payload<{ valid: boolean }>(verified).valid).toBe(true);
+    expect(payload<{ valid: boolean }>(verified)).not.toHaveProperty('email');
+
+    const replacement = await upload(3).expect(201);
+    expect(payload<Card>(await card().expect(200)).credential.valid).toBe(true);
+    await review(payload<Uploaded>(replacement).photoId, 4, false).expect(400);
+    await review(
+      payload<Uploaded>(replacement).photoId,
+      4,
+      false,
+      'Rosto fora do enquadramento.',
+    ).expect(200);
+    const rejected = payload<PhotoState>(await status().expect(200));
+    expect(rejected).toMatchObject({
+      approved: { id: photoId },
+      pending: null,
+      latestAttempt: {
+        photoId: payload<Uploaded>(replacement).photoId,
+        reviewStatus: 'REJECTED',
+        reviewReason: 'Rosto fora do enquadramento.',
+      },
+    });
+    expect(rejected.latestAttempt).not.toHaveProperty('contentUrl');
+    await request(http)
+      .get(
+        '/funcionarios/me/fotos/' +
+          payload<Uploaded>(replacement).photoId +
+          '/conteudo',
+      )
+      .auth(employeeToken, { type: 'bearer' })
+      .expect(404);
+    await prisma.employeePhoto.update({
+      where: { id: payload<Uploaded>(replacement).photoId },
+      data: { processingState: 'DELETED' },
+    });
+    expect(
+      payload<PhotoState>(await status().expect(200)).latestAttempt
+        .reviewStatus,
+    ).toBe('REJECTED');
+    expect(payload<Card>(await card().expect(200)).credential.valid).toBe(true);
+
+    await request(http)
+      .delete('/funcionarios/me/foto')
+      .auth(employeeToken, { type: 'bearer' })
+      .send({ expectedVersion: 5, requestId: randomUUID() })
+      .expect(200);
+    expect(payload<PhotoState>(await status().expect(200))).toMatchObject({
+      approved: null,
+      pending: null,
+      latestAttempt: null,
+    });
+    const lone = await upload(6).expect(201);
+    await review(
+      payload<Uploaded>(lone).photoId,
+      7,
+      false,
+      'Imagem sem nitidez.',
+    ).expect(200);
+    expect(payload<Card>(await card().expect(200)).credential).toMatchObject({
+      valid: false,
+      reasonCode: 'PHOTO_REJECTED',
+    });
+    expect(
+      payload<PhotoState>(await status().expect(200)).latestAttempt
+        .reviewReason,
+    ).toBe('Imagem sem nitidez.');
+    await request(http)
+      .delete('/funcionarios/me/foto')
+      .auth(employeeToken, { type: 'bearer' })
+      .send({ expectedVersion: 8, requestId: randomUUID() })
+      .expect(200);
+    expect(
+      payload<PhotoState>(await status().expect(200)).latestAttempt,
+    ).toBeNull();
+
+    storageCalls = 0;
+    let release!: () => void;
+    storageGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const one = upload(9).then((result) => result);
+    const two = upload(9).then((result) => result);
+    try {
+      const deadline = Date.now() + 15000;
+      while (storageCalls < 2 && Date.now() < deadline)
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(storageCalls).toBe(2);
+    } finally {
+      release();
+      storageGate = undefined;
+    }
+    const uploads = await Promise.all([one, two]);
+    expect(uploads.map((item) => item.status).sort()).toEqual([201, 409]);
+    expect(
+      await prisma.employeePhoto.count({
+        where: { employeeId, processingState: 'UPLOADING' },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.employeePhoto.count({
+        where: { employeeId, currentPending: true },
+      }),
+    ).toBe(1);
+
+    storageCalls = 0;
+    const repeatedRequestId = randomUUID();
+    let releaseRepeated!: () => void;
+    storageGate = new Promise<void>((resolve) => {
+      releaseRepeated = resolve;
+    });
+    const firstAttempt = upload(10, png, repeatedRequestId).then(
+      (response) => response,
+    );
+    try {
+      const deadline = Date.now() + 15000;
+      while (storageCalls < 1 && Date.now() < deadline)
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(storageCalls).toBe(1);
+      await upload(10, png, repeatedRequestId).expect(409);
+    } finally {
+      releaseRepeated();
+      storageGate = undefined;
+    }
+    const committed = await firstAttempt;
+    expect(committed.status).toBe(201);
+    const replay = await upload(10, png, repeatedRequestId).expect(201);
+    expect(payload<Uploaded>(replay).photoId).toBe(
+      payload<Uploaded>(committed).photoId,
+    );
+    expect(
+      await prisma.employeePhoto.count({
+        where: { employeeId, requestId: repeatedRequestId },
+      }),
+    ).toBe(1);
+    const latest = await prisma.employee.findUniqueOrThrow({
+      where: { id: employeeId },
+    });
+    const rotated = await request(http)
+      .post('/funcionarios/' + employeeId + '/qrcode/renovar')
+      .auth(secretaryToken, { type: 'bearer' })
+      .send({
+        requestId: randomUUID(),
+        expectedVersion: latest.version,
+        reason: 'Revogação sintética do teste',
+      })
+      .expect(201);
+    await request(http)
+      .get('/funcionarios/verificar/' + realQr)
+      .expect(404);
+    expect(payload<{ qrcode: string }>(rotated).qrcode).not.toBe(realQr);
   });
 
   it('permite abertura de chamado de suporte por funcionário, resposta da Secretaria, isolamento de aluno e consulta pública institucional', async () => {

@@ -228,7 +228,15 @@ export interface EmployeeCredentialSummary {
   checkedAt: IsoDateTime;
 }
 
+export interface EmployeePhotoAttemptView {
+  photoId: Uuid;
+  reviewStatus: EmployeePhotoReviewStatus;
+  reviewReason: string | null;
+  reviewedAt: IsoDateTime | null;
+}
+
 export interface EmployeePhotoSummary {
+  latestAttempt?: EmployeePhotoAttemptView | null;
   approvedPhotoId: Uuid | null;
   pendingPhotoId: Uuid | null;
   reviewStatus: EmployeePhotoReviewStatus | null;
@@ -275,6 +283,7 @@ export interface EmployeeCredentialCardView {
 }
 
 export interface EmployeePhotoStatusView {
+  latestAttempt?: EmployeePhotoAttemptView | null;
   approved: {
     id: Uuid;
     reviewStatus: 'APPROVED';

@@ -1,3 +1,4 @@
+import { latestPhotoAttempt } from '../employee-photo-status';
 import { Injectable } from '@nestjs/common';
 import type {
   EmployeeAssignmentView,
@@ -14,6 +15,7 @@ import type {
   EmployeeAssignmentEntity,
   EmployeeEntity,
   EmployeePhotoSummaryEntity,
+  EmployeePhotoAudit,
 } from '../entities/employee.entity';
 
 @Injectable()
@@ -48,7 +50,10 @@ export class EmployeeMapper {
     };
   }
 
-  toPhotoSummary(photos: EmployeePhotoSummaryEntity[]): EmployeePhotoSummary {
+  toPhotoSummary(
+    photos: EmployeePhotoSummaryEntity[],
+    audits?: EmployeePhotoAudit[],
+  ): EmployeePhotoSummary {
     const approved = photos.find(
       (p) =>
         p.currentApproved &&
@@ -67,17 +72,22 @@ export class EmployeeMapper {
         : undefined;
 
     return {
+      latestAttempt: latestPhotoAttempt(audits),
       approvedPhotoId: approved?.id ?? null,
       pendingPhotoId: pending?.id ?? null,
       reviewStatus: pending
         ? 'PENDING'
         : approved
           ? 'APPROVED'
-          : latestRejected
+          : latestRejected ||
+              latestPhotoAttempt(audits)?.reviewStatus === 'REJECTED'
             ? 'REJECTED'
             : null,
       reviewReason:
-        pending?.reviewReason ?? latestRejected?.reviewReason ?? null,
+        pending?.reviewReason ??
+        latestRejected?.reviewReason ??
+        latestPhotoAttempt(audits)?.reviewReason ??
+        null,
     };
   }
 
@@ -123,7 +133,7 @@ export class EmployeeMapper {
       version: employee.version,
       assignments: assignments.map((a) => this.toAssignmentView(a, now)),
       credential: this.toCredentialSummary(employee, now),
-      photo: this.toPhotoSummary(photos),
+      photo: this.toPhotoSummary(photos, employee.audits),
     };
   }
 
@@ -160,7 +170,7 @@ export class EmployeeMapper {
         reasonCode: evaluation.reasonCode,
         checkedAt: evaluation.checkedAt,
       },
-      photo: this.toPhotoSummary(photos),
+      photo: this.toPhotoSummary(photos, employee.audits),
       archivedAt: employee.archivedAt
         ? employee.archivedAt.toISOString()
         : null,

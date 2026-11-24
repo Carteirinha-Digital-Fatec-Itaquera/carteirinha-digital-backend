@@ -24,7 +24,14 @@ export interface EmployeePhotoSummaryEntity {
   reviewedAt: Date | null;
 }
 
+export interface EmployeePhotoAudit {
+  action: string;
+  reason: string | null;
+  changedFields: unknown;
+  createdAt: Date;
+}
 export interface EmployeeEntity {
+  audits?: EmployeePhotoAudit[];
   id: string;
   accountId: string;
   name: string;

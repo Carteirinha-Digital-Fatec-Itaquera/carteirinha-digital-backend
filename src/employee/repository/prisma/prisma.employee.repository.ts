@@ -11,15 +11,35 @@ import {
 } from '../employee.repository';
 
 const EMPLOYEE_WITH_RELATIONS = {
+  audits: {
+    where: {
+      action: {
+        in: [
+          'PHOTO_UPLOADED',
+          'PHOTO_APPROVED',
+          'PHOTO_REJECTED',
+          'PHOTO_REMOVED',
+        ],
+      },
+    },
+    orderBy: [{ createdAt: 'desc' as const }, { id: 'desc' as const }],
+    take: 1,
+    select: {
+      action: true,
+      reason: true,
+      changedFields: true,
+      createdAt: true,
+    },
+  },
   assignments: {
     orderBy: [{ createdAt: 'asc' as const }, { id: 'asc' as const }],
   },
   photos: {
     where: {
       processingState: 'READY' as const,
+      OR: [{ currentApproved: true }, { currentPending: true }],
     },
     orderBy: [{ createdAt: 'desc' as const }, { id: 'desc' as const }],
-    take: 10,
     select: {
       id: true,
       reviewStatus: true,
