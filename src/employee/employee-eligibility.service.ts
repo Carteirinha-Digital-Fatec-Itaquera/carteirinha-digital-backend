@@ -1,3 +1,4 @@
+import { latestPhotoAttempt } from './employee-photo-status';
 import { Injectable } from '@nestjs/common';
 import type {
   EmployeeAssignmentEffectiveStatus,
@@ -73,7 +74,7 @@ export class EmployeeEligibilityService {
   evaluate(
     employee: Pick<
       EmployeeEntity,
-      'accountStatus' | 'archivedAt' | 'admissionDate'
+      'accountStatus' | 'archivedAt' | 'admissionDate' | 'audits'
     >,
     assignments: Array<
       Pick<
@@ -176,7 +177,10 @@ export class EmployeeEligibilityService {
     } else if (!hasApprovedPhoto) {
       if (pendingPhoto) {
         reasonCode = 'PHOTO_PENDING';
-      } else if (latestRejected) {
+      } else if (
+        latestRejected ||
+        latestPhotoAttempt(employee.audits)?.reviewStatus === 'REJECTED'
+      ) {
         reasonCode = 'PHOTO_REJECTED';
       } else {
         reasonCode = 'PHOTO_MISSING';

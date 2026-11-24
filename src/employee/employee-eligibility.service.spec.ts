@@ -161,4 +161,58 @@ describe('EmployeeEligibilityService', () => {
     expect(result.cardEligible).toBe(false);
     expect(result.reasonCode).toBe('ACCOUNT_BLOCKED');
   });
+
+  it.each([
+    [
+      'admissão futura',
+      { admissionDate: new Date('2027-01-01') },
+      'ADMISSION_FUTURE',
+    ],
+    [
+      'conta arquivada',
+      { accountStatus: 'ARCHIVED' as const },
+      'ACCOUNT_ARCHIVED',
+    ],
+    [
+      'arquivamento registrado',
+      { archivedAt: new Date('2026-01-01') },
+      'ACCOUNT_ARCHIVED',
+    ],
+  ])(
+    'preserva bloqueio por %s após aprovação da foto',
+    (_label, changes, reason) => {
+      const result = service.evaluate(
+        { ...baseEmployee, ...changes },
+        [
+          {
+            id: 'vigente',
+            title: 'Docente',
+            active: true,
+            archivedAt: null,
+            startsOn: null,
+            validUntil: null,
+          },
+        ],
+        approvedPhoto,
+        new Date('2026-11-24T15:00:00Z'),
+      );
+      expect(result.valid).toBe(false);
+      expect(result.reasonCode).toBe(reason);
+    },
+  );
+
+  it.each([
+    { active: false, archivedAt: null, validUntil: null },
+    { active: true, archivedAt: new Date('2026-01-01'), validUntil: null },
+    { active: true, archivedAt: null, validUntil: new Date('2026-11-23') },
+  ])('não libera QR sem função vigente: %j', (changes) => {
+    const result = service.evaluate(
+      baseEmployee,
+      [{ id: 'encerrada', title: 'Docente', startsOn: null, ...changes }],
+      approvedPhoto,
+      new Date('2026-11-24T15:00:00Z'),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reasonCode).toBe('NO_ACTIVE_ASSIGNMENT');
+  });
 });

@@ -17,6 +17,7 @@ import {
 } from './dto/employee-photo.dto';
 import { throwEmployeeError } from './employee.errors';
 import { EmployeeService } from './employee.service';
+import { latestPhotoAttempt } from './employee-photo-status';
 import { EmployeeMapper } from './mapper/employee.mapper';
 import { EmployeeRepository } from './repository/employee.repository';
 
@@ -44,9 +45,12 @@ export class EmployeePhotoService {
     }
 
     const photos = await this.prisma.employeePhoto.findMany({
-      where: { employeeId, processingState: 'READY' },
+      where: {
+        employeeId,
+        processingState: 'READY',
+        OR: [{ currentApproved: true }, { currentPending: true }],
+      },
       orderBy: [{ createdAt: 'desc' }],
-      take: 10,
     });
 
     const approved = photos.find(
@@ -55,6 +59,7 @@ export class EmployeePhotoService {
     const pending = photos.find((p) => p.currentPending);
 
     return {
+      latestAttempt: latestPhotoAttempt(employee.audits),
       approved: approved
         ? {
             id: approved.id,
@@ -161,6 +166,14 @@ export class EmployeePhotoService {
       }
     }
 
+    if (existingByReq && existingByReq.processingState !== 'FAILED') {
+      throwEmployeeError(
+        HttpStatus.CONFLICT,
+        'PHOTO_VERSION_CONFLICT',
+        'Este envio já está em processamento ou foi encerrado. Atualize a situação antes de tentar novamente.',
+      );
+    }
+
     const employeeBefore = await this.repository.findById(employeeId);
     if (!employeeBefore) {
       throwEmployeeError(
@@ -181,18 +194,47 @@ export class EmployeePhotoService {
     const storageKey = `employee-photos/${randomUUID()}`;
     const reserved =
       existingByReq ??
-      (await this.prisma.employeePhoto.create({
-        data: {
-          employeeId,
-          requestId: dto.requestId,
-          storageKey,
-          reviewStatus: 'PENDING',
-          processingState: 'UPLOADING',
-          currentApproved: false,
-          currentPending: false,
-          contentHash,
-        },
-      }));
+      (await this.prisma.employeePhoto
+        .create({
+          data: {
+            employeeId,
+            requestId: dto.requestId,
+            storageKey,
+            reviewStatus: 'PENDING',
+            processingState: 'UPLOADING',
+            currentApproved: false,
+            currentPending: false,
+            contentHash,
+          },
+        })
+        .catch((cause: unknown) => {
+          if (
+            cause &&
+            typeof cause === 'object' &&
+            'code' in cause &&
+            cause.code === 'P2002'
+          ) {
+            throwEmployeeError(
+              HttpStatus.CONFLICT,
+              'PHOTO_VERSION_CONFLICT',
+              'Este envio já está em processamento. Atualize a situação.',
+            );
+          }
+          throw cause;
+        }));
+
+    if (existingByReq?.processingState === 'FAILED') {
+      const claimed = await this.prisma.employeePhoto.updateMany({
+        where: { id: reserved.id, processingState: 'FAILED' },
+        data: { processingState: 'UPLOADING', nextCleanupAt: null },
+      });
+      if (claimed.count !== 1)
+        throwEmployeeError(
+          HttpStatus.CONFLICT,
+          'PHOTO_VERSION_CONFLICT',
+          'O envio foi retomado por outra operação.',
+        );
+    }
 
     try {
       await this.uploadService.uploadPrivateEmployeePhoto(
@@ -214,74 +256,76 @@ export class EmployeePhotoService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      await this.employeeService.lockEmployeeRow(tx, employeeId);
-      const current = await this.repository.findById(employeeId, tx);
-      if (!current) {
-        throwEmployeeError(
-          HttpStatus.NOT_FOUND,
-          'EMPLOYEE_NOT_FOUND',
-          'Funcionário não encontrado.',
-        );
-      }
-      if (current.version !== dto.expectedVersion) {
-        await tx.employeePhoto.update({
-          where: { id: reserved.id },
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await this.employeeService.lockEmployeeRow(tx, employeeId);
+        const current = await this.repository.findById(employeeId, tx);
+        if (!current) {
+          throwEmployeeError(
+            HttpStatus.NOT_FOUND,
+            'EMPLOYEE_NOT_FOUND',
+            'Funcionário não encontrado.',
+          );
+        }
+        if (current.version !== dto.expectedVersion) {
+          throwEmployeeError(
+            HttpStatus.CONFLICT,
+            'PHOTO_VERSION_CONFLICT',
+            'Versão alterada durante o upload. Recarregue e tente novamente.',
+            { currentVersion: current.version },
+          );
+        }
+
+        // Demote any previous pending photo
+        await tx.employeePhoto.updateMany({
+          where: { employeeId, currentPending: true },
           data: {
+            currentPending: false,
             processingState: 'DELETE_PENDING',
             nextCleanupAt: new Date(),
           },
         });
-        throwEmployeeError(
-          HttpStatus.CONFLICT,
-          'PHOTO_VERSION_CONFLICT',
-          'Versão alterada durante o upload. Recarregue e tente novamente.',
-          { currentVersion: current.version },
-        );
-      }
 
-      // Demote any previous pending photo
-      await tx.employeePhoto.updateMany({
-        where: { employeeId, currentPending: true },
-        data: {
-          currentPending: false,
-          processingState: 'DELETE_PENDING',
-          nextCleanupAt: new Date(),
-        },
-      });
+        const updatedEmp = await tx.employee.update({
+          where: { id: employeeId },
+          data: { version: { increment: 1 } },
+        });
 
-      const updatedEmp = await tx.employee.update({
-        where: { id: employeeId },
-        data: { version: { increment: 1 } },
-      });
+        await tx.employeePhoto.update({
+          where: { id: reserved.id },
+          data: {
+            processingState: 'READY',
+            currentPending: true,
+            version: updatedEmp.version,
+          },
+        });
 
-      await tx.employeePhoto.update({
-        where: { id: reserved.id },
-        data: {
+        await tx.employeeAudit.create({
+          data: {
+            employeeId,
+            actorRole,
+            actorId,
+            action: 'PHOTO_UPLOADED',
+            requestId: dto.requestId,
+            changedFields: { photoId: reserved.id },
+          },
+        });
+
+        return {
+          photoId: reserved.id,
+          reviewStatus: 'PENDING',
           processingState: 'READY',
-          currentPending: true,
           version: updatedEmp.version,
-        },
+        };
       });
-
-      await tx.employeeAudit.create({
-        data: {
-          employeeId,
-          actorRole,
-          actorId,
-          action: 'PHOTO_UPLOADED',
-          requestId: dto.requestId,
-          changedFields: { photoId: reserved.id },
-        },
+    } catch (cause) {
+      // A cleanup marker written inside the failed transaction would be rolled back.
+      await this.prisma.employeePhoto.updateMany({
+        where: { id: reserved.id, processingState: 'UPLOADING' },
+        data: { processingState: 'DELETE_PENDING', nextCleanupAt: new Date() },
       });
-
-      return {
-        photoId: reserved.id,
-        reviewStatus: 'PENDING',
-        processingState: 'READY',
-        version: updatedEmp.version,
-      };
-    });
+      throw cause;
+    }
   }
 
   async reviewPhoto(
@@ -322,6 +366,8 @@ export class EmployeePhotoService {
         where: {
           id: photoId,
           employeeId,
+          currentPending: true,
+          reviewStatus: 'PENDING',
           processingState: 'READY',
         },
       });
