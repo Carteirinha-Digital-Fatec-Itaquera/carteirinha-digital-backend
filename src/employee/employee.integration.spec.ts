@@ -85,6 +85,12 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
 
     prisma = moduleRef.get(PrismaService);
     await prisma.$connect();
+    // Prepare duas conexões antes das disputas: o PostgreSQL nativo local inicia cada backend lentamente.
+    // Mantém os limites/transações reais e todas as asserções de concorrência.
+    await Promise.all([
+      prisma.$queryRaw`SELECT 1 AS ready FROM pg_sleep(0.05)`,
+      prisma.$queryRaw`SELECT 1 AS ready FROM pg_sleep(0.05)`,
+    ]);
     jwtService = moduleRef.get(JwtService);
     importWorker = moduleRef.get(EmployeeImportWorkerService);
 
@@ -872,7 +878,9 @@ describe('Employee CRUD, Auth & Assignments Integration (HTTP + PostgreSQL)', ()
 
     const replacement = await upload(3).expect(201);
     expect(payload<Card>(await card().expect(200)).credential.valid).toBe(true);
-    await review(payload<Uploaded>(replacement).photoId, 4, false).expect(400);
+    await review(payload<Uploaded>(replacement).photoId, 4, false, 'ab').expect(
+      400,
+    );
     await review(
       payload<Uploaded>(replacement).photoId,
       4,

@@ -311,7 +311,8 @@ export interface EmployeePhotoUploadResponse {
 export interface EmployeePhotoReviewRequest {
   expectedVersion: number;
   approved: boolean;
-  reason?: string;
+  /** Opcional; ausente, null ou texto em branco são normalizados para null. */
+  reason?: string | null;
 }
 
 export interface EmployeePhotoRemoveRequest {
