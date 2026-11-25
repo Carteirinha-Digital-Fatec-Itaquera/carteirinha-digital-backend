@@ -1,4 +1,4 @@
-# Entrega em Draft — 24/11/2026
+# Entrega em Draft — 25/11/2026
 
 Novas issues: Backend #104, Secretaria #88, Portal #10. Novas branches a partir das mains atualizadas; branches anteriores não reutilizadas. Sem merge, publicação de produção ou alterações em dados reais.
 
@@ -24,10 +24,39 @@ VITE_EMPLOYEE_PHOTO_OPTIONAL_REASON=false por padrão impede que a Secretaria en
 
 ## Evidências
 
-Capturas sintéticas anexadas em evidencias/. Veja GUIA-LOCAL.md para comandos no VS Code. Os screenshots não contêm a fotografia real fornecida como referência. O comportamento da fila de alunos foi preservado; testes de aprovação de aluno continuam passando na suíte existente.
+Capturas sintéticas anexadas em docs/carteirinha-vertical-lotes/evidencias/ nos PRs dos frontends. Veja GUIA-LOCAL.md para comandos no VS Code. Os screenshots não contêm a fotografia real fornecida como referência. O comportamento da fila de alunos foi preservado; testes de aprovação de aluno continuam passando na suíte existente.
+
+
+## Organização no GitHub
+
+- backend: [PR Draft](https://github.com/Carteirinha-Digital-Fatec-Itaquera/carteirinha-digital-backend/pull/105) · [Issue aberta](https://github.com/Carteirinha-Digital-Fatec-Itaquera/carteirinha-digital-backend/issues/104) · branch feature/issue-104-foto-motivo-opcional
+- secretaria: [PR Draft](https://github.com/Carteirinha-Digital-Fatec-Itaquera/carteirinha-digital-front-end-secretaria/pull/89) · [Issue aberta](https://github.com/Carteirinha-Digital-Fatec-Itaquera/carteirinha-digital-front-end-secretaria/issues/88) · branch feature/issue-88-fotos-selecao-lote
+- funcionarios: [PR Draft](https://github.com/Carteirinha-Digital-Fatec-Itaquera/carteirinha-digital-front-end-funcionarios/pull/11) · [Issue aberta](https://github.com/Carteirinha-Digital-Fatec-Itaquera/carteirinha-digital-front-end-funcionarios/issues/10) · branch feature/issue-10-carteirinha-mobile-vertical
+
+As três main foram preservadas. Sem merge, deploy de produção, hospedagem nova do Portal ou dados reais.
 
 ## Validação específica do backend
 
-Build Nest aprovado. Suíte unitária configurada com segredos efêmeros de teste: 390 testes aprovados, 50 suítes. Inclui 12 casos novos de DTO. O lint dos arquivos novos/alterados de produção e da nova suíte HTTP passou com 0 erros/avisos; o arquivo legado employee.integration.spec.ts mantém 81 erros/56 avisos históricos. O lint de src completo registra 841 erros/112 avisos preexistentes fora das alterações desta entrega. Não foram executados autofixes globais.
+Build Nest aprovado. Suíte unitária: 390 testes aprovados em 50 suítes, incluindo 12 novos casos do DTO. Segredos usados nos testes foram gerados apenas para a sessão.
 
-A suíte HTTP nova (7 casos) foi escrita para PostgreSQL real descartável, com guards para DATABASE_URL e DIRECT_URL e armazenamento/e-mail substituídos. Neste momento a execução está pendente de preparação do ambiente local: o Prisma migration engine apresentou falha de conexão. Não considerar HTTP/PostgreSQL ou o fluxo completo homologados até concluir essa execução. Nenhuma migration foi adicionada pela implementação.
+Os 7 novos cenários HTTP passaram em PostgreSQL real descartável: 5 na execução isolada e os 2 casos inicialmente limitados a 30 segundos na repetição com o prazo original de 180 segundos. Os 5 outros casos foram filtrados nessa repetição, sem serem contados novamente. Armazenamento e e-mail são substituídos por fixtures; não é homologação de produção. As 28 migrations existentes foram aplicadas apenas no banco local. Nenhuma migration nova foi adicionada.
+
+Verificados: reason ausente, null, vazio, espaços e tabulação/quebra de linha; texto aparado; tamanho/tipo/conteúdo inválido sem decisão; auditoria e status; 401/403; versão obsoleta e disputa concorrente com uma única decisão; foto aprovada anterior preservada; credencial e QR real válidos após rejeitar a substituta.
+
+A regressão HTTP existente de funcionários registrou 9 casos aprovados e 2 reprovados, inclusive após aquecimento das conexões das fixtures:
+
+- Disputa de ativação: resultado esperado [200,400], observado [200,500], com erro Prisma P2028 ao iniciar transação.
+- Disputa de upload: duas chamadas de armazenamento esperadas na janela de 15 segundos, observadas zero; ocorreram requisições tardias durante a limpeza.
+
+Essas duas falhas requerem investigação/revalidação em ambiente estável. Não foram reproduzidas na main nesta etapa e não são classificadas aqui como preexistentes ou regressões novas. Não foram alterados os limites de transação ou as asserções para fazê-las passar. A suíte de regressão de vínculo/presença de funcionário passou em sua execução anterior (1 caso). A execução acoplada que ficou presa foi interrompida, sem contá-la como aprovação.
+
+O lint dos arquivos novos/alterados de produção e da nova suíte HTTP passou com 0 erros/avisos. O arquivo legado employee.integration.spec.ts conserva 81 erros/56 avisos de lint históricos. O lint de src completo registra 841 erros/112 avisos herdados, fora das alterações de produção desta entrega. Sem autofix global.
+
+## Pendências e próxima integração
+
+- Investigar as duas falhas HTTP existentes antes de considerar toda a regressão do backend aprovada.
+- Validação visual e funcional final pelo responsável; as três issues permanecem abertas e os PRs em Draft.
+- Resolver a dívida de lint global em trabalho separado.
+- Publicação futura: Backend PR #105 → Secretaria PR #89 → Portal PR #11, somente após autorização. Habilitar VITE_EMPLOYEE_PHOTO_OPTIONAL_REASON=true no build da Secretaria apenas após o backend compatível estar publicado.
+
+Capturas e testes dos frontends utilizam API simulada. Os testes HTTP de fotografias usam domínio/controllers/JWT/PostgreSQL reais, com armazenamento e e-mail isolados. Não declarar homologação completa com base nessas camadas de teste.
