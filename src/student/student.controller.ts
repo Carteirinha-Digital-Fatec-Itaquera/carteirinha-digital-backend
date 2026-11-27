@@ -55,7 +55,15 @@ async downloadHistorico(@Res() res: Response) {
     const student = await this.service.getStudentByRa(ra);
     if (req.user.role === 'student' && (req.user.sub !== ra || req.user.accountId !== student.accountId)) throw new ForbiddenException('Acesso restrito ao próprio cadastro.');
     const result = this.mapper.toDTO(student);
-    if (req.user.role === 'student') result.name = student.socialName || student.name;
+    if (req.user.role === 'student') {
+      result.name = student.socialName || student.name;
+      result.rejectionReason =
+        student.photoStatus === 'REJECTED' &&
+        typeof student.rejectionReason === 'string' &&
+        student.rejectionReason.trim()
+          ? student.rejectionReason
+          : null;
+    }
     return result;
   }
 
