@@ -2,6 +2,7 @@ import { PhotoStatus } from "@prisma/client";
 
 export class StudentEntity {
   socialName?: string | null;
+  declare rejectionReason?: string | null;
   constructor(
     ra: string,
     course: string,
